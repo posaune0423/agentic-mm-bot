@@ -8,13 +8,12 @@
  * - Non-blocking event logging (4.10)
  */
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
-import { configureLogger, logger } from "@agentic-mm-bot/utils";
+import { getDb } from "@agentic-mm-bot/db";
+import { logger } from "@agentic-mm-bot/utils";
 
-import { loadEnv, type Env } from "./env";
+import { env } from "./env";
 import { MarketDataCache } from "./services/market-data-cache";
 import { OrderTracker } from "./services/order-tracker";
 import { PositionTracker } from "./services/position-tracker";
@@ -25,16 +24,10 @@ import { createPostgresStrategyStateRepository, createPostgresEventRepository } 
  * Main executor function
  */
 async function main(): Promise<void> {
-  // Load and validate environment
-  const env: Env = loadEnv();
-
-  // Configure logger
-  configureLogger({ logLevel: env.LOG_LEVEL });
   logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Initialize database connection
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
-  const db = drizzle(pool);
+  const db = getDb(env.DATABASE_URL);
 
   // Initialize repositories
   const strategyStateRepo = createPostgresStrategyStateRepository(db);
@@ -283,7 +276,7 @@ async function main(): Promise<void> {
 
     await marketDataAdapter.disconnect();
     await executionAdapter.disconnectPrivateStream();
-    await pool.end();
+    await db.$client.end();
 
     logger.info("Shutdown complete");
     process.exit(0);

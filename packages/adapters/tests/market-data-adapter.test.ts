@@ -10,50 +10,61 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { BboEvent, PriceEvent, TradeEvent, ConnectionEvent, MarketDataEvent } from "../src/ports";
+import type {
+  BboEvent,
+  PriceEvent,
+  TradeEvent,
+  ConnectionEvent,
+  MarketDataEvent,
+  FundingRateEvent,
+} from "../src/ports";
 
 const EXCHANGE_NAME = "extended";
 
 describe("ExtendedMarketDataAdapter", () => {
-  describe("BBO message normalization", () => {
-    test("should normalize orderbook to BBO format", () => {
+  describe("BBO message normalization (Extended API doc format)", () => {
+    test("should normalize Extended orderbook SNAPSHOT to BBO format", () => {
+      // Extended API doc format for orderbook
       const message = {
-        bids: [
-          ["50000", "1.5"],
-          ["49999", "2.0"],
-        ],
-        asks: [
-          ["50001", "1.0"],
-          ["50002", "0.5"],
-        ],
-        timestamp: 1704067200000,
-        sequence: 12345,
+        ts: 1704067200000,
+        type: "SNAPSHOT" as const,
+        data: {
+          m: "BTC-USD",
+          b: [
+            { p: "50000", q: "1.5" },
+            { p: "49999", q: "2.0" },
+          ],
+          a: [
+            { p: "50001", q: "1.0" },
+            { p: "50002", q: "0.5" },
+          ],
+        },
+        seq: 12345,
       };
 
-      const normalizeBbo = (msg: typeof message, symbol: string): BboEvent | null => {
-        const bids = msg.bids;
-        const asks = msg.asks;
+      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+        if (msg.type === "DELTA") return null; // depth=1 should only get SNAPSHOT
+
+        const bids = msg.data?.b;
+        const asks = msg.data?.a;
 
         if (!bids?.length || !asks?.length) return null;
 
-        const [bestBidPx, bestBidSz] = bids[0];
-        const [bestAskPx, bestAskSz] = asks[0];
-
         return {
           type: "bbo",
-          ts: new Date(msg.timestamp ?? Date.now()),
+          ts: new Date(msg.ts),
           exchange: EXCHANGE_NAME,
           symbol,
-          bestBidPx,
-          bestBidSz,
-          bestAskPx,
-          bestAskSz,
-          seq: msg.sequence,
+          bestBidPx: bids[0].p,
+          bestBidSz: bids[0].q,
+          bestAskPx: asks[0].p,
+          bestAskSz: asks[0].q,
+          seq: msg.seq,
           raw: msg,
         };
       };
 
-      const result = normalizeBbo(message, "BTC-USD");
+      const result = normalizeOrderbook(message, "BTC-USD");
 
       expect(result).not.toBeNull();
       expect(result!.type).toBe("bbo");
@@ -65,256 +76,345 @@ describe("ExtendedMarketDataAdapter", () => {
       expect(result!.symbol).toBe("BTC-USD");
     });
 
-    test("should return null for empty orderbook", () => {
+    test("should return null for DELTA message (unexpected for depth=1)", () => {
       const message = {
-        bids: [],
-        asks: [],
-        timestamp: Date.now(),
+        ts: 1704067200000,
+        type: "DELTA" as const,
+        data: {
+          m: "BTC-USD",
+          b: [{ p: "50000", q: "1.5" }],
+          a: [{ p: "50001", q: "1.0" }],
+        },
+        seq: 12346,
       };
 
-      const normalizeBbo = (msg: typeof message, symbol: string): BboEvent | null => {
-        const bids = msg.bids;
-        const asks = msg.asks;
-
-        if (!bids?.length || !asks?.length) return null;
-
+      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+        if (msg.type === "DELTA") return null;
         return null;
       };
 
-      const result = normalizeBbo(message, "BTC-USD");
-
+      const result = normalizeOrderbook(message, "BTC-USD");
       expect(result).toBeNull();
     });
 
-    test("should return null when bids are missing", () => {
+    test("should return null for empty bids/asks", () => {
       const message = {
-        bids: undefined,
-        asks: [["50001", "1.0"]],
-        timestamp: Date.now(),
+        ts: 1704067200000,
+        type: "SNAPSHOT" as const,
+        data: {
+          m: "BTC-USD",
+          b: [],
+          a: [],
+        },
+        seq: 12345,
       };
 
-      const normalizeBbo = (msg: { bids?: string[][]; asks?: string[][] }, symbol: string): BboEvent | null => {
-        const bids = msg.bids;
-        const asks = msg.asks;
+      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+        const bids = msg.data?.b;
+        const asks = msg.data?.a;
 
         if (!bids?.length || !asks?.length) return null;
 
         return null;
       };
 
-      const result = normalizeBbo(message, "BTC-USD");
-
+      const result = normalizeOrderbook(message, "BTC-USD");
       expect(result).toBeNull();
     });
   });
 
-  describe("Trade message normalization", () => {
-    test("should normalize trade message", () => {
+  describe("Trade message normalization (Extended API doc format)", () => {
+    test("should normalize Extended trades message with single trade", () => {
+      // Extended API doc format for trades
       const message = {
-        id: 1001,
-        price: "50000",
-        qty: "0.1",
-        side: "BUY",
-        type: "NORMAL",
-        createdTime: 1704067200000,
-        sequence: 12346,
+        ts: 1704067200000,
+        data: [
+          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+        ],
+        seq: 12346,
       };
 
-      const normalizeTrade = (msg: typeof message, symbol: string): TradeEvent | null => {
-        const price = msg.price;
-        const size = msg.qty;
+      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+        if (!msg.data?.length) return [];
 
-        if (!price || !size) return null;
-
-        const sideRaw = msg.side;
-        const side =
-          sideRaw?.toUpperCase() === "BUY" ? "buy"
-          : sideRaw?.toUpperCase() === "SELL" ? "sell"
-          : undefined;
-
-        const tradeTypeRaw = msg.type;
-        let tradeType: "normal" | "liq" | "delev" | undefined;
-        if (tradeTypeRaw === "LIQUIDATION") {
-          tradeType = "liq";
-        } else if (tradeTypeRaw === "ADL") {
-          tradeType = "delev";
-        } else {
-          tradeType = "normal";
-        }
-
-        return {
-          type: "trade",
-          ts: new Date(msg.createdTime ?? Date.now()),
+        return msg.data.map(item => ({
+          type: "trade" as const,
+          ts: new Date(item.T),
           exchange: EXCHANGE_NAME,
           symbol,
-          tradeId: msg.id?.toString(),
-          side,
-          px: price,
-          sz: size,
-          tradeType,
-          seq: msg.sequence,
-          raw: msg,
-        };
+          tradeId: String(item.i),
+          side: item.S === "BUY" ? ("buy" as const) : ("sell" as const),
+          px: item.p,
+          sz: item.q,
+          tradeType:
+            item.tT === "TRADE" ? ("normal" as const)
+            : item.tT === "LIQUIDATION" ? ("liq" as const)
+            : ("delev" as const),
+          seq: msg.seq,
+          raw: { envelope: msg, item },
+        }));
       };
 
-      const result = normalizeTrade(message, "BTC-USD");
+      const result = normalizeTrades(message, "BTC-USD");
 
-      expect(result).not.toBeNull();
-      expect(result!.type).toBe("trade");
-      expect(result!.px).toBe("50000");
-      expect(result!.sz).toBe("0.1");
-      expect(result!.side).toBe("buy");
-      expect(result!.tradeType).toBe("normal");
-      expect(result!.tradeId).toBe("1001");
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("trade");
+      expect(result[0].px).toBe("50000");
+      expect(result[0].sz).toBe("0.1");
+      expect(result[0].side).toBe("buy");
+      expect(result[0].tradeType).toBe("normal");
+      expect(result[0].tradeId).toBe("1001");
+      expect(result[0].seq).toBe(12346);
     });
 
-    test("should map LIQUIDATION trade type to liq", () => {
+    test("should normalize Extended trades message with multiple trades", () => {
       const message = {
-        price: "50000",
-        qty: "1.0",
-        side: "SELL",
-        type: "LIQUIDATION",
-        createdTime: Date.now(),
+        ts: 1704067200000,
+        data: [
+          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+          {
+            m: "BTC-USD",
+            S: "SELL" as const,
+            tT: "LIQUIDATION" as const,
+            T: 1704067200000,
+            p: "49999",
+            q: "1.0",
+            i: 1002,
+          },
+        ],
+        seq: 12346,
       };
 
-      const tradeTypeRaw = message.type;
-      let tradeType: "normal" | "liq" | "delev" | undefined;
-      if (tradeTypeRaw === "LIQUIDATION") {
-        tradeType = "liq";
-      } else if (tradeTypeRaw === "ADL") {
-        tradeType = "delev";
-      } else {
-        tradeType = "normal";
-      }
+      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+        if (!msg.data?.length) return [];
 
-      expect(tradeType).toBe("liq");
+        return msg.data.map(item => ({
+          type: "trade" as const,
+          ts: new Date(item.T),
+          exchange: EXCHANGE_NAME,
+          symbol,
+          tradeId: String(item.i),
+          side: item.S === "BUY" ? ("buy" as const) : ("sell" as const),
+          px: item.p,
+          sz: item.q,
+          tradeType:
+            item.tT === "TRADE" ? ("normal" as const)
+            : item.tT === "LIQUIDATION" ? ("liq" as const)
+            : ("delev" as const),
+          seq: msg.seq,
+          raw: { envelope: msg, item },
+        }));
+      };
+
+      const result = normalizeTrades(message, "BTC-USD");
+
+      expect(result).toHaveLength(2);
+      expect(result[0].side).toBe("buy");
+      expect(result[0].tradeType).toBe("normal");
+      expect(result[1].side).toBe("sell");
+      expect(result[1].tradeType).toBe("liq");
     });
 
-    test("should map ADL trade type to delev", () => {
+    test("should map DELEVERAGE trade type to delev", () => {
       const message = {
-        price: "50000",
-        qty: "1.0",
-        side: "SELL",
-        type: "ADL",
-        createdTime: Date.now(),
+        ts: 1704067200000,
+        data: [
+          {
+            m: "BTC-USD",
+            S: "SELL" as const,
+            tT: "DELEVERAGE" as const,
+            T: 1704067199999,
+            p: "50000",
+            q: "1.0",
+            i: 1003,
+          },
+        ],
+        seq: 12347,
       };
 
-      const tradeTypeRaw = message.type;
-      let tradeType: "normal" | "liq" | "delev" | undefined;
-      if (tradeTypeRaw === "LIQUIDATION") {
-        tradeType = "liq";
-      } else if (tradeTypeRaw === "ADL") {
-        tradeType = "delev";
-      } else {
-        tradeType = "normal";
-      }
+      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+        if (!msg.data?.length) return [];
 
-      expect(tradeType).toBe("delev");
+        return msg.data.map(item => ({
+          type: "trade" as const,
+          ts: new Date(item.T),
+          exchange: EXCHANGE_NAME,
+          symbol,
+          tradeId: String(item.i),
+          side: item.S === "BUY" ? ("buy" as const) : ("sell" as const),
+          px: item.p,
+          sz: item.q,
+          tradeType:
+            item.tT === "TRADE" ? ("normal" as const)
+            : item.tT === "LIQUIDATION" ? ("liq" as const)
+            : ("delev" as const),
+          seq: msg.seq,
+          raw: { envelope: msg, item },
+        }));
+      };
+
+      const result = normalizeTrades(message, "BTC-USD");
+
+      expect(result[0].tradeType).toBe("delev");
     });
 
-    test("should return null for missing price", () => {
+    test("should return empty array for empty trades data", () => {
       const message = {
-        qty: "0.1",
-        side: "BUY",
-        type: "NORMAL",
-        createdTime: Date.now(),
+        ts: 1704067200000,
+        data: [],
+        seq: 12346,
       };
 
-      const normalizeTrade = (msg: { price?: string; qty?: string }, symbol: string): TradeEvent | null => {
-        const price = msg.price;
-        const size = msg.qty;
-
-        if (!price || !size) return null;
-
-        return null;
+      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+        if (!msg.data?.length) return [];
+        return [];
       };
 
-      const result = normalizeTrade(message, "BTC-USD");
+      const result = normalizeTrades(message, "BTC-USD");
 
-      expect(result).toBeNull();
+      expect(result).toHaveLength(0);
     });
   });
 
   describe("Price message normalization", () => {
-    test("should normalize price message with markPrice", () => {
+    test("should normalize mark price message", () => {
+      // Extended WS mark price message format
       const message = {
-        markPrice: "50000",
-        indexPrice: "49998",
-        timestamp: 1704067200000,
+        type: "MP",
+        data: { m: "BTC-USD", p: "50000", ts: 1704067200000 },
+        ts: 1704067200001,
+        seq: 12348,
       };
 
-      const normalizePrice = (msg: typeof message, symbol: string): PriceEvent | null => {
-        const markPx = msg.markPrice;
-        const indexPx = msg.indexPrice;
-
-        if (!markPx && !indexPx) return null;
+      const normalizeMarkPrice = (msg: typeof message, symbol: string): PriceEvent | null => {
+        const markPx = msg.data?.p;
+        if (!markPx) return null;
 
         return {
           type: "price",
-          ts: new Date(msg.timestamp ?? Date.now()),
+          priceType: "mark",
+          ts: new Date(msg.data.ts),
           exchange: EXCHANGE_NAME,
           symbol,
           markPx,
-          indexPx,
+          indexPx: undefined,
+          seq: msg.seq,
           raw: msg,
         };
       };
 
-      const result = normalizePrice(message, "BTC-USD");
+      const result = normalizeMarkPrice(message, "BTC-USD");
 
       expect(result).not.toBeNull();
       expect(result!.type).toBe("price");
+      expect(result!.priceType).toBe("mark");
       expect(result!.markPx).toBe("50000");
-      expect(result!.indexPx).toBe("49998");
+      expect(result!.indexPx).toBeUndefined();
+      expect(result!.seq).toBe(12348);
     });
 
-    test("should normalize price with snake_case fields", () => {
+    test("should normalize index price message", () => {
+      // Extended WS index price message format
       const message = {
-        mark_price: "50000",
-        index_price: "49998",
-        timestamp: 1704067200000,
+        type: "IP",
+        data: { m: "BTC-USD", p: "49998", ts: 1704067200000 },
+        ts: 1704067200001,
+        seq: 12349,
       };
 
-      const normalizePrice = (msg: Record<string, unknown>, symbol: string): PriceEvent | null => {
-        const markPx = (msg.markPrice ?? msg.mark_price) as string | undefined;
-        const indexPx = (msg.indexPrice ?? msg.index_price) as string | undefined;
-
-        if (!markPx && !indexPx) return null;
+      const normalizeIndexPrice = (msg: typeof message, symbol: string): PriceEvent | null => {
+        const indexPx = msg.data?.p;
+        if (!indexPx) return null;
 
         return {
           type: "price",
-          ts: new Date((msg.timestamp as number) ?? Date.now()),
+          priceType: "index",
+          ts: new Date(msg.data.ts),
           exchange: EXCHANGE_NAME,
           symbol,
-          markPx,
+          markPx: undefined,
           indexPx,
+          seq: msg.seq,
           raw: msg,
         };
       };
 
-      const result = normalizePrice(message, "BTC-USD");
+      const result = normalizeIndexPrice(message, "BTC-USD");
 
       expect(result).not.toBeNull();
-      expect(result!.markPx).toBe("50000");
+      expect(result!.type).toBe("price");
+      expect(result!.priceType).toBe("index");
       expect(result!.indexPx).toBe("49998");
+      expect(result!.markPx).toBeUndefined();
+      expect(result!.seq).toBe(12349);
     });
 
-    test("should return null when both prices are missing", () => {
+    test("should return null when price data is missing", () => {
       const message = {
-        timestamp: Date.now(),
+        type: "MP",
+        data: { m: "BTC-USD", ts: 1704067200000 },
+        ts: 1704067200001,
+        seq: 12348,
       };
 
-      const normalizePrice = (msg: Record<string, unknown>, symbol: string): PriceEvent | null => {
-        const markPx = (msg.markPrice ?? msg.mark_price) as string | undefined;
-        const indexPx = (msg.indexPrice ?? msg.index_price) as string | undefined;
-
-        if (!markPx && !indexPx) return null;
-
+      const normalizeMarkPrice = (msg: { data?: { p?: string } }, symbol: string): PriceEvent | null => {
+        const markPx = msg.data?.p;
+        if (!markPx) return null;
         return null;
       };
 
-      const result = normalizePrice(message, "BTC-USD");
+      const result = normalizeMarkPrice(message, "BTC-USD");
+      expect(result).toBeNull();
+    });
+  });
 
+  describe("Funding rate message normalization", () => {
+    test("should normalize funding rate message", () => {
+      // Extended WS funding rate message format
+      const message = {
+        ts: 1704067200000,
+        data: { m: "BTC-USD", T: 1704072000000, f: "0.0001" },
+        seq: 12347,
+      };
+
+      const normalizeFundingRate = (msg: typeof message, symbol: string): FundingRateEvent | null => {
+        const fundingRate = msg.data?.f;
+        if (!fundingRate) return null;
+
+        return {
+          type: "funding",
+          ts: new Date(msg.data.T),
+          exchange: EXCHANGE_NAME,
+          symbol,
+          fundingRate,
+          seq: msg.seq,
+          raw: msg,
+        };
+      };
+
+      const result = normalizeFundingRate(message, "BTC-USD");
+
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe("funding");
+      expect(result!.fundingRate).toBe("0.0001");
+      expect(result!.seq).toBe(12347);
+      expect(result!.symbol).toBe("BTC-USD");
+    });
+
+    test("should return null when funding rate is missing", () => {
+      const message = {
+        ts: 1704067200000,
+        data: { m: "BTC-USD", T: 1704072000000 },
+        seq: 12347,
+      };
+
+      const normalizeFundingRate = (msg: { data?: { f?: string } }, symbol: string): FundingRateEvent | null => {
+        const fundingRate = msg.data?.f;
+        if (!fundingRate) return null;
+        return null;
+      };
+
+      const result = normalizeFundingRate(message, "BTC-USD");
       expect(result).toBeNull();
     });
   });

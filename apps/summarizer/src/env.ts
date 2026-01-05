@@ -7,7 +7,7 @@ import { z } from "zod";
 
 /**
  * - t3-env (@t3-oss/env-core) による型安全な環境変数
- * - `process.env` を直接参照せず、この `env` もしくは `loadEnv()` を使う
+ * - `process.env` を直接参照せず、この `env` を import して使う
  */
 export const env = createEnv({
   server: {
@@ -23,7 +23,3 @@ export const env = createEnv({
 });
 
 export type Env = typeof env;
-
-export function loadEnv(): Env {
-  return env;
-}

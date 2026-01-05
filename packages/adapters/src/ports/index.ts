@@ -9,6 +9,7 @@
 export type {
   BboEvent,
   ConnectionEvent,
+  FundingRateEvent,
   MarketDataError,
   MarketDataEvent,
   MarketDataPort,

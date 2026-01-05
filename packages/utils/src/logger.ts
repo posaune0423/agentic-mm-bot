@@ -1,11 +1,3 @@
-/**
- * Define log levels
- * Can be controlled by Worker binding `LOG_LEVEL`.
- * Examples: LOG_LEVEL=DEBUG, LOG_LEVEL=INFO, LOG_LEVEL=WARN, LOG_LEVEL=ERROR
- *
- * Priority: ERROR > WARN > INFO > DEBUG > LOG
- * Only logs at or above the set level will be output
- */
 enum LogLevel {
   ERROR = "ERROR",
   WARN = "WARN",
@@ -27,28 +19,15 @@ const getTimestamp = () => {
   return new Date().toISOString();
 };
 
-let configuredLogLevel: LogLevel | null = null;
-
-/**
- * Configure logger level at runtime (e.g. from validated server env).
- */
-export function configureLogger(input: { logLevel?: string | undefined } = {}): void {
-  const raw = input.logLevel?.toUpperCase();
-  if (!raw) {
-    configuredLogLevel = null;
-    return;
-  }
-
-  if (Object.values(LogLevel).includes(raw as LogLevel)) {
-    configuredLogLevel = raw as LogLevel;
-    return;
-  }
-
-  configuredLogLevel = null;
-}
-
 const getCurrentLogLevel = (): LogLevel => {
-  return configuredLogLevel ?? LogLevel.INFO;
+  const envLevel = process.env.LOG_LEVEL?.toUpperCase();
+
+  if (envLevel && Object.values(LogLevel).includes(envLevel as LogLevel)) {
+    return envLevel as LogLevel;
+  }
+
+  // Default is INFO
+  return LogLevel.INFO;
 };
 
 // Check if a log at the specified level should be output

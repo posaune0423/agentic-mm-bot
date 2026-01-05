@@ -8,15 +8,22 @@
  * - Worst fills extraction and aggregations (9.6)
  */
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import { eq, and, gte, lte, isNull, sql, asc, count } from "drizzle-orm";
-import { exFill, fillsEnriched, mdBbo, exOrderEvent, strategyState, type ExFill } from "@agentic-mm-bot/db";
-import { configureLogger, logger } from "@agentic-mm-bot/utils";
+import {
+  exFill,
+  fillsEnriched,
+  mdBbo,
+  exOrderEvent,
+  strategyState,
+  type Db,
+  type ExFill,
+  getDb,
+} from "@agentic-mm-bot/db";
+import { logger } from "@agentic-mm-bot/utils";
 
-import { loadEnv } from "./env";
+import { env } from "./env";
 
-type DbType = ReturnType<typeof drizzle>;
+type DbType = Db;
 
 /**
  * Aggregation result for a time window
@@ -396,13 +403,9 @@ async function generate1HourAggregation(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const env = loadEnv();
-
-  configureLogger({ logLevel: env.LOG_LEVEL });
   logger.info("Starting summarizer");
 
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
-  const db = drizzle(pool);
+  const db = getDb(env.DATABASE_URL);
 
   let lastMinuteAgg = 0;
   let lastHourAgg = 0;
@@ -442,7 +445,7 @@ async function main(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down...");
     clearInterval(interval);
-    await pool.end();
+    await db.$client.end();
     logger.info("Shutdown complete");
     process.exit(0);
   };

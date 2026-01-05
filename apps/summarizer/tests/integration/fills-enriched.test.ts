@@ -7,17 +7,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { exFill, fillsEnriched, mdBbo, type NewExFill, type NewMdBbo } from "@agentic-mm-bot/db";
+import { exFill, fillsEnriched, mdBbo, getDb, type Db, type NewExFill, type NewMdBbo } from "@agentic-mm-bot/db";
 
 // Test database URL
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
 describe("Summarizer fills_enriched Integration", () => {
-  let pool: Pool;
-  let db: NodePgDatabase;
+  let db: Db;
 
   // Test data IDs for cleanup
   let testFillId: string;
@@ -28,8 +25,7 @@ describe("Summarizer fills_enriched Integration", () => {
       throw new Error("TEST_DATABASE_URL or DATABASE_URL must be set");
     }
 
-    pool = new Pool({ connectionString: TEST_DATABASE_URL });
-    db = drizzle(pool);
+    db = getDb(TEST_DATABASE_URL);
   });
 
   afterAll(async () => {
@@ -42,7 +38,7 @@ describe("Summarizer fills_enriched Integration", () => {
       await db.delete(mdBbo).where(eq(mdBbo.id, id));
     }
 
-    await pool.end();
+    await db.$client.end();
   });
 
   it("should generate fills_enriched with markout calculation", async () => {

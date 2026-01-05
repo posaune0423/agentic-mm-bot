@@ -7,7 +7,7 @@ import { z } from "zod";
 
 /**
  * - t3-env (@t3-oss/env-core) による型安全な環境変数
- * - `process.env` を直接参照せず、この `env` もしくは `loadEnv()` を使う
+ * - `process.env` を直接参照せず、この `env` を import して使う
  */
 export const env = createEnv({
   server: {
@@ -32,14 +32,12 @@ export const env = createEnv({
     EXTENDED_VAULT_ID: z.coerce.number(),
 
     // Ingestor Configuration
-    BBO_THROTTLE_MS: z.coerce.number().default(100), // Throttle BBO writes
+    BBO_THROTTLE_MS: z.coerce.number().default(100), // Throttle BBO writes (min interval ms)
+    BBO_MIN_CHANGE_BPS: z.coerce.number().default(1), // Min mid change to write (bps)
+    LATEST_TOP_UPSERT_INTERVAL_MS: z.coerce.number().default(1000), // latest_top upsert interval
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
 });
 
 export type Env = typeof env;
-
-export function loadEnv(): Env {
-  return env;
-}

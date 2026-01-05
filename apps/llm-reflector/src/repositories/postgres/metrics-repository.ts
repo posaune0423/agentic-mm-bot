@@ -4,16 +4,15 @@
  * Requirements: 10.1, 9.6
  */
 
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, asc, count, sql } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
-import { fillsEnriched, exOrderEvent, strategyState, strategyParams } from "@agentic-mm-bot/db";
+import { fillsEnriched, exOrderEvent, strategyState, strategyParams, type Db } from "@agentic-mm-bot/db";
 
 import type { MetricsRepository, MetricsRepositoryError } from "../interfaces/metrics-repository";
 import type { HourlyAggregation, CurrentParamsSummary, WorstFillSummary } from "../../types";
 
-export function createPostgresMetricsRepository(db: NodePgDatabase): MetricsRepository {
+export function createPostgresMetricsRepository(db: Db): MetricsRepository {
   return {
     getHourlyAggregation(
       exchange: string,

@@ -168,7 +168,7 @@ sequenceDiagram
 
 ### Clean Structure (MVP) — Pure Core + Executor（LLM Workerなし）
 
-MVPでは executor の責務を「read → decide → execute → persist」に集約し、`decisionCycle.ts` が一本道で読める構造を正とする。DBアクセスは repositories、取引所I/Oは gateways に分離し、どちらもDI可能にする（2.1–2.3）。
+MVPでは executor の責務を「read → decide → execute → persist」に集約し、`decision-cycle.ts` が一本道で読める構造を正とする。DBアクセスは repositories に分離し、取引所I/Oは **`packages/adapters` をそのままDI** する（= apps側に gateway 層は作らない）。必要になった段階で `apps/executor/gateways` を追加して adapter をラップしてもよい（2.1–2.3）。
 
 ```
 .
@@ -177,22 +177,19 @@ MVPでは executor の責務を「read → decide → execute → persist」に�
 │     └─ src/
 │        ├─ main.ts
 │        ├─ usecases/
-│        │  └─ decisionCycle.ts
+│        │  └─ decision-cycle.ts
 │        ├─ services/
-│        │  ├─ featureEngine.ts
-│        │  ├─ scheduler.ts
-│        │  └─ killSwitch.ts
+│        │  ├─ execution-planner.ts
+│        │  ├─ market-data-cache.ts
+│        │  ├─ order-tracker.ts
+│        │  ├─ position-tracker.ts
+│        │  └─ proposal-applier.ts
 │        ├─ repositories/
 │        │  ├─ index.ts
 │        │  └─ postgres/
-│        │     ├─ snapshotRepository.ts
-│        │     ├─ positionRepository.ts
-│        │     ├─ stateRepository.ts
-│        │     └─ eventRepository.ts
-│        ├─ gateways/
-│        │  ├─ index.ts
-│        │  └─ extended/
-│        │     └─ executionGateway.ts
+│        │     ├─ event-repository.ts
+│        │     ├─ proposal-repository.ts
+│        │     └─ strategy-state-repository.ts
 │        └─ __tests__/
 │           ├─ unit/
 │           └─ integration/
@@ -393,6 +390,264 @@ interface FeatureEngineService {
 - TradingAdapter: post-only注文/取消/建玉取得（4.3, 7.5–7.8）
 - 制約処理: tick/lot/min notional の丸めと事前検証
 - エラー分類: Network, RateLimit, Auth, InvalidOrder, ExchangeDown, Invariant（8.2）
+
+#### MarketDataAdapter WS購読・正規化仕様（3.1–3.6対応）
+
+##### 参照ドキュメント（Extended Public WS）
+
+- [Order book stream](https://api.docs.extended.exchange/#order-book-stream)
+- [Trades stream](https://api.docs.extended.exchange/#trades-stream)
+- [Funding rates stream](https://api.docs.extended.exchange/#funding-rates-stream)
+- [Mark price stream](https://api.docs.extended.exchange/#mark-price-stream)
+- [Index price stream](https://api.docs.extended.exchange/#index-price-stream)
+
+##### SDK購読方式（PerpetualStreamClient）
+
+```typescript
+// connect → for-await で非同期ストリームを消費
+const streamClient = new PerpetualStreamClient({ apiUrl: STREAM_URL });
+
+const orderbookStream = streamClient.subscribeToOrderbooks({ marketName: SYMBOL, depth: 1 });
+await orderbookStream.connect();
+for await (const update of orderbookStream) {
+  /* normalize & emit */
+}
+```
+
+各ストリームは独立したfor-awaitループで購読し、切断/例外時は全ストリーム停止→指数バックオフ再接続を行う（3.4）。
+
+##### WS message → Domain（正規化）変換仕様
+
+###### 共通（Envelope）
+
+| Field    | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `ts`     | System generated timestamp (epoch ms)。domainの `raw` に残す |
+| `seq`    | Monotonic sequence。不連続検知で再接続（3.5）                |
+| `data.m` | Market name（例: `BTC-USD`）。domainでは `symbol` に変換     |
+
+###### Order book stream（BBO用途：depth=1）
+
+**WS message example:**
+
+```json
+{
+  "ts": 1749073200000,
+  "type": "SNAPSHOT",
+  "data": { "m": "BTC-USD", "b": [{ "p": "97000.5", "q": "0.5" }], "a": [{ "p": "97001.0", "q": "0.3" }] },
+  "seq": 12345
+}
+```
+
+**Domain `BboEvent` 変換:**
+
+| Domain field | Source         | 変換                  |
+| ------------ | -------------- | --------------------- |
+| `type`       | -              | `"bbo"`               |
+| `exchange`   | config         | `"extended"`          |
+| `symbol`     | `data.m`       | そのまま              |
+| `ts`         | `envelope.ts`  | `new Date(ts)`        |
+| `bestBidPx`  | `data.b[0].p`  | string（decimal表記） |
+| `bestBidSz`  | `data.b[0].q`  | string（decimal表記） |
+| `bestAskPx`  | `data.a[0].p`  | string（decimal表記） |
+| `bestAskSz`  | `data.a[0].q`  | string（decimal表記） |
+| `seq`        | `envelope.seq` | number                |
+| `raw`        | envelope       | 監査用に保持          |
+
+**補足:**
+
+- depth=1購読では常にSNAPSHOT（10ms間隔）が来る想定
+- DELTAが来た場合は仕様逸脱として `logger.warn` + 再接続
+
+###### Trades stream
+
+**WS message example:**
+
+```json
+{
+  "ts": 1749073200000,
+  "data": [{ "m": "BTC-USD", "S": "BUY", "tT": "TRADE", "T": 1749073199999, "p": "97000.5", "q": "0.1", "i": 987654 }],
+  "seq": 12346
+}
+```
+
+**Domain `TradeEvent` 変換（配列の各要素を1イベント化）:**
+
+| Domain field | Source               | 変換                                                                          |
+| ------------ | -------------------- | ----------------------------------------------------------------------------- |
+| `type`       | -                    | `"trade"`                                                                     |
+| `exchange`   | config               | `"extended"`                                                                  |
+| `symbol`     | `item.m`             | そのまま                                                                      |
+| `ts`         | `item.T`             | `new Date(T)` (trade occurred ts)                                             |
+| `px`         | `item.p`             | string（decimal表記）                                                         |
+| `sz`         | `item.q`             | string（decimal表記）                                                         |
+| `side`       | `item.S`             | `"BUY"` → `"buy"`, `"SELL"` → `"sell"`                                        |
+| `tradeType`  | `item.tT`            | `"TRADE"` → `"normal"`, `"LIQUIDATION"` → `"liq"`, `"DELEVERAGE"` → `"delev"` |
+| `tradeId`    | `item.i`             | `String(i)`                                                                   |
+| `seq`        | `envelope.seq`       | number                                                                        |
+| `raw`        | `{ envelope, item }` | 監査用                                                                        |
+
+**補足:**
+
+- Trades streamではseq欠損はログのみ（docでskip可と明記）、即再接続しない
+
+###### Funding rates stream
+
+**WS message example:**
+
+```json
+{
+  "ts": 1749073200000,
+  "data": { "m": "BTC-USD", "T": 1749072000000, "f": "0.0001" },
+  "seq": 12347
+}
+```
+
+**Domain `FundingRateEvent` 変換（新設）:**
+
+| Domain field  | Source         | 変換                                  |
+| ------------- | -------------- | ------------------------------------- |
+| `type`        | -              | `"funding"`                           |
+| `exchange`    | config         | `"extended"`                          |
+| `symbol`      | `data.m`       | そのまま                              |
+| `ts`          | `data.T`       | `new Date(T)` (calculated+applied ts) |
+| `fundingRate` | `data.f`       | string（decimal表記）                 |
+| `seq`         | `envelope.seq` | number                                |
+| `raw`         | envelope       | 監査用                                |
+
+**扱い:**
+
+- MVP要件の永続化テーブルにfundingが無いため、**DB保存しない**（受信・変換・ログ/メトリクスのみ）
+- 将来 `md_funding_rate` 追加で保存可能
+
+###### Mark price stream
+
+**WS message example:**
+
+```json
+{
+  "type": "MP",
+  "data": { "m": "BTC-USD", "p": "97000.0", "ts": 1749073200000 },
+  "ts": 1749073200001,
+  "seq": 12348,
+  "sourceEventId": null
+}
+```
+
+**Domain `PriceEvent` 変換:**
+
+| Domain field | Source         | 変換                                 |
+| ------------ | -------------- | ------------------------------------ |
+| `type`       | -              | `"price"`                            |
+| `priceType`  | -              | `"mark"`                             |
+| `exchange`   | config         | `"extended"`                         |
+| `symbol`     | `data.m`       | そのまま                             |
+| `ts`         | `data.ts`      | `new Date(ts)` (price calculated ts) |
+| `markPx`     | `data.p`       | string（decimal表記）                |
+| `indexPx`    | -              | `undefined`                          |
+| `seq`        | `envelope.seq` | number                               |
+| `raw`        | envelope       | 監査用                               |
+
+###### Index price stream
+
+**WS message example:**
+
+```json
+{
+  "type": "IP",
+  "data": { "m": "BTC-USD", "p": "97005.0", "ts": 1749073200000 },
+  "ts": 1749073200001,
+  "seq": 12349,
+  "sourceEventId": null
+}
+```
+
+**Domain `PriceEvent` 変換:**
+
+| Domain field | Source         | 変換                                 |
+| ------------ | -------------- | ------------------------------------ |
+| `type`       | -              | `"price"`                            |
+| `priceType`  | -              | `"index"`                            |
+| `exchange`   | config         | `"extended"`                         |
+| `symbol`     | `data.m`       | そのまま                             |
+| `ts`         | `data.ts`      | `new Date(ts)` (price calculated ts) |
+| `markPx`     | -              | `undefined`                          |
+| `indexPx`    | `data.p`       | string（decimal表記）                |
+| `seq`        | `envelope.seq` | number                               |
+| `raw`        | envelope       | 監査用                               |
+
+##### 再接続/seq破綻（3.4/3.5）
+
+- 各streamはfor-awaitで独立ループ
+- 例外・切断は**全ストリーム停止→指数バックオフ再接続**
+- seq不連続検知:
+  - orderbook/mark/index: **即再接続**
+  - trades/funding: **欠損ログのみ**（docでskip可）
+
+##### BBO間引き（3.6）
+
+| Parameter            | Default | Description            |
+| -------------------- | ------- | ---------------------- |
+| `BBO_THROTTLE_MS`    | 100     | 最小書き込み間隔(ms)   |
+| `BBO_MIN_CHANGE_BPS` | 1       | mid変化の最小閾値(bps) |
+
+- いずれかを満たしたら `md_bbo` へappend
+- `latest_top` は周期upsert（BBO毎の即時upsertは避ける）
+
+##### MarketDataEvent Union型
+
+```typescript
+export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent;
+
+export interface BboEvent {
+  type: "bbo";
+  exchange: string;
+  symbol: string;
+  ts: Date;
+  bestBidPx: string;
+  bestBidSz: string;
+  bestAskPx: string;
+  bestAskSz: string;
+  seq: number;
+  raw: unknown;
+}
+
+export interface TradeEvent {
+  type: "trade";
+  exchange: string;
+  symbol: string;
+  ts: Date;
+  px: string;
+  sz: string;
+  side: "buy" | "sell";
+  tradeType: "normal" | "liq" | "delev";
+  tradeId: string;
+  seq: number;
+  raw: unknown;
+}
+
+export interface PriceEvent {
+  type: "price";
+  priceType: "mark" | "index";
+  exchange: string;
+  symbol: string;
+  ts: Date;
+  markPx?: string;
+  indexPx?: string;
+  seq: number;
+  raw: unknown;
+}
+
+export interface FundingRateEvent {
+  type: "funding";
+  exchange: string;
+  symbol: string;
+  ts: Date;
+  fundingRate: string;
+  seq: number;
+  raw: unknown;
+}
+```
 
 ## Data Models
 

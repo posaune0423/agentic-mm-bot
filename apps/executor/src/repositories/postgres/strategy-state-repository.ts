@@ -7,9 +7,8 @@
  */
 
 import { desc, eq, and } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { ok, err, type Result } from "neverthrow";
-import { strategyState } from "@agentic-mm-bot/db";
+import { strategyState, type Db } from "@agentic-mm-bot/db";
 import type { StrategyMode } from "@agentic-mm-bot/core";
 
 import type {
@@ -21,7 +20,7 @@ import type {
 /**
  * Create a Postgres strategy state repository
  */
-export function createPostgresStrategyStateRepository(db: NodePgDatabase): StrategyStateRepository {
+export function createPostgresStrategyStateRepository(db: Db): StrategyStateRepository {
   return {
     async save(snapshot: StrategyStateSnapshot): Promise<Result<void, StrategyStateRepositoryError>> {
       try {

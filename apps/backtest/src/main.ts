@@ -8,10 +8,8 @@
  * - Output metrics
  */
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import { eq, and, gte, lte, asc } from "drizzle-orm";
-import { mdBbo, mdTrade } from "@agentic-mm-bot/db";
+import { mdBbo, mdTrade, getDb } from "@agentic-mm-bot/db";
 import {
   createInitialState,
   decide,
@@ -24,9 +22,9 @@ import {
   type TradeData,
   type Snapshot,
 } from "@agentic-mm-bot/core";
-import { configureLogger, logger } from "@agentic-mm-bot/utils";
+import { logger } from "@agentic-mm-bot/utils";
 
-import { loadEnv, type Env } from "./env";
+import { env } from "./env";
 
 /**
  * Simulated order
@@ -61,17 +59,13 @@ interface BacktestResults {
 }
 
 async function main(): Promise<void> {
-  const env: Env = loadEnv();
-
-  configureLogger({ logLevel: env.LOG_LEVEL });
   logger.info("Starting backtest", {
     symbol: env.SYMBOL,
     startTime: env.START_TIME,
     endTime: env.END_TIME,
   });
 
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
-  const db = drizzle(pool);
+  const db = getDb(env.DATABASE_URL);
 
   // Load BBO data
   const bboData = await db
@@ -284,7 +278,7 @@ async function main(): Promise<void> {
     finalPosition: position.size,
   });
 
-  await pool.end();
+  await db.$client.end();
 }
 
 main().catch(error => {

@@ -2,50 +2,46 @@
  * Ingestor Main Entry Point
  *
  * Requirements: 3.1-3.6
- * - Subscribe to market data
- * - Append to md_* tables
- * - Upsert latest_top
- * - Throttle BBO writes
+ * - Subscribe to market data (BBO, Trades, Mark, Index, Funding)
+ * - Append to md_* tables with throttling
+ * - Upsert latest_top periodically (not every BBO)
+ * - Throttle BBO writes by time and mid change
  */
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import { ExtendedMarketDataAdapter, type BboEvent, type PriceEvent, type TradeEvent } from "@agentic-mm-bot/adapters";
-import { latestTop, mdBbo, mdPrice, mdTrade } from "@agentic-mm-bot/db";
-import { configureLogger, logger } from "@agentic-mm-bot/utils";
-import { eq, and } from "drizzle-orm";
+import {
+  ExtendedMarketDataAdapter,
+  type BboEvent,
+  type FundingRateEvent,
+  type PriceEvent,
+  type TradeEvent,
+} from "@agentic-mm-bot/adapters";
+import { getDb } from "@agentic-mm-bot/db";
+import { logger } from "@agentic-mm-bot/utils";
 
-import { loadEnv } from "./env";
+import { env } from "./env";
+import { BboThrottler, EventWriter, LatestStateManager } from "./services";
+import type { IngestorMetrics } from "./types";
 
-/**
- * BBO Throttler - Limits BBO write frequency
- */
-class BboThrottler {
-  private lastWriteMs: number = 0;
-  private throttleMs: number;
-
-  constructor(throttleMs: number) {
-    this.throttleMs = throttleMs;
-  }
-
-  shouldWrite(nowMs: number): boolean {
-    if (nowMs - this.lastWriteMs >= this.throttleMs) {
-      this.lastWriteMs = nowMs;
-      return true;
-    }
-    return false;
-  }
-}
+// ============================================================================
+// Main
+// ============================================================================
 
 async function main(): Promise<void> {
-  const env = loadEnv();
-
-  configureLogger({ logLevel: env.LOG_LEVEL });
-  logger.info("Starting ingestor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  logger.info("Starting ingestor", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+    bboThrottleMs: env.BBO_THROTTLE_MS,
+    bboMinChangeBps: env.BBO_MIN_CHANGE_BPS,
+    latestTopUpsertIntervalMs: env.LATEST_TOP_UPSERT_INTERVAL_MS,
+  });
 
   // Initialize database
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
-  const db = drizzle(pool);
+  const db = getDb(env.DATABASE_URL);
+
+  // Initialize services
+  const bboThrottler = new BboThrottler(env.BBO_THROTTLE_MS, env.BBO_MIN_CHANGE_BPS);
+  const eventWriter = new EventWriter(db);
+  const latestStateManager = new LatestStateManager(db);
 
   // Initialize adapter
   const marketDataAdapter = new ExtendedMarketDataAdapter({
@@ -56,47 +52,44 @@ async function main(): Promise<void> {
     vaultId: env.EXTENDED_VAULT_ID,
   });
 
-  // BBO throttler
-  const bboThrottler = new BboThrottler(env.BBO_THROTTLE_MS);
-
-  // Batch writers for async persistence
-  const bboBuffer: (typeof mdBbo.$inferInsert)[] = [];
-  const tradeBuffer: (typeof mdTrade.$inferInsert)[] = [];
-  const priceBuffer: (typeof mdPrice.$inferInsert)[] = [];
-
-  // Flush buffers periodically
-  const flushBuffers = async (): Promise<void> => {
-    if (bboBuffer.length > 0) {
-      const toInsert = bboBuffer.splice(0, bboBuffer.length);
-      await db.insert(mdBbo).values(toInsert);
-      logger.debug("Flushed BBO buffer", { count: toInsert.length });
-    }
-
-    if (tradeBuffer.length > 0) {
-      const toInsert = tradeBuffer.splice(0, tradeBuffer.length);
-      await db.insert(mdTrade).values(toInsert);
-      logger.debug("Flushed trade buffer", { count: toInsert.length });
-    }
-
-    if (priceBuffer.length > 0) {
-      const toInsert = priceBuffer.splice(0, priceBuffer.length);
-      await db.insert(mdPrice).values(toInsert);
-      logger.debug("Flushed price buffer", { count: toInsert.length });
-    }
+  // Metrics
+  const metrics: IngestorMetrics = {
+    bboReceived: 0,
+    bboWritten: 0,
+    tradeReceived: 0,
+    priceReceived: 0,
+    fundingReceived: 0,
+    bboBufferSize: 0,
+    tradeBufferSize: 0,
+    priceBufferSize: 0,
   };
 
-  // Flush interval
-  const flushInterval = setInterval(() => {
-    void flushBuffers();
-  }, 1000);
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
 
-  // Handle BBO event
-  const handleBbo = async (event: BboEvent): Promise<void> => {
+  const handleBbo = (event: BboEvent): void => {
+    metrics.bboReceived++;
+
     const mid = (parseFloat(event.bestBidPx) + parseFloat(event.bestAskPx)) / 2;
+    const midStr = mid.toString();
 
-    // Throttle md_bbo writes
-    if (bboThrottler.shouldWrite(event.ts.getTime())) {
-      bboBuffer.push({
+    // Update latest state (always)
+    latestStateManager.updateBbo(
+      event.exchange,
+      event.symbol,
+      event.ts,
+      event.bestBidPx,
+      event.bestBidSz,
+      event.bestAskPx,
+      event.bestAskSz,
+      midStr,
+    );
+
+    // Throttled md_bbo write
+    if (bboThrottler.shouldWrite(event.ts.getTime(), mid)) {
+      metrics.bboWritten++;
+      eventWriter.addBbo({
         ts: event.ts,
         exchange: event.exchange,
         symbol: event.symbol,
@@ -104,43 +97,17 @@ async function main(): Promise<void> {
         bestBidSz: event.bestBidSz,
         bestAskPx: event.bestAskPx,
         bestAskSz: event.bestAskSz,
-        midPx: mid.toString(),
+        midPx: midStr,
         seq: event.seq,
         rawJson: event.raw,
       });
     }
-
-    // Always upsert latest_top
-    await db
-      .insert(latestTop)
-      .values({
-        exchange: event.exchange,
-        symbol: event.symbol,
-        ts: event.ts,
-        bestBidPx: event.bestBidPx,
-        bestBidSz: event.bestBidSz,
-        bestAskPx: event.bestAskPx,
-        bestAskSz: event.bestAskSz,
-        midPx: mid.toString(),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [latestTop.exchange, latestTop.symbol],
-        set: {
-          ts: event.ts,
-          bestBidPx: event.bestBidPx,
-          bestBidSz: event.bestBidSz,
-          bestAskPx: event.bestAskPx,
-          bestAskSz: event.bestAskSz,
-          midPx: mid.toString(),
-          updatedAt: new Date(),
-        },
-      });
   };
 
-  // Handle Trade event
   const handleTrade = (event: TradeEvent): void => {
-    tradeBuffer.push({
+    metrics.tradeReceived++;
+
+    eventWriter.addTrade({
       ts: event.ts,
       exchange: event.exchange,
       symbol: event.symbol,
@@ -154,9 +121,11 @@ async function main(): Promise<void> {
     });
   };
 
-  // Handle Price event
-  const handlePrice = async (event: PriceEvent): Promise<void> => {
-    priceBuffer.push({
+  const handlePrice = (event: PriceEvent): void => {
+    metrics.priceReceived++;
+
+    // Add to price buffer
+    eventWriter.addPrice({
       ts: event.ts,
       exchange: event.exchange,
       symbol: event.symbol,
@@ -165,28 +134,44 @@ async function main(): Promise<void> {
       rawJson: event.raw,
     });
 
-    // Update latest_top with mark/index
-    await db
-      .update(latestTop)
-      .set({
-        markPx: event.markPx,
-        indexPx: event.indexPx,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(latestTop.exchange, event.exchange), eq(latestTop.symbol, event.symbol)));
+    // Update latest state with mark/index
+    if (event.priceType === "mark" && event.markPx) {
+      latestStateManager.updateMarkPrice(event.markPx);
+    }
+    if (event.priceType === "index" && event.indexPx) {
+      latestStateManager.updateIndexPrice(event.indexPx);
+    }
   };
 
+  const handleFunding = (event: FundingRateEvent): void => {
+    metrics.fundingReceived++;
+
+    // MVP: Just log funding rate, don't persist to DB
+    // Future: Add md_funding_rate table
+    logger.debug("Received funding rate", {
+      symbol: event.symbol,
+      fundingRate: event.fundingRate,
+      ts: event.ts.toISOString(),
+    });
+  };
+
+  // ============================================================================
   // Set up event handlers
+  // ============================================================================
+
   marketDataAdapter.onEvent(event => {
     switch (event.type) {
       case "bbo":
-        void handleBbo(event);
+        handleBbo(event);
         break;
       case "trade":
         handleTrade(event);
         break;
       case "price":
-        void handlePrice(event);
+        handlePrice(event);
+        break;
+      case "funding":
+        handleFunding(event);
         break;
       case "connected":
         logger.info("Market data connected");
@@ -200,7 +185,30 @@ async function main(): Promise<void> {
     }
   });
 
-  // Connect
+  // ============================================================================
+  // Start Services
+  // ============================================================================
+
+  // Start periodic flush (1 second)
+  eventWriter.startFlushInterval(1000);
+
+  // Start periodic latest_top upsert
+  latestStateManager.startUpsertInterval(env.LATEST_TOP_UPSERT_INTERVAL_MS);
+
+  // Metrics logging (every 30 seconds)
+  const metricsInterval = setInterval(() => {
+    const bufferSizes = eventWriter.getBufferSizes();
+    metrics.bboBufferSize = bufferSizes.bbo;
+    metrics.tradeBufferSize = bufferSizes.trade;
+    metrics.priceBufferSize = bufferSizes.price;
+
+    logger.info("Ingestor metrics", metrics);
+  }, 30000);
+
+  // ============================================================================
+  // Connect and Subscribe
+  // ============================================================================
+
   logger.info("Connecting to market data...");
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
@@ -208,24 +216,42 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Subscribe
+  // Subscribe to all channels
   marketDataAdapter.subscribe({
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices"],
+    channels: ["bbo", "trades", "prices", "funding"],
   });
 
-  // Graceful shutdown
+  logger.info("Subscribed to market data", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+    channels: ["bbo", "trades", "prices", "funding"],
+  });
+
+  // ============================================================================
+  // Graceful Shutdown
+  // ============================================================================
+
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down...");
 
-    clearInterval(flushInterval);
-    await flushBuffers();
+    clearInterval(metricsInterval);
+
+    // Stop services (includes final flush/upsert)
+    await eventWriter.stop();
+    await latestStateManager.stop();
 
     await marketDataAdapter.disconnect();
-    await pool.end();
+    await db.$client.end();
 
-    logger.info("Shutdown complete");
+    logger.info("Shutdown complete", {
+      bboReceived: metrics.bboReceived,
+      bboWritten: metrics.bboWritten,
+      tradeReceived: metrics.tradeReceived,
+      priceReceived: metrics.priceReceived,
+      fundingReceived: metrics.fundingReceived,
+    });
     process.exit(0);
   };
 
