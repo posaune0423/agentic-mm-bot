@@ -9,21 +9,14 @@
 
 import { getDb } from "@agentic-mm-bot/db";
 import { createPostgresMetricsRepository, createPostgresProposalRepository } from "@agentic-mm-bot/repositories";
-import { logger } from "@agentic-mm-bot/utils";
+import { createIntervalWorker, logger } from "@agentic-mm-bot/utils";
 
 import { loadEnv } from "./env";
 import { createFileSinkPort } from "./ports/file-sink-port";
 import { runHourlyReflection } from "./usecases/run-hourly-reflection/usecase";
 
-async function main(): Promise<void> {
+function main(): void {
   const env = loadEnv();
-
-  logger.info("Starting LLM Reflector", {
-    exchange: env.EXCHANGE,
-    symbol: env.SYMBOL,
-    model: env.MODEL,
-    runIntervalMs: env.RUN_INTERVAL_MS,
-  });
 
   // Initialize DB connection
   const db = getDb(env.DATABASE_URL);
@@ -69,29 +62,17 @@ async function main(): Promise<void> {
     }
   };
 
-  // Run immediately
-  await runOnce();
-
-  // Run periodically
-  const interval = setInterval(() => {
-    void runOnce();
-  }, env.RUN_INTERVAL_MS);
-
-  // Graceful shutdown
-  const shutdown = (): void => {
-    logger.info("Shutting down...");
-    clearInterval(interval);
-    logger.info("Shutdown complete");
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  logger.info("LLM Reflector running");
+  createIntervalWorker({
+    name: "LLM Reflector",
+    intervalMs: env.RUN_INTERVAL_MS,
+    runOnce,
+    startupMetadata: {
+      exchange: env.EXCHANGE,
+      symbol: env.SYMBOL,
+      model: env.MODEL,
+      runIntervalMs: env.RUN_INTERVAL_MS,
+    },
+  });
 }
 
-main().catch(error => {
-  logger.error("Fatal error", error);
-  process.exit(1);
-});
+main();

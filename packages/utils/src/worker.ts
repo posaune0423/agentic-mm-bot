@@ -1,0 +1,88 @@
+/**
+ * Common worker pattern utilities
+ *
+ * Provides reusable interval-based worker execution with graceful shutdown.
+ */
+
+import { logger } from "./logger";
+
+/**
+ * Options for creating an interval-based worker
+ */
+export interface WorkerOptions {
+  /**
+   * Name of the worker (for logging)
+   */
+  name: string;
+
+  /**
+   * Interval in milliseconds between runs
+   */
+  intervalMs: number;
+
+  /**
+   * Function to run on each iteration
+   */
+  runOnce: () => Promise<void>;
+
+  /**
+   * Optional cleanup function to run on shutdown
+   */
+  cleanup?: () => Promise<void> | void;
+
+  /**
+   * Optional metadata to log on startup
+   */
+  startupMetadata?: Record<string, unknown>;
+}
+
+/**
+ * Create and start an interval-based worker
+ *
+ * This function handles:
+ * - Initial run
+ * - Periodic execution via setInterval
+ * - Graceful shutdown on SIGINT/SIGTERM
+ * - Error handling
+ *
+ * @param options - Worker configuration
+ */
+export function createIntervalWorker(options: WorkerOptions): void {
+  const { name, intervalMs, runOnce, cleanup, startupMetadata } = options;
+
+  logger.info(`Starting ${name}`, startupMetadata ?? {});
+
+  // Run immediately
+  void runOnce().catch((error: unknown) => {
+    logger.error(`${name} initial run failed`, { error });
+  });
+
+  // Run periodically
+  const interval = setInterval(() => {
+    void runOnce().catch((error: unknown) => {
+      logger.error(`${name} iteration failed`, { error });
+    });
+  }, intervalMs);
+
+  // Graceful shutdown
+  const shutdown = async (): Promise<void> => {
+    logger.info(`Shutting down ${name}...`);
+    clearInterval(interval);
+
+    if (cleanup) {
+      await cleanup();
+    }
+
+    logger.info(`${name} shutdown complete`);
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown();
+  });
+  process.on("SIGTERM", () => {
+    void shutdown();
+  });
+
+  logger.info(`${name} running`);
+}

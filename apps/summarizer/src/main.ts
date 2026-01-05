@@ -12,7 +12,7 @@
  */
 
 import { getDb } from "@agentic-mm-bot/db";
-import { logger } from "@agentic-mm-bot/utils";
+import { createIntervalWorker, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { processUnprocessedFills } from "./usecases/process-fills";
@@ -22,9 +22,7 @@ import { generate1MinAggregation, generate1HourAggregation } from "./services";
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  logger.info("Starting summarizer");
-
+function main(): void {
   const db = getDb(env.DATABASE_URL);
 
   let lastMinuteAgg = 0;
@@ -53,34 +51,14 @@ async function main(): Promise<void> {
     }
   };
 
-  // Run immediately
-  await runOnce();
-
-  // Run periodically
-  const interval = setInterval(() => {
-    void runOnce();
-  }, env.RUN_INTERVAL_MS);
-
-  // Graceful shutdown
-  const shutdown = async (): Promise<void> => {
-    logger.info("Shutting down...");
-    clearInterval(interval);
-    await db.$client.end();
-    logger.info("Shutdown complete");
-    process.exit(0);
-  };
-
-  process.on("SIGINT", () => {
-    void shutdown();
+  createIntervalWorker({
+    name: "Summarizer",
+    intervalMs: env.RUN_INTERVAL_MS,
+    runOnce,
+    cleanup: async () => {
+      await db.$client.end();
+    },
   });
-  process.on("SIGTERM", () => {
-    void shutdown();
-  });
-
-  logger.info("Summarizer running");
 }
 
-main().catch(error => {
-  logger.error("Fatal error", error);
-  process.exit(1);
-});
+main();

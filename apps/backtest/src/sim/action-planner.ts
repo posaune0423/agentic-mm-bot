@@ -9,6 +9,7 @@
  */
 
 import type { Ms, OrderIntent, PriceStr, StrategyParams } from "@agentic-mm-bot/core";
+import { priceExceedsThreshold } from "@agentic-mm-bot/core";
 import type { SimExecution, SimOrder } from "./sim-execution";
 
 /**
@@ -23,25 +24,6 @@ export type SimAction =
  * Minimum requote threshold in bps
  */
 const MIN_REQUOTE_BPS = 1;
-
-/**
- * Check if price difference exceeds threshold
- */
-function priceExceedsThreshold(
-  currentPx: PriceStr,
-  targetPx: PriceStr,
-  midPx: PriceStr,
-  thresholdBps: number,
-): boolean {
-  const current = parseFloat(currentPx);
-  const target = parseFloat(targetPx);
-  const mid = parseFloat(midPx);
-
-  if (mid === 0) return true;
-
-  const diffBps = (Math.abs(target - current) / mid) * 10_000;
-  return diffBps >= thresholdBps;
-}
 
 /**
  * Check if order is stale

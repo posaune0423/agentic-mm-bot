@@ -8,6 +8,7 @@
  */
 
 import type { Ms, OrderIntent, PriceStr, StrategyParams } from "@agentic-mm-bot/core";
+import { priceExceedsThreshold } from "@agentic-mm-bot/core";
 import type { TrackedOrder } from "./order-tracker";
 
 /**
@@ -23,25 +24,6 @@ export type ExecutionAction =
  */
 export function generateClientOrderId(): string {
   return `ord_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
-
-/**
- * Check if price difference exceeds threshold
- */
-function priceExceedsThreshold(
-  currentPx: PriceStr,
-  targetPx: PriceStr,
-  midPx: PriceStr,
-  thresholdBps: number,
-): boolean {
-  const current = parseFloat(currentPx);
-  const target = parseFloat(targetPx);
-  const mid = parseFloat(midPx);
-
-  if (mid === 0) return true;
-
-  const diffBps = (Math.abs(target - current) / mid) * 10_000;
-  return diffBps >= thresholdBps;
 }
 
 /**

@@ -57,6 +57,7 @@ export {
   calculateSkewBps,
   calculateQuotePrices,
   generateQuoteIntent,
+  priceExceedsThreshold,
 } from "./quote-calculator";
 
 // ─────────────────────────────────────────────────────────────────────────────

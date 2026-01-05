@@ -77,6 +77,33 @@ function formatPrice(price: number, precision = 8): PriceStr {
 }
 
 /**
+ * Check if price difference exceeds threshold
+ *
+ * Used by execution planners to determine if an order update is needed.
+ *
+ * @param currentPx - Current order price
+ * @param targetPx - Target price
+ * @param midPx - Current mid price
+ * @param thresholdBps - Threshold in basis points
+ * @returns True if price difference exceeds threshold
+ */
+export function priceExceedsThreshold(
+  currentPx: PriceStr,
+  targetPx: PriceStr,
+  midPx: PriceStr,
+  thresholdBps: number,
+): boolean {
+  const current = parseFloat(currentPx);
+  const target = parseFloat(targetPx);
+  const mid = parseFloat(midPx);
+
+  if (mid === 0) return true;
+
+  const diffBps = (Math.abs(target - current) / mid) * 10_000;
+  return diffBps >= thresholdBps;
+}
+
+/**
  * Calculate bid and ask prices
  *
  * Requirements: 7.4
