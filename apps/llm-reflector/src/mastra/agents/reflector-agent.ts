@@ -33,7 +33,7 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 - baseHalfSpreadBps: Base half-spread in basis points (higher = wider spread)
 - volSpreadGain: How much spread widens with volatility
 - toxSpreadGain: How much spread widens with toxic flow
-- quoteSizeBase: Base quote size
+- quoteSizeUsd: Quote size in USD (e.g. 100 for $100)
 - refreshIntervalMs: How often quotes refresh (ms)
 - staleCancelMs: When to cancel stale orders (ms)
 - maxInventory: Maximum allowed inventory

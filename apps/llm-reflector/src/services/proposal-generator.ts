@@ -36,7 +36,7 @@ const ParamChangeSchema = z.object({
   baseHalfSpreadBps: z.string().optional(),
   volSpreadGain: z.string().optional(),
   toxSpreadGain: z.string().optional(),
-  quoteSizeBase: z.string().optional(),
+  quoteSizeUsd: z.string().optional(),
   refreshIntervalMs: z.number().optional(),
   staleCancelMs: z.number().optional(),
   maxInventory: z.string().optional(),
@@ -69,7 +69,7 @@ PARAMETERS YOU CAN ADJUST:
 - baseHalfSpreadBps: Base half spread in basis points (higher = wider spread)
 - volSpreadGain: Multiplier for volatility-based spread adjustment
 - toxSpreadGain: Multiplier for toxicity-based spread adjustment
-- quoteSizeBase: Size of each quote in base currency
+- quoteSizeUsd: Size of each quote in USD
 - refreshIntervalMs: Minimum interval between quote updates
 - staleCancelMs: Cancel orders older than this duration
 - maxInventory: Maximum allowed inventory before pausing
@@ -120,7 +120,7 @@ ${worstFillsText || "  No fills in this period"}
 - baseHalfSpreadBps: ${currentParams.baseHalfSpreadBps}
 - volSpreadGain: ${currentParams.volSpreadGain}
 - toxSpreadGain: ${currentParams.toxSpreadGain}
-- quoteSizeBase: ${currentParams.quoteSizeBase}
+- quoteSizeUsd: ${currentParams.quoteSizeUsd}
 - refreshIntervalMs: ${currentParams.refreshIntervalMs}
 - staleCancelMs: ${currentParams.staleCancelMs}
 - maxInventory: ${currentParams.maxInventory}

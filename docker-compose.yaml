@@ -9,37 +9,20 @@ services:
       - "5432:5432"
     command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: insecure
+      POSTGRES_DB: main
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     networks:
       - agentic-mm-bot-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U dev -d main"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-
-  server:
-    container_name: agentic-mm-bot-server
-    build:
-      context: .
-      dockerfile: apps/server/Dockerfile
-    ports:
-      - "8787:8787"
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
-      PORT: 8787
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - agentic-mm-bot-network
-    restart: unless-stopped
 
 networks:
   agentic-mm-bot-network:

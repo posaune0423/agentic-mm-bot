@@ -8,6 +8,12 @@
  * - Non-blocking event logging (4.10)
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/executor)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
@@ -58,12 +64,22 @@ async function main(): Promise<void> {
   const orderTracker = new OrderTracker();
   const positionTracker = new PositionTracker();
 
+  // Sync open orders on startup
+  logger.info("Syncing open orders...");
+  const openOrdersResult = await executionAdapter.getOpenOrders(env.SYMBOL);
+  if (openOrdersResult.isOk()) {
+    orderTracker.syncFromOpenOrders(openOrdersResult.value);
+    logger.info("Synced open orders", { count: openOrdersResult.value.length });
+  } else {
+    logger.warn("Failed to sync open orders, proceeding with empty tracker", openOrdersResult.error);
+  }
+
   // TODO: Load from DB or use defaults
   const params: StrategyParams = {
     baseHalfSpreadBps: "10",
     volSpreadGain: "1",
     toxSpreadGain: "1",
-    quoteSizeBase: "0.01",
+    quoteSizeUsd: "10", // $10 per order
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
     maxInventory: "1",

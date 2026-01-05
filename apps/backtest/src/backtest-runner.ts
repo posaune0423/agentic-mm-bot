@@ -78,7 +78,9 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   });
 
   if (marketData.bboData.length === 0) {
-    throw new Error("No BBO data found for the specified period");
+    throw new Error(
+      `No BBO data found for the specified period: exchange=${exchange}, symbol=${symbol}, startTime=${startTime.toISOString()}, endTime=${endTime.toISOString()}`,
+    );
   }
 
   // Step 2: Merge into event stream

@@ -14,6 +14,7 @@
     "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",
@@ -32,7 +33,8 @@
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/node": "catalog:tooling",
     "@types/pg": "^8.16.0",
-    "drizzle-kit": "^0.24.0",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.8",
     "eslint": "catalog:tooling",
     "tsdown": "^0.16.0",
     "typescript": "catalog:tooling"

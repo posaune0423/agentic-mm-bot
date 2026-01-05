@@ -39,7 +39,7 @@ export interface CurrentParamsSummary {
   baseHalfSpreadBps: string;
   volSpreadGain: string;
   toxSpreadGain: string;
-  quoteSizeBase: string;
+  quoteSizeUsd: string;
   refreshIntervalMs: number;
   staleCancelMs: number;
   maxInventory: string;

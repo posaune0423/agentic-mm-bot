@@ -52,22 +52,52 @@ export function createIntervalWorker(options: WorkerOptions): void {
 
   logger.info(`Starting ${name}`, startupMetadata ?? {});
 
+  // Track running promise to wait for completion during shutdown
+  let runningPromise: Promise<void> | null = null;
+
+  const runOnceSafely = async (): Promise<void> => {
+    runningPromise = runOnce().catch((error: unknown) => {
+      logger.error(`${name} iteration failed`, { error });
+    });
+    await runningPromise;
+    runningPromise = null;
+  };
+
   // Run immediately
-  void runOnce().catch((error: unknown) => {
-    logger.error(`${name} initial run failed`, { error });
-  });
+  void runOnceSafely();
 
   // Run periodically
   const interval = setInterval(() => {
-    void runOnce().catch((error: unknown) => {
-      logger.error(`${name} iteration failed`, { error });
-    });
+    void runOnceSafely();
   }, intervalMs);
 
   // Graceful shutdown
+  let isShuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    // Prevent multiple shutdown calls
+    if (isShuttingDown) {
+      return;
+    }
+    isShuttingDown = true;
+
     logger.info(`Shutting down ${name}...`);
     clearInterval(interval);
+
+    // Wait for any running iteration to complete (with timeout)
+    if (runningPromise) {
+      try {
+        await Promise.race([
+          runningPromise,
+          new Promise<void>(resolve => {
+            setTimeout(() => {
+              resolve();
+            }, 5000); // 5 second timeout
+          }),
+        ]);
+      } catch (error) {
+        logger.warn(`${name} running iteration error during shutdown`, { error });
+      }
+    }
 
     if (cleanup) {
       await cleanup();

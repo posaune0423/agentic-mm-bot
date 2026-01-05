@@ -85,7 +85,7 @@ ${worstFillsSummary || "No fills in this period"}
 - baseHalfSpreadBps: ${input.currentParams.baseHalfSpreadBps}
 - volSpreadGain: ${input.currentParams.volSpreadGain}
 - toxSpreadGain: ${input.currentParams.toxSpreadGain}
-- quoteSizeBase: ${input.currentParams.quoteSizeBase}
+- quoteSizeUsd: ${input.currentParams.quoteSizeUsd}
 - refreshIntervalMs: ${input.currentParams.refreshIntervalMs}
 - staleCancelMs: ${input.currentParams.staleCancelMs}
 - maxInventory: ${input.currentParams.maxInventory}

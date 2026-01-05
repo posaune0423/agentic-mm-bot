@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/main.ts",
     "start": "bun run src/main.ts",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",
     "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
@@ -19,6 +18,7 @@
     "@agentic-mm-bot/repositories": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
     "@t3-oss/env-core": "catalog:tooling",
+    "dotenv": "^17.2.3",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",

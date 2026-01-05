@@ -82,7 +82,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     );
 
     for (const action of actions) {
-      await executeAction(action, executionPort, orderTracker, snapshot.symbol);
+      await executeAction(action, executionPort, orderTracker, snapshot.symbol, nowMs);
     }
   }
 
@@ -101,6 +101,10 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   return output;
 }
 
+// Track last cancel_all execution time to prevent API spam in PAUSE mode
+let lastCancelAllMs: number | undefined = undefined;
+const CANCEL_ALL_THROTTLE_MS = 1000; // Throttle cancel_all to once per second
+
 /**
  * Execute a single action
  */
@@ -112,15 +116,32 @@ async function executeAction(
   executionPort: ExecutionPort,
   orderTracker: OrderTracker,
   symbol: string,
+  nowMs: number,
 ): Promise<void> {
   switch (action.type) {
     case "cancel_all": {
+      // Optimization: Only call API if we track open orders
+      // This prevents API spamming loops when in PAUSE mode
+      if (orderTracker.getActiveOrders().length === 0) {
+        logger.debug("Skipping cancel_all (no tracked orders)");
+        break;
+      }
+
+      // Throttle cancel_all calls to prevent API spam
+      if (lastCancelAllMs !== undefined && nowMs - lastCancelAllMs < CANCEL_ALL_THROTTLE_MS) {
+        logger.debug("Skipping cancel_all (throttled)");
+        break;
+      }
+
       const result = await executionPort.cancelAllOrders(symbol);
       if (result.isOk()) {
         orderTracker.clear();
+        lastCancelAllMs = nowMs;
         logger.info("Cancelled all orders");
       } else {
         logger.error("Failed to cancel all orders", result.error);
+        // Still update throttle time to prevent immediate retry spam
+        lastCancelAllMs = nowMs;
       }
       break;
     }

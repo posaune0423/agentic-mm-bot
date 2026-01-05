@@ -65,15 +65,15 @@ export function isAtFiveMinuteBoundary(nowMs: number): boolean {
  */
 function toCoreparams(params: StrategyParams): CoreStrategyParams {
   return {
-    baseHalfSpreadBps: params.baseHalfSpreadBps,
-    volSpreadGain: params.volSpreadGain,
-    toxSpreadGain: params.toxSpreadGain,
-    quoteSizeBase: params.quoteSizeBase,
+    baseHalfSpreadBps: String(params.baseHalfSpreadBps),
+    volSpreadGain: String(params.volSpreadGain),
+    toxSpreadGain: String(params.toxSpreadGain),
+    quoteSizeUsd: String(params.quoteSizeUsd),
     refreshIntervalMs: params.refreshIntervalMs,
     staleCancelMs: params.staleCancelMs,
-    maxInventory: params.maxInventory,
-    inventorySkewGain: params.inventorySkewGain,
-    pauseMarkIndexBps: params.pauseMarkIndexBps,
+    maxInventory: String(params.maxInventory),
+    inventorySkewGain: String(params.inventorySkewGain),
+    pauseMarkIndexBps: String(params.pauseMarkIndexBps),
     pauseLiqCount10s: params.pauseLiqCount10s,
   };
 }
@@ -93,7 +93,7 @@ function applyChanges(
     baseHalfSpreadBps: String(changes.baseHalfSpreadBps ?? current.baseHalfSpreadBps),
     volSpreadGain: String(changes.volSpreadGain ?? current.volSpreadGain),
     toxSpreadGain: String(changes.toxSpreadGain ?? current.toxSpreadGain),
-    quoteSizeBase: String(changes.quoteSizeBase ?? current.quoteSizeBase),
+    quoteSizeUsd: String(changes.quoteSizeUsd ?? current.quoteSizeUsd),
     refreshIntervalMs: Number(changes.refreshIntervalMs ?? current.refreshIntervalMs),
     staleCancelMs: Number(changes.staleCancelMs ?? current.staleCancelMs),
     maxInventory: String(changes.maxInventory ?? current.maxInventory),

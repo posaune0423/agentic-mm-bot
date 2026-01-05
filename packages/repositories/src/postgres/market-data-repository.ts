@@ -309,10 +309,31 @@ export function createPostgresMarketDataRepository(db: Db): MarketDataRepository
             )
             .orderBy(asc(mdPrice.ts)),
         ]),
-        e => ({
-          type: "DB_ERROR" as const,
-          message: e instanceof Error ? e.message : "Unknown error",
-        }),
+        e => {
+          let errorMessage = "Unknown error";
+          if (e instanceof Error) {
+            errorMessage = e.message;
+            // DrizzleQueryError wraps the original PostgreSQL error in the 'cause' property
+            if ("cause" in e && e.cause instanceof Error) {
+              errorMessage += `\nOriginal error: ${e.cause.message}`;
+              if (e.cause.stack) {
+                errorMessage += `\nOriginal stack: ${e.cause.stack}`;
+              }
+            }
+            // Include stack trace for debugging if available
+            if (e.stack) {
+              errorMessage += `\nStack: ${e.stack}`;
+            }
+          } else if (typeof e === "string") {
+            errorMessage = e;
+          } else if (e && typeof e === "object") {
+            errorMessage = JSON.stringify(e);
+          }
+          return {
+            type: "DB_ERROR" as const,
+            message: errorMessage,
+          };
+        },
       ).map(([bboData, tradeData, priceData]) => ({
         bboData,
         tradeData,

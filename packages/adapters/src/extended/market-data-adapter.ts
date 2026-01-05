@@ -350,7 +350,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       for await (const message of state.connection) {
         if (!state.isRunning) break;
 
-        const events = this.normalizeMessage(message.data, streamType, symbol);
+        const events = this.normalizeMessage(message, streamType, symbol);
 
         for (const event of events) {
           const seqBreak = this.checkSequence(event, streamType);
