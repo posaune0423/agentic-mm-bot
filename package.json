@@ -44,7 +44,8 @@
     "db:migrate": "turbo run db:migrate",
     "db:push": "turbo run db:push",
     "db:studio": "turbo run db:studio",
-    "clean": "bun scripts/clean.ts"
+    "clean": "bun scripts/clean.ts",
+    "postinstall": "node scripts/fix-wasm.js"
   },
   "devDependencies": {
     "@prettier/plugin-oxc": "^0.1.3",
