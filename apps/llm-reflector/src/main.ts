@@ -14,7 +14,10 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), "../../.env") });
 
 import { getDb } from "@agentic-mm-bot/db";
-import { createPostgresMetricsRepository, createPostgresProposalRepository } from "@agentic-mm-bot/repositories";
+import {
+  createPostgresMetricsRepository,
+  createPostgresProposalRepository,
+} from "@agentic-mm-bot/repositories";
 import { createIntervalWorker, logger } from "@agentic-mm-bot/utils";
 
 import { loadEnv } from "./env";

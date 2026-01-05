@@ -206,7 +206,9 @@ describe("MarketDataRepository.upsertLatestTop", () => {
     const db = createMockDb();
     db.insert = mock(() => ({
       values: mock(() => ({
-        onConflictDoUpdate: mock(() => Promise.reject(new Error("Constraint violation"))),
+        onConflictDoUpdate: mock(() =>
+          Promise.reject(new Error("Constraint violation")),
+        ),
       })),
     }));
     const repo = createPostgresMarketDataRepository(db);
@@ -240,7 +242,12 @@ describe("MarketDataRepository.findClosestBbo", () => {
     const db = createMockDb();
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestBbo("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestBbo(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
@@ -261,7 +268,12 @@ describe("MarketDataRepository.findClosestBbo", () => {
     }));
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestBbo("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestBbo(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -292,7 +304,12 @@ describe("MarketDataRepository.findClosestBbo", () => {
     }));
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestBbo("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestBbo(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isOk()).toBe(true);
     if (result.isOk() && result.value) {
@@ -310,7 +327,12 @@ describe("MarketDataRepository.findClosestPrice", () => {
     const db = createMockDb();
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestPrice("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestPrice(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
@@ -331,7 +353,12 @@ describe("MarketDataRepository.findClosestPrice", () => {
     }));
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestPrice("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestPrice(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -361,7 +388,12 @@ describe("MarketDataRepository.findClosestPrice", () => {
     }));
     const repo = createPostgresMarketDataRepository(db);
 
-    const result = await repo.findClosestPrice("extended", "BTC-USD", new Date(), 1000);
+    const result = await repo.findClosestPrice(
+      "extended",
+      "BTC-USD",
+      new Date(),
+      1000,
+    );
 
     expect(result.isOk()).toBe(true);
     if (result.isOk() && result.value) {
@@ -440,7 +472,9 @@ describe("MarketDataRepository.loadMarketData", () => {
     db.select = mock(() => ({
       from: mock(() => ({
         where: mock(() => ({
-          orderBy: mock(() => Promise.reject(new Error("Connection pool exhausted"))),
+          orderBy: mock(() =>
+            Promise.reject(new Error("Connection pool exhausted")),
+          ),
         })),
       })),
     }));

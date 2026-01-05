@@ -42,7 +42,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12345,
       };
 
-      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+      const normalizeOrderbook = (
+        msg: typeof message,
+        symbol: string,
+      ): BboEvent | null => {
         if (msg.type === "DELTA") return null; // depth=1 should only get SNAPSHOT
 
         const bids = msg.data?.b;
@@ -88,7 +91,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+      const normalizeOrderbook = (
+        msg: typeof message,
+        symbol: string,
+      ): BboEvent | null => {
         if (msg.type === "DELTA") return null;
         return null;
       };
@@ -109,7 +115,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12345,
       };
 
-      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+      const normalizeOrderbook = (
+        msg: typeof message,
+        symbol: string,
+      ): BboEvent | null => {
         const bids = msg.data?.b;
         const asks = msg.data?.a;
 
@@ -129,15 +138,26 @@ describe("ExtendedMarketDataAdapter", () => {
       const message = {
         ts: 1704067200000,
         data: [
-          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+          {
+            m: "BTC-USD",
+            S: "BUY" as const,
+            tT: "TRADE" as const,
+            T: 1704067199999,
+            p: "50000",
+            q: "0.1",
+            i: 1001,
+          },
         ],
         seq: 12346,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (
+        msg: typeof message,
+        symbol: string,
+      ): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
-        return msg.data.map(item => ({
+        return msg.data.map((item) => ({
           type: "trade" as const,
           ts: new Date(item.T),
           exchange: EXCHANGE_NAME,
@@ -171,7 +191,15 @@ describe("ExtendedMarketDataAdapter", () => {
       const message = {
         ts: 1704067200000,
         data: [
-          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+          {
+            m: "BTC-USD",
+            S: "BUY" as const,
+            tT: "TRADE" as const,
+            T: 1704067199999,
+            p: "50000",
+            q: "0.1",
+            i: 1001,
+          },
           {
             m: "BTC-USD",
             S: "SELL" as const,
@@ -185,10 +213,13 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (
+        msg: typeof message,
+        symbol: string,
+      ): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
-        return msg.data.map(item => ({
+        return msg.data.map((item) => ({
           type: "trade" as const,
           ts: new Date(item.T),
           exchange: EXCHANGE_NAME,
@@ -232,10 +263,13 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12347,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (
+        msg: typeof message,
+        symbol: string,
+      ): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
-        return msg.data.map(item => ({
+        return msg.data.map((item) => ({
           type: "trade" as const,
           ts: new Date(item.T),
           exchange: EXCHANGE_NAME,
@@ -265,7 +299,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (
+        msg: typeof message,
+        symbol: string,
+      ): TradeEvent[] => {
         if (!msg.data?.length) return [];
         return [];
       };
@@ -286,7 +323,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12348,
       };
 
-      const normalizeMarkPrice = (msg: typeof message, symbol: string): PriceEvent | null => {
+      const normalizeMarkPrice = (
+        msg: typeof message,
+        symbol: string,
+      ): PriceEvent | null => {
         const markPx = msg.data?.p;
         if (!markPx) return null;
 
@@ -322,7 +362,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12349,
       };
 
-      const normalizeIndexPrice = (msg: typeof message, symbol: string): PriceEvent | null => {
+      const normalizeIndexPrice = (
+        msg: typeof message,
+        symbol: string,
+      ): PriceEvent | null => {
         const indexPx = msg.data?.p;
         if (!indexPx) return null;
 
@@ -357,7 +400,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12348,
       };
 
-      const normalizeMarkPrice = (msg: { data?: { p?: string } }, symbol: string): PriceEvent | null => {
+      const normalizeMarkPrice = (
+        msg: { data?: { p?: string } },
+        symbol: string,
+      ): PriceEvent | null => {
         const markPx = msg.data?.p;
         if (!markPx) return null;
         return null;
@@ -377,7 +423,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12347,
       };
 
-      const normalizeFundingRate = (msg: typeof message, symbol: string): FundingRateEvent | null => {
+      const normalizeFundingRate = (
+        msg: typeof message,
+        symbol: string,
+      ): FundingRateEvent | null => {
         const fundingRate = msg.data?.f;
         if (!fundingRate) return null;
 
@@ -408,7 +457,10 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12347,
       };
 
-      const normalizeFundingRate = (msg: { data?: { f?: string } }, symbol: string): FundingRateEvent | null => {
+      const normalizeFundingRate = (
+        msg: { data?: { f?: string } },
+        symbol: string,
+      ): FundingRateEvent | null => {
         const fundingRate = msg.data?.f;
         if (!fundingRate) return null;
         return null;
@@ -424,14 +476,23 @@ describe("ExtendedMarketDataAdapter", () => {
       const lastSeq = new Map<string, number>();
       lastSeq.set("extended:BTC-USD:bbo", 100);
 
-      const checkSequence = (event: { exchange: string; symbol: string; type: string; seq?: number }) => {
+      const checkSequence = (event: {
+        exchange: string;
+        symbol: string;
+        type: string;
+        seq?: number;
+      }) => {
         if (event.seq === undefined) return { hasBreak: false };
 
         const key = `${event.exchange}:${event.symbol}:${event.type}`;
         const lastSeqValue = lastSeq.get(key);
 
         if (lastSeqValue !== undefined && event.seq !== lastSeqValue + 1) {
-          return { hasBreak: true, expected: lastSeqValue + 1, actual: event.seq };
+          return {
+            hasBreak: true,
+            expected: lastSeqValue + 1,
+            actual: event.seq,
+          };
         }
 
         lastSeq.set(key, event.seq);
@@ -455,14 +516,23 @@ describe("ExtendedMarketDataAdapter", () => {
       const lastSeq = new Map<string, number>();
       lastSeq.set("extended:BTC-USD:bbo", 100);
 
-      const checkSequence = (event: { exchange: string; symbol: string; type: string; seq?: number }) => {
+      const checkSequence = (event: {
+        exchange: string;
+        symbol: string;
+        type: string;
+        seq?: number;
+      }) => {
         if (event.seq === undefined) return { hasBreak: false };
 
         const key = `${event.exchange}:${event.symbol}:${event.type}`;
         const lastSeqValue = lastSeq.get(key);
 
         if (lastSeqValue !== undefined && event.seq !== lastSeqValue + 1) {
-          return { hasBreak: true, expected: lastSeqValue + 1, actual: event.seq };
+          return {
+            hasBreak: true,
+            expected: lastSeqValue + 1,
+            actual: event.seq,
+          };
         }
 
         lastSeq.set(key, event.seq);
@@ -482,7 +552,12 @@ describe("ExtendedMarketDataAdapter", () => {
     test("should not detect break when no previous sequence", () => {
       const lastSeq = new Map<string, number>();
 
-      const checkSequence = (event: { exchange: string; symbol: string; type: string; seq?: number }) => {
+      const checkSequence = (event: {
+        exchange: string;
+        symbol: string;
+        type: string;
+        seq?: number;
+      }) => {
         if (event.seq === undefined) return { hasBreak: false };
 
         const key = `${event.exchange}:${event.symbol}:${event.type}`;
@@ -509,7 +584,12 @@ describe("ExtendedMarketDataAdapter", () => {
     test("should ignore events without sequence number", () => {
       const lastSeq = new Map<string, number>();
 
-      const checkSequence = (event: { exchange: string; symbol: string; type: string; seq?: number }) => {
+      const checkSequence = (event: {
+        exchange: string;
+        symbol: string;
+        type: string;
+        seq?: number;
+      }) => {
         if (event.seq === undefined) return { hasBreak: false };
 
         return { hasBreak: true };
@@ -535,7 +615,10 @@ describe("ExtendedMarketDataAdapter", () => {
       };
 
       const calculateDelay = (attempt: number) =>
-        Math.min(config.initialDelayMs * Math.pow(config.multiplier, attempt), config.maxDelayMs);
+        Math.min(
+          config.initialDelayMs * Math.pow(config.multiplier, attempt),
+          config.maxDelayMs,
+        );
 
       expect(calculateDelay(0)).toBe(1000); // 1000 * 2^0 = 1000
       expect(calculateDelay(1)).toBe(2000); // 1000 * 2^1 = 2000
@@ -580,9 +663,17 @@ describe("ExtendedMarketDataAdapter", () => {
 
   describe("Subscription management", () => {
     test("should track subscriptions", () => {
-      const subscriptions: { exchange: string; symbol: string; channels: string[] }[] = [];
+      const subscriptions: {
+        exchange: string;
+        symbol: string;
+        channels: string[];
+      }[] = [];
 
-      const subscribe = (sub: { exchange: string; symbol: string; channels: string[] }) => {
+      const subscribe = (sub: {
+        exchange: string;
+        symbol: string;
+        channels: string[];
+      }) => {
         subscriptions.push(sub);
         return true;
       };
@@ -607,7 +698,9 @@ describe("ExtendedMarketDataAdapter", () => {
       ];
 
       const unsubscribe = (sub: { exchange: string; symbol: string }) => {
-        subscriptions = subscriptions.filter(s => !(s.exchange === sub.exchange && s.symbol === sub.symbol));
+        subscriptions = subscriptions.filter(
+          (s) => !(s.exchange === sub.exchange && s.symbol === sub.symbol),
+        );
         return true;
       };
 

@@ -19,7 +19,9 @@ type InsertCall = { table: unknown; values: unknown[] };
 class FakeDb {
   readonly calls: InsertCall[] = [];
 
-  constructor(private readonly impl: (table: unknown, values: unknown[]) => Promise<void>) {}
+  constructor(
+    private readonly impl: (table: unknown, values: unknown[]) => Promise<void>,
+  ) {}
 
   insert(table: unknown): { values: (values: unknown[]) => Promise<void> } {
     return {
@@ -34,7 +36,9 @@ class FakeDb {
 describe("EventWriter", () => {
   test("flush should remove items only after successful insert", async () => {
     const fakeDb = new FakeDb(async () => {});
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
 
     writer.addBbo({
       ts: new Date("2026-01-01T00:00:00.000Z"),
@@ -59,13 +63,15 @@ describe("EventWriter", () => {
 
   test("flush should retry and eventually succeed", async () => {
     let tradeAttempts = 0;
-    const fakeDb = new FakeDb(async table => {
+    const fakeDb = new FakeDb(async (table) => {
       if (table !== mdTrade) return;
       tradeAttempts++;
       if (tradeAttempts < 3) throw new Error("temporary failure");
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addTrade({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",
@@ -84,13 +90,15 @@ describe("EventWriter", () => {
 
   test("flush should move events to dead letter after max retries", async () => {
     let priceAttempts = 0;
-    const fakeDb = new FakeDb(async table => {
+    const fakeDb = new FakeDb(async (table) => {
       if (table !== mdPrice) return;
       priceAttempts++;
       throw new Error("permanent failure");
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addPrice({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",
@@ -111,15 +119,17 @@ describe("EventWriter", () => {
     let resolveBbo: (() => void) | null = null;
     let bboAttempts = 0;
 
-    const fakeDb = new FakeDb(async table => {
+    const fakeDb = new FakeDb(async (table) => {
       if (table !== mdBbo) return;
       bboAttempts++;
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         resolveBbo = resolve;
       });
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addBbo({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",

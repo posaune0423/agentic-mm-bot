@@ -139,9 +139,18 @@ const DEFAULT_RECONNECT_CONFIG: ReconnectConfig = {
 // Stream Types
 // ============================================================================
 
-type StreamType = "orderbook" | "trades" | "markPrice" | "indexPrice" | "fundingRate";
+type StreamType =
+  | "orderbook"
+  | "trades"
+  | "markPrice"
+  | "indexPrice"
+  | "fundingRate";
 
-type NormalizedMarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent;
+type NormalizedMarketDataEvent =
+  | BboEvent
+  | TradeEvent
+  | PriceEvent
+  | FundingRateEvent;
 
 interface StreamState {
   connection: PerpetualStreamConnection<unknown>;
@@ -175,14 +184,22 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   private isConnected_ = false;
   private isReconnecting_ = false;
 
-  constructor(config: ExtendedConfig, reconnectConfig: ReconnectConfig = DEFAULT_RECONNECT_CONFIG) {
+  constructor(
+    config: ExtendedConfig,
+    reconnectConfig: ReconnectConfig = DEFAULT_RECONNECT_CONFIG,
+  ) {
     this.config = config;
-    this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
-    this.streamClient = new PerpetualStreamClient({ apiUrl: this.endpointConfig.streamUrl });
+    this.endpointConfig =
+      config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.streamClient = new PerpetualStreamClient({
+      apiUrl: this.endpointConfig.streamUrl,
+    });
     this.reconnectConfig = reconnectConfig;
   }
 
-  subscribe(subscription: MarketDataSubscription): Result<void, MarketDataError> {
+  subscribe(
+    subscription: MarketDataSubscription,
+  ): Result<void, MarketDataError> {
     this.subscriptions.push(subscription);
 
     if (this.isConnected_) {
@@ -192,9 +209,15 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     return ok(undefined);
   }
 
-  unsubscribe(subscription: MarketDataSubscription): Result<void, MarketDataError> {
+  unsubscribe(
+    subscription: MarketDataSubscription,
+  ): Result<void, MarketDataError> {
     this.subscriptions = this.subscriptions.filter(
-      s => !(s.exchange === subscription.exchange && s.symbol === subscription.symbol),
+      (s) =>
+        !(
+          s.exchange === subscription.exchange &&
+          s.symbol === subscription.symbol
+        ),
     );
 
     // Close active streams for this subscription
@@ -262,7 +285,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   // Stream Management
   // ============================================================================
 
-  private async startSubscription(subscription: MarketDataSubscription): Promise<void> {
+  private async startSubscription(
+    subscription: MarketDataSubscription,
+  ): Promise<void> {
     const symbol = subscription.symbol;
 
     for (const channel of subscription.channels) {
@@ -276,14 +301,18 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         try {
           await this.startStream(symbol, streamType);
         } catch (error) {
-          log.warn(`Failed to start ${streamType} stream for ${symbol}`, { error });
+          log.warn(`Failed to start ${streamType} stream for ${symbol}`, {
+            error,
+          });
           this.scheduleReconnect();
         }
       }
     }
   }
 
-  private channelToStreamTypes(channel: "bbo" | "trades" | "prices" | "funding"): StreamType[] {
+  private channelToStreamTypes(
+    channel: "bbo" | "trades" | "prices" | "funding",
+  ): StreamType[] {
     switch (channel) {
       case "bbo":
         return ["orderbook"];
@@ -301,7 +330,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
   }
 
-  private async startStream(symbol: string, streamType: StreamType): Promise<void> {
+  private async startStream(
+    symbol: string,
+    streamType: StreamType,
+  ): Promise<void> {
     const key = `${symbol}:${streamType}`;
     const connection = this.createStreamConnection(symbol, streamType);
 
@@ -327,10 +359,16 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     void this.listenStream(state);
   }
 
-  private createStreamConnection(symbol: string, streamType: StreamType): PerpetualStreamConnection<unknown> | null {
+  private createStreamConnection(
+    symbol: string,
+    streamType: StreamType,
+  ): PerpetualStreamConnection<unknown> | null {
     switch (streamType) {
       case "orderbook":
-        return this.streamClient.subscribeToOrderbooks({ marketName: symbol, depth: 1 });
+        return this.streamClient.subscribeToOrderbooks({
+          marketName: symbol,
+          depth: 1,
+        });
       case "trades":
         return this.streamClient.subscribeToPublicTrades(symbol);
       case "fundingRate":
@@ -358,11 +396,18 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
           if (seqBreak) {
             // For orderbook/mark/index, reconnect immediately
             // For trades/funding, just log (doc says skip is OK)
-            if (streamType === "orderbook" || streamType === "markPrice" || streamType === "indexPrice") {
-              log.warn(`Sequence break on ${streamType}, triggering reconnect`, {
-                expected: seqBreak.expected,
-                actual: seqBreak.actual,
-              });
+            if (
+              streamType === "orderbook" ||
+              streamType === "markPrice" ||
+              streamType === "indexPrice"
+            ) {
+              log.warn(
+                `Sequence break on ${streamType}, triggering reconnect`,
+                {
+                  expected: seqBreak.expected,
+                  actual: seqBreak.actual,
+                },
+              );
               this.scheduleReconnect();
               return;
             } else {
@@ -384,7 +429,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
   }
 
-  private stopStreamsForSubscription(subscription: MarketDataSubscription): void {
+  private stopStreamsForSubscription(
+    subscription: MarketDataSubscription,
+  ): void {
     for (const channel of subscription.channels) {
       const streamTypes = this.channelToStreamTypes(channel);
 
@@ -445,7 +492,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     this.isReconnecting_ = true;
 
     const delay = Math.min(
-      this.reconnectConfig.initialDelayMs * Math.pow(this.reconnectConfig.multiplier, this.reconnectAttempt),
+      this.reconnectConfig.initialDelayMs *
+        Math.pow(this.reconnectConfig.multiplier, this.reconnectAttempt),
       this.reconnectConfig.maxDelayMs,
     );
 
@@ -458,7 +506,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       reason: `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`,
     });
 
-    log.info(`Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempt})`);
+    log.info(
+      `Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempt})`,
+    );
 
     this.reconnectTimeoutId = setTimeout(() => {
       this.reconnectTimeoutId = null;
@@ -503,7 +553,11 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   // Message Normalization (Extended API doc → Domain)
   // ============================================================================
 
-  private normalizeMessage(data: unknown, streamType: StreamType, symbol: string): NormalizedMarketDataEvent[] {
+  private normalizeMessage(
+    data: unknown,
+    streamType: StreamType,
+    symbol: string,
+  ): NormalizedMarketDataEvent[] {
     if (!data || typeof data !== "object") return [];
 
     switch (streamType) {
@@ -528,10 +582,15 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * Extended format:
    * { ts, type: "SNAPSHOT"|"DELTA", data: { m, b: [{p, q}], a: [{p, q}] }, seq }
    */
-  private normalizeOrderbook(message: OrderbookWsMessage, symbol: string): BboEvent[] {
+  private normalizeOrderbook(
+    message: OrderbookWsMessage,
+    symbol: string,
+  ): BboEvent[] {
     // For depth=1, we always expect SNAPSHOT. DELTA is unexpected.
     if (message.type === "DELTA") {
-      log.warn("Unexpected DELTA on depth=1 orderbook stream, triggering reconnect");
+      log.warn(
+        "Unexpected DELTA on depth=1 orderbook stream, triggering reconnect",
+      );
       this.scheduleReconnect();
       return [];
     }
@@ -566,7 +625,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * Extended format:
    * { ts, data: [{ m, S, tT, T, p, q, i }], seq }
    */
-  private normalizeTrades(message: TradesWsMessage, symbol: string): TradeEvent[] {
+  private normalizeTrades(
+    message: TradesWsMessage,
+    symbol: string,
+  ): TradeEvent[] {
     const events: TradeEvent[] = [];
 
     if (!message.data.length) return events;
@@ -612,7 +674,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * Extended format:
    * { type: "MP", data: { m, p, ts }, ts, seq, sourceEventId }
    */
-  private normalizeMarkPrice(message: MarkPriceWsMessage, symbol: string): PriceEvent[] {
+  private normalizeMarkPrice(
+    message: MarkPriceWsMessage,
+    symbol: string,
+  ): PriceEvent[] {
     if (!message.data.p) return [];
 
     const event: PriceEvent = {
@@ -636,7 +701,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * Extended format:
    * { type: "IP", data: { m, p, ts }, ts, seq, sourceEventId }
    */
-  private normalizeIndexPrice(message: IndexPriceWsMessage, symbol: string): PriceEvent[] {
+  private normalizeIndexPrice(
+    message: IndexPriceWsMessage,
+    symbol: string,
+  ): PriceEvent[] {
     if (!message.data.p) return [];
 
     const event: PriceEvent = {
@@ -663,7 +731,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * Note: MVP does not persist funding rates to DB,
    * but the event is converted and logged for observability.
    */
-  private normalizeFundingRate(message: FundingRateWsMessage, symbol: string): FundingRateEvent[] {
+  private normalizeFundingRate(
+    message: FundingRateWsMessage,
+    symbol: string,
+  ): FundingRateEvent[] {
     if (!message.data.f) return [];
 
     const event: FundingRateEvent = {

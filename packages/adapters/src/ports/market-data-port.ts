@@ -81,7 +81,12 @@ export interface ConnectionEvent {
   reason?: string;
 }
 
-export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent | ConnectionEvent;
+export type MarketDataEvent =
+  | BboEvent
+  | TradeEvent
+  | PriceEvent
+  | FundingRateEvent
+  | ConnectionEvent;
 
 /**
  * Market data subscription options
@@ -110,12 +115,16 @@ export interface MarketDataPort {
   /**
    * Subscribe to market data
    */
-  subscribe(subscription: MarketDataSubscription): Result<void, MarketDataError>;
+  subscribe(
+    subscription: MarketDataSubscription,
+  ): Result<void, MarketDataError>;
 
   /**
    * Unsubscribe from market data
    */
-  unsubscribe(subscription: MarketDataSubscription): Result<void, MarketDataError>;
+  unsubscribe(
+    subscription: MarketDataSubscription,
+  ): Result<void, MarketDataError>;
 
   /**
    * Connect to market data stream

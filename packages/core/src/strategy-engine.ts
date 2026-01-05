@@ -20,7 +20,11 @@ import type {
   StrategyState,
 } from "./types";
 import { generateQuoteIntent } from "./quote-calculator";
-import { calculatePauseUntil, evaluateRisk, isPauseDurationElapsed } from "./risk-policy";
+import {
+  calculatePauseUntil,
+  evaluateRisk,
+  isPauseDurationElapsed,
+} from "./risk-policy";
 
 /**
  * Create a CANCEL_ALL intent
@@ -93,9 +97,17 @@ export function decide(input: DecideInput): DecideOutput {
   // ─────────────────────────────────────────────────────────────────────────
   // Step 2: Determine next mode
   // ─────────────────────────────────────────────────────────────────────────
-  const pauseDurationElapsed = isPauseDurationElapsed(state.pauseUntilMs, nowMs);
+  const pauseDurationElapsed = isPauseDurationElapsed(
+    state.pauseUntilMs,
+    nowMs,
+  );
 
-  const nextMode = determineNextMode(state.mode, risk.shouldPause, risk.shouldDefensive, pauseDurationElapsed);
+  const nextMode = determineNextMode(
+    state.mode,
+    risk.shouldPause,
+    risk.shouldDefensive,
+    pauseDurationElapsed,
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step 3: Build next state
@@ -107,7 +119,8 @@ export function decide(input: DecideInput): DecideOutput {
     nextState = {
       mode: nextMode,
       modeSinceMs: nowMs,
-      pauseUntilMs: nextMode === "PAUSE" ? calculatePauseUntil(nowMs) : undefined,
+      pauseUntilMs:
+        nextMode === "PAUSE" ? calculatePauseUntil(nowMs) : undefined,
       lastQuoteMs: state.lastQuoteMs,
     };
   } else {
@@ -116,7 +129,9 @@ export function decide(input: DecideInput): DecideOutput {
       ...state,
       // Update pauseUntilMs if entering PAUSE and it wasn't set
       pauseUntilMs:
-        nextMode === "PAUSE" && state.pauseUntilMs === undefined ? calculatePauseUntil(nowMs) : state.pauseUntilMs,
+        nextMode === "PAUSE" && state.pauseUntilMs === undefined ?
+          calculatePauseUntil(nowMs)
+        : state.pauseUntilMs,
     };
   }
 
@@ -137,7 +152,12 @@ export function decide(input: DecideInput): DecideOutput {
   } else {
     // NORMAL or DEFENSIVE → generate quote
     // Note: DEFENSIVE might use wider spreads (handled by quote calculator through features)
-    const quote = generateQuoteIntent(params, features, position, risk.reasonCodes);
+    const quote = generateQuoteIntent(
+      params,
+      features,
+      position,
+      risk.reasonCodes,
+    );
     intents.push(quote);
 
     // Update last quote time
@@ -161,7 +181,10 @@ export function decide(input: DecideInput): DecideOutput {
  * @param mode - Initial mode (default: PAUSE for safety)
  * @returns Initial strategy state
  */
-export function createInitialState(nowMs: number, mode: StrategyMode = "PAUSE"): StrategyState {
+export function createInitialState(
+  nowMs: number,
+  mode: StrategyMode = "PAUSE",
+): StrategyState {
   return {
     mode,
     modeSinceMs: nowMs,

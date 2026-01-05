@@ -6,7 +6,13 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { DecideInput, Features, Position, StrategyParams, StrategyState } from "../src/types";
+import type {
+  DecideInput,
+  Features,
+  Position,
+  StrategyParams,
+  StrategyState,
+} from "../src/types";
 import { createInitialState, decide } from "../src/strategy-engine";
 import { PAUSE_MIN_DURATION_MS } from "../src/risk-policy";
 

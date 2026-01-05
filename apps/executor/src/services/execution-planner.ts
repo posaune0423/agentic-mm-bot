@@ -7,7 +7,12 @@
  * - min_requote_bps threshold
  */
 
-import type { Ms, OrderIntent, PriceStr, StrategyParams } from "@agentic-mm-bot/core";
+import type {
+  Ms,
+  OrderIntent,
+  PriceStr,
+  StrategyParams,
+} from "@agentic-mm-bot/core";
 import { priceExceedsThreshold } from "@agentic-mm-bot/core";
 import type { TrackedOrder } from "./order-tracker";
 
@@ -29,7 +34,11 @@ export function generateClientOrderId(): string {
 /**
  * Check if order is stale
  */
-function isOrderStale(order: TrackedOrder, nowMs: Ms, staleCancelMs: Ms): boolean {
+function isOrderStale(
+  order: TrackedOrder,
+  nowMs: Ms,
+  staleCancelMs: Ms,
+): boolean {
   return nowMs - order.createdAtMs > staleCancelMs;
 }
 
@@ -72,12 +81,16 @@ export function planExecution(
   const { bidPx, askPx, size } = intent;
 
   // Check refresh interval
-  const canRefresh = lastQuoteMs === undefined || nowMs - lastQuoteMs >= params.refreshIntervalMs;
+  const canRefresh =
+    lastQuoteMs === undefined ||
+    nowMs - lastQuoteMs >= params.refreshIntervalMs;
 
   // Process bid side
   if (currentBid) {
     const stale = isOrderStale(currentBid, nowMs, params.staleCancelMs);
-    const needsUpdate = priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
+    const needsUpdate =
+      priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) &&
+      canRefresh;
 
     if (stale || needsUpdate) {
       actions.push({ type: "cancel", clientOrderId: currentBid.clientOrderId });
@@ -90,7 +103,9 @@ export function planExecution(
   // Process ask side
   if (currentAsk) {
     const stale = isOrderStale(currentAsk, nowMs, params.staleCancelMs);
-    const needsUpdate = priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
+    const needsUpdate =
+      priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) &&
+      canRefresh;
 
     if (stale || needsUpdate) {
       actions.push({ type: "cancel", clientOrderId: currentAsk.clientOrderId });

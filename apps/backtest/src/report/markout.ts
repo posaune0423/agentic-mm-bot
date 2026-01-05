@@ -59,7 +59,11 @@ function findBboBeforeTime(bboData: MdBbo[], targetMs: number): MdBbo | null {
  *
  * Positive markout = profitable (price moved in our favor)
  */
-function calculateMarkoutBps(side: Side, midT0: number, midT10s: number): number {
+function calculateMarkoutBps(
+  side: Side,
+  midT0: number,
+  midT10s: number,
+): number {
   if (midT0 === 0) return 0;
 
   const priceDiff = side === "buy" ? midT10s - midT0 : midT0 - midT10s;
@@ -73,7 +77,10 @@ function calculateMarkoutBps(side: Side, midT0: number, midT10s: number): number
  * @param bboData - BBO data sorted by ts ascending
  * @returns Enriched fills with markout
  */
-export function enrichFillsWithMarkout(fills: SimFill[], bboData: MdBbo[]): EnrichedFill[] {
+export function enrichFillsWithMarkout(
+  fills: SimFill[],
+  bboData: MdBbo[],
+): EnrichedFill[] {
   const enrichedFills: EnrichedFill[] = [];
 
   for (const fill of fills) {
@@ -89,7 +96,11 @@ export function enrichFillsWithMarkout(fills: SimFill[], bboData: MdBbo[]): Enri
 
     if (bboT10s && bboT10s.ts.getTime() >= fillMs) {
       midT10s = bboT10s.midPx;
-      markout10sBps = calculateMarkoutBps(fill.side, midT0, parseFloat(midT10s));
+      markout10sBps = calculateMarkoutBps(
+        fill.side,
+        midT0,
+        parseFloat(midT10s),
+      );
     }
 
     enrichedFills.push({
@@ -112,7 +123,9 @@ export function enrichFillsWithMarkout(fills: SimFill[], bboData: MdBbo[]): Enri
  * Calculate average markout from enriched fills
  */
 export function calculateAverageMarkout(fills: EnrichedFill[]): number | null {
-  const validMarkouts = fills.filter(f => f.markout10sBps !== null).map(f => f.markout10sBps as number);
+  const validMarkouts = fills
+    .filter((f) => f.markout10sBps !== null)
+    .map((f) => f.markout10sBps as number);
 
   if (validMarkouts.length === 0) {
     return null;

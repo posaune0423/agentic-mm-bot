@@ -6,14 +6,24 @@
  * - is_current = true for active params set
  */
 
-import { boolean, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const strategyParams = pgTable("strategy_params", {
   id: uuid("id").primaryKey().defaultRandom(), // params_set_id
   exchange: text("exchange").notNull(),
   symbol: text("symbol").notNull(),
   isCurrent: boolean("is_current").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
   createdBy: text("created_by").notNull(), // manual/llm
 
   // Quote calculation parameters

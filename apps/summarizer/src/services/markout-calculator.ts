@@ -23,7 +23,12 @@
  * @param midT1 - Mid price at horizon time
  * @returns Markout in bps as string, or null if calculation not possible
  */
-export function calculateMarkoutBps(side: string, fillPx: string, midT0: string, midT1: string | null): string | null {
+export function calculateMarkoutBps(
+  side: string,
+  fillPx: string,
+  midT0: string,
+  midT1: string | null,
+): string | null {
   if (!midT1) return null;
 
   const fill = parseFloat(fillPx);
@@ -32,7 +37,8 @@ export function calculateMarkoutBps(side: string, fillPx: string, midT0: string,
 
   if (t0 === 0) return null;
 
-  const markout = side === "buy" ? ((t1 - fill) / t0) * 10_000 : ((fill - t1) / t0) * 10_000;
+  const markout =
+    side === "buy" ? ((t1 - fill) / t0) * 10_000 : ((fill - t1) / t0) * 10_000;
 
   return markout.toFixed(4);
 }
@@ -55,8 +61,15 @@ export function calculateAllMarkouts(
   midT60s: string | null,
 ): MarkoutResult {
   return {
-    markout1sBps: midT0 && midT1s ? calculateMarkoutBps(side, fillPx, midT0, midT1s) : null,
-    markout10sBps: midT0 && midT10s ? calculateMarkoutBps(side, fillPx, midT0, midT10s) : null,
-    markout60sBps: midT0 && midT60s ? calculateMarkoutBps(side, fillPx, midT0, midT60s) : null,
+    markout1sBps:
+      midT0 && midT1s ? calculateMarkoutBps(side, fillPx, midT0, midT1s) : null,
+    markout10sBps:
+      midT0 && midT10s ?
+        calculateMarkoutBps(side, fillPx, midT0, midT10s)
+      : null,
+    markout60sBps:
+      midT0 && midT60s ?
+        calculateMarkoutBps(side, fillPx, midT0, midT60s)
+      : null,
   };
 }

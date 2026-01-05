@@ -12,8 +12,12 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
-    LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
-    APP_ENV: z.enum(["development", "test", "production"]).default("development"),
+    LOG_LEVEL: z
+      .enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"])
+      .default("INFO"),
+    APP_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
     EXCHANGE: z.string().default("extended"),
     SYMBOL: z.string().default("BTC-USD"),
     RUN_INTERVAL_MS: z.coerce.number().default(60_000), // Run every minute

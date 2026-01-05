@@ -24,7 +24,8 @@ import {
 } from "@agentic-mm-bot/db";
 
 // Test database URL
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
 const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
 
@@ -39,7 +40,9 @@ describeDb("Summarizer fills_enriched Integration", () => {
 
   beforeAll(async () => {
     if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+      throw new Error(
+        "TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.",
+      );
     }
 
     db = getDb(TEST_DATABASE_URL);
@@ -50,7 +53,9 @@ describeDb("Summarizer fills_enriched Integration", () => {
 
     // Clean up test data
     if (testFillId) {
-      await db.delete(fillsEnriched).where(eq(fillsEnriched.fillId, testFillId));
+      await db
+        .delete(fillsEnriched)
+        .where(eq(fillsEnriched.fillId, testFillId));
       await db.delete(exFill).where(eq(exFill.id, testFillId));
     }
     for (const id of testBboIds) {
@@ -208,7 +213,10 @@ describeDb("Summarizer fills_enriched Integration", () => {
     });
 
     // Verify
-    const enrichedResult = await db.select().from(fillsEnriched).where(eq(fillsEnriched.fillId, testFillId));
+    const enrichedResult = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.fillId, testFillId));
 
     expect(enrichedResult).toHaveLength(1);
     expect(enrichedResult[0].midT0).toBe("100.05");
@@ -267,7 +275,10 @@ describeDb("Summarizer fills_enriched Integration", () => {
     });
 
     // Verify null handling
-    const enrichedResult = await db.select().from(fillsEnriched).where(eq(fillsEnriched.fillId, fillId));
+    const enrichedResult = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.fillId, fillId));
 
     expect(enrichedResult).toHaveLength(1);
     expect(enrichedResult[0].midT0).toBeNull();
@@ -294,7 +305,9 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
 
   beforeAll(async () => {
     if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+      throw new Error(
+        "TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.",
+      );
     }
 
     db = getDb(TEST_DATABASE_URL);
@@ -348,10 +361,38 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     // Create trades in the 1s window before t0
     // 3 buys (total 1.5) vs 1 sell (0.5) = imbalance = (1.5-0.5)/2.0 = 0.5
     const trades: NewMdTrade[] = [
-      { ts: new Date(baseTs.getTime() - 800), exchange: "extended", symbol, px: "100.06", sz: "0.5", side: "buy" },
-      { ts: new Date(baseTs.getTime() - 600), exchange: "extended", symbol, px: "100.07", sz: "0.5", side: "buy" },
-      { ts: new Date(baseTs.getTime() - 400), exchange: "extended", symbol, px: "100.04", sz: "0.5", side: "sell" },
-      { ts: new Date(baseTs.getTime() - 200), exchange: "extended", symbol, px: "100.08", sz: "0.5", side: "buy" },
+      {
+        ts: new Date(baseTs.getTime() - 800),
+        exchange: "extended",
+        symbol,
+        px: "100.06",
+        sz: "0.5",
+        side: "buy",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 600),
+        exchange: "extended",
+        symbol,
+        px: "100.07",
+        sz: "0.5",
+        side: "buy",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 400),
+        exchange: "extended",
+        symbol,
+        px: "100.04",
+        sz: "0.5",
+        side: "sell",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 200),
+        exchange: "extended",
+        symbol,
+        px: "100.08",
+        sz: "0.5",
+        side: "buy",
+      },
     ];
 
     for (const trade of trades) {
@@ -397,7 +438,10 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     testEnrichedIds.push(enrichedResult[0].id);
 
     // Verify
-    const result = await db.select().from(fillsEnriched).where(eq(fillsEnriched.id, enrichedResult[0].id));
+    const result = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.id, enrichedResult[0].id));
 
     expect(result).toHaveLength(1);
     expect(result[0].tradeImbalance1sT0).not.toBeNull();
@@ -412,10 +456,38 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
 
     // Create trades with liq/delev types in 10s window
     const trades: NewMdTrade[] = [
-      { ts: new Date(baseTs.getTime() - 8000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "liq" },
-      { ts: new Date(baseTs.getTime() - 6000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "delev" },
-      { ts: new Date(baseTs.getTime() - 4000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "normal" },
-      { ts: new Date(baseTs.getTime() - 2000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "LIQ" }, // uppercase
+      {
+        ts: new Date(baseTs.getTime() - 8000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "liq",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 6000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "delev",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 4000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "normal",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 2000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "LIQ",
+      }, // uppercase
     ];
 
     for (const trade of trades) {
@@ -459,7 +531,10 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     testEnrichedIds.push(enrichedResult[0].id);
 
     // Verify
-    const result = await db.select().from(fillsEnriched).where(eq(fillsEnriched.id, enrichedResult[0].id));
+    const result = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.id, enrichedResult[0].id));
 
     expect(result).toHaveLength(1);
     expect(result[0].liqCount10sT0).toBe(3);
@@ -541,7 +616,10 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     testEnrichedIds.push(enrichedResult[0].id);
 
     // Verify
-    const result = await db.select().from(fillsEnriched).where(eq(fillsEnriched.id, enrichedResult[0].id));
+    const result = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.id, enrichedResult[0].id));
 
     expect(result).toHaveLength(1);
     expect(result[0].markIndexDivBpsT0).not.toBeNull();
@@ -601,7 +679,9 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
       Math.log(100.1 / 100.15),
     ];
     const mean = logReturns.reduce((a, b) => a + b, 0) / logReturns.length;
-    const variance = logReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (logReturns.length - 1);
+    const variance =
+      logReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) /
+      (logReturns.length - 1);
     const expectedVol = Math.sqrt(variance);
 
     // Insert fills_enriched
@@ -624,7 +704,10 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     testEnrichedIds.push(enrichedResult[0].id);
 
     // Verify
-    const result = await db.select().from(fillsEnriched).where(eq(fillsEnriched.id, enrichedResult[0].id));
+    const result = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.id, enrichedResult[0].id));
 
     expect(result).toHaveLength(1);
     expect(result[0].realizedVol10sT0).not.toBeNull();
@@ -686,7 +769,10 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     testEnrichedIds.push(enrichedResult[0].id);
 
     // Verify all features are null
-    const result = await db.select().from(fillsEnriched).where(eq(fillsEnriched.id, enrichedResult[0].id));
+    const result = await db
+      .select()
+      .from(fillsEnriched)
+      .where(eq(fillsEnriched.id, enrichedResult[0].id));
 
     expect(result).toHaveLength(1);
     expect(result[0].midT0).toBeNull();

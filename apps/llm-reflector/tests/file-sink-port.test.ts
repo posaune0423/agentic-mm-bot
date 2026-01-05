@@ -20,7 +20,10 @@ describe("createFileSinkPort", () => {
 
   beforeEach(() => {
     // Create a unique temp directory for each test
-    testDir = join(tmpdir(), `llm-reflector-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(
+      tmpdir(),
+      `llm-reflector-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
   });
 
   afterEach(async () => {
@@ -40,7 +43,13 @@ describe("createFileSinkPort", () => {
         data: { key: "value" },
       };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "proposal-abc123", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "proposal-abc123",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -86,7 +95,13 @@ describe("createFileSinkPort", () => {
         data: { value: 123 },
       };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "hash-test", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "hash-test",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -110,10 +125,18 @@ describe("createFileSinkPort", () => {
       const fileSink = createFileSinkPort();
       const content = {
         proposalId: "integrity-test",
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
+        changes: [
+          { param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" },
+        ],
       };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "integrity-test", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "integrity-test",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -131,7 +154,13 @@ describe("createFileSinkPort", () => {
       const fileSink = createFileSinkPort();
       const content = { test: "mkdir" };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "mkdir-test", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "mkdir-test",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -147,12 +176,20 @@ describe("createFileSinkPort", () => {
       const content = {
         proposalId: "preserve-test",
         timestamp: "2025-01-05T12:00:00Z",
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
+        changes: [
+          { param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" },
+        ],
         rollbackConditions: ["revert if markout < -10bps"],
         reasoningTrace: ["test reasoning"],
       };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "preserve-test", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "preserve-test",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -175,7 +212,13 @@ describe("createFileSinkPort", () => {
         integrity: { sha256: "fake-hash-should-be-overwritten" },
       };
 
-      const result = await fileSink.writeJsonLog(testDir, "extended", "BTC-USD", "overwrite-test", content);
+      const result = await fileSink.writeJsonLog(
+        testDir,
+        "extended",
+        "BTC-USD",
+        "overwrite-test",
+        content,
+      );
 
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
@@ -183,7 +226,9 @@ describe("createFileSinkPort", () => {
         const parsed = JSON.parse(fileContent);
 
         // Integrity should NOT be the fake hash
-        expect(parsed.integrity.sha256).not.toBe("fake-hash-should-be-overwritten");
+        expect(parsed.integrity.sha256).not.toBe(
+          "fake-hash-should-be-overwritten",
+        );
         expect(parsed.integrity.sha256).toHaveLength(64);
       }
     });

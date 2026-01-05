@@ -13,7 +13,9 @@ import { join } from "node:path";
 
 import { ResultAsync } from "neverthrow";
 
-export type FileSinkError = { type: "MKDIR_FAILED"; message: string } | { type: "WRITE_FAILED"; message: string };
+export type FileSinkError =
+  | { type: "MKDIR_FAILED"; message: string }
+  | { type: "WRITE_FAILED"; message: string };
 
 export interface FileSinkPort {
   /**
@@ -32,7 +34,11 @@ export interface FileSinkPort {
  * Generate filename according to convention:
  * llm-reflection-<exchange>-<symbol>-<utc-iso>-<proposal-id>.json
  */
-function generateFilename(exchange: string, symbol: string, proposalId: string): string {
+function generateFilename(
+  exchange: string,
+  symbol: string,
+  proposalId: string,
+): string {
   const utcIso = new Date().toISOString().replace(/[:.]/g, "-");
   const safeSymbol = symbol.replace(/[^a-zA-Z0-9-]/g, "-");
   return `llm-reflection-${exchange}-${safeSymbol}-${utcIso}-${proposalId}.json`;
@@ -59,9 +65,15 @@ export function createFileSinkPort(): FileSinkPort {
       const filePath = join(llmDir, filename);
 
       // Serialize content without integrity field first
-      const contentWithoutIntegrity = { ...(content as Record<string, unknown>) };
+      const contentWithoutIntegrity = {
+        ...(content as Record<string, unknown>),
+      };
       delete contentWithoutIntegrity.integrity;
-      const jsonWithoutIntegrity = JSON.stringify(contentWithoutIntegrity, null, 2);
+      const jsonWithoutIntegrity = JSON.stringify(
+        contentWithoutIntegrity,
+        null,
+        2,
+      );
       const sha256 = calculateSha256(jsonWithoutIntegrity);
 
       // Add integrity field

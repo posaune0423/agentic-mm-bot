@@ -6,7 +6,15 @@
  * - Used for mark-index divergence calculation
  */
 
-import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const mdPrice = pgTable(
   "md_price",
@@ -17,10 +25,18 @@ export const mdPrice = pgTable(
     symbol: text("symbol").notNull(),
     markPx: numeric("mark_px"),
     indexPx: numeric("index_px"),
-    ingestTs: timestamp("ingest_ts", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    ingestTs: timestamp("ingest_ts", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
     rawJson: jsonb("raw_json"),
   },
-  table => [index("md_price_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc())],
+  (table) => [
+    index("md_price_exchange_symbol_ts_idx").on(
+      table.exchange,
+      table.symbol,
+      table.ts.desc(),
+    ),
+  ],
 );
 
 export type MdPrice = typeof mdPrice.$inferSelect;

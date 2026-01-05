@@ -13,7 +13,13 @@ const config: Linter.Config[] = [
   },
   // Package-specific ignores
   {
-    ignores: ["dist/**", "eslint.config.ts", "tsdown.config.ts", "drizzle.config.ts", "tests/**"],
+    ignores: [
+      "dist/**",
+      "eslint.config.ts",
+      "tsdown.config.ts",
+      "drizzle.config.ts",
+      "tests/**",
+    ],
   },
 ];
 

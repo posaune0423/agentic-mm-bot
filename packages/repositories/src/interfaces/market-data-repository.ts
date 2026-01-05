@@ -15,7 +15,9 @@ import type { MdBbo, MdTrade, MdPrice } from "@agentic-mm-bot/db";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type MarketDataRepositoryError = { type: "DB_ERROR"; message: string } | { type: "NOT_FOUND"; message: string };
+export type MarketDataRepositoryError =
+  | { type: "DB_ERROR"; message: string }
+  | { type: "NOT_FOUND"; message: string };
 
 /**
  * BBO insert record
@@ -118,22 +120,30 @@ export interface MarketDataRepository {
   /**
    * Batch insert BBO records
    */
-  insertBboBatch(records: BboInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertBboBatch(
+    records: BboInsert[],
+  ): ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Batch insert Trade records
    */
-  insertTradeBatch(records: TradeInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertTradeBatch(
+    records: TradeInsert[],
+  ): ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Batch insert Price records
    */
-  insertPriceBatch(records: PriceInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertPriceBatch(
+    records: PriceInsert[],
+  ): ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Upsert latest_top state
    */
-  upsertLatestTop(state: LatestTopState): ResultAsync<void, MarketDataRepositoryError>;
+  upsertLatestTop(
+    state: LatestTopState,
+  ): ResultAsync<void, MarketDataRepositoryError>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Lookup (Summarizer - markout calculation)

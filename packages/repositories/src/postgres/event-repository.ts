@@ -40,7 +40,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
       // Batch insert order events
       if (eventsToFlush.length > 0) {
         await db.insert(exOrderEvent).values(
-          eventsToFlush.map(e => ({
+          eventsToFlush.map((e) => ({
             ts: e.ts,
             exchange: e.exchange,
             symbol: e.symbol,
@@ -62,7 +62,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
       // Batch insert fills
       if (fillsToFlush.length > 0) {
         await db.insert(exFill).values(
-          fillsToFlush.map(f => ({
+          fillsToFlush.map((f) => ({
             ts: f.ts,
             exchange: f.exchange,
             symbol: f.symbol,
@@ -115,7 +115,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
       if (flushIntervalId) return;
 
       flushIntervalId = setInterval(() => {
-        doFlush().catch(error => {
+        doFlush().catch((error) => {
           logger.error("Periodic flush failed", error);
         });
       }, intervalMs);

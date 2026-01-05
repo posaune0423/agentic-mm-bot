@@ -219,7 +219,11 @@ describe("ProposalRepository.updateProposalStatus", () => {
     const db = createMockDb();
     const repo = createPostgresProposalRepository(db);
 
-    const result = await repo.updateProposalStatus("proposal-123", "applied", "param-applier");
+    const result = await repo.updateProposalStatus(
+      "proposal-123",
+      "applied",
+      "param-applier",
+    );
 
     expect(result.isOk()).toBe(true);
     expect(db.update).toHaveBeenCalled();
@@ -248,7 +252,11 @@ describe("ProposalRepository.updateProposalStatus", () => {
     }));
     const repo = createPostgresProposalRepository(db);
 
-    const result = await repo.updateProposalStatus("proposal-123", "applied", "param-applier");
+    const result = await repo.updateProposalStatus(
+      "proposal-123",
+      "applied",
+      "param-applier",
+    );
 
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -262,7 +270,7 @@ describe("ProposalRepository.updateProposalStatus", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("ProposalRepository.getCurrentParams", () => {
-  it("should return Err with NOT_FOUND when no current params", async () => {
+  it("should return Ok with default params when no current params", async () => {
     const db = createMockDb();
     // getCurrentParams uses .limit(1), so mock needs to include it
     db.select = mock(() => ({
@@ -276,9 +284,10 @@ describe("ProposalRepository.getCurrentParams", () => {
 
     const result = await repo.getCurrentParams("extended", "BTC-USD");
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.type).toBe("NOT_FOUND");
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value.id).toBe("00000000-0000-0000-0000-000000000000");
+      expect(result.value.quoteSizeUsd).toBe("100");
     }
   });
 

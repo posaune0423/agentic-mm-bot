@@ -9,7 +9,14 @@
  * This module is pure (no I/O, no throw).
  */
 
-import type { Features, Position, PriceStr, QuoteIntent, ReasonCode, StrategyParams } from "./types";
+import type {
+  Features,
+  Position,
+  PriceStr,
+  QuoteIntent,
+  ReasonCode,
+  StrategyParams,
+} from "./types";
 
 /**
  * Calculate half spread in bps
@@ -23,7 +30,10 @@ import type { Features, Position, PriceStr, QuoteIntent, ReasonCode, StrategyPar
  * @param features - Market features
  * @returns Half spread in bps
  */
-export function calculateHalfSpreadBps(params: StrategyParams, features: Features): number {
+export function calculateHalfSpreadBps(
+  params: StrategyParams,
+  features: Features,
+): number {
   const baseSpread = parseFloat(params.baseHalfSpreadBps);
   const volGain = parseFloat(params.volSpreadGain);
   const toxGain = parseFloat(params.toxSpreadGain);
@@ -47,7 +57,10 @@ export function calculateHalfSpreadBps(params: StrategyParams, features: Feature
  * @param position - Current position
  * @returns Skew in bps
  */
-export function calculateSkewBps(params: StrategyParams, position: Position): number {
+export function calculateSkewBps(
+  params: StrategyParams,
+  position: Position,
+): number {
   const skewGain = parseFloat(params.inventorySkewGain);
   const inventory = parseFloat(position.size);
 

@@ -19,7 +19,10 @@ import type {
 
 import { ProposalOutputSchema, type ProposalOutput } from "../../types/schemas";
 import type { FileSinkPort } from "../../ports/file-sink-port";
-import { validateProposal, type ParamGateError } from "../../services/param-gate";
+import {
+  validateProposal,
+  type ParamGateError,
+} from "../../services/param-gate";
 import { createReflectorAgent } from "../agents/reflector-agent";
 
 export type WorkflowError =
@@ -62,7 +65,8 @@ interface ReflectionInput {
 function buildPrompt(input: ReflectionInput): string {
   const worstFillsSummary = input.aggregation.worstFills
     .map(
-      (f, i) => `${i + 1}. ${f.side} ${f.fillSz} @ ${f.fillPx}, markout: ${f.markout10sBps?.toFixed(2) ?? "N/A"} bps`,
+      (f, i) =>
+        `${i + 1}. ${f.side} ${f.fillSz} @ ${f.fillPx}, markout: ${f.markout10sBps?.toFixed(2) ?? "N/A"} bps`,
     )
     .join("\n");
 
@@ -114,9 +118,11 @@ export function executeReflectionWorkflow(
   return (
     fetchInput(exchange, symbol, windowStart, windowEnd, deps.metricsRepo)
       // Step 2: Generate proposal with LLM
-      .andThen(input => generateProposal(input, deps.model))
+      .andThen((input) => generateProposal(input, deps.model))
       // Step 3: Validate with ParamGate and persist
-      .andThen(({ input, proposal }) => validateAndPersist(input, proposal, deps))
+      .andThen(({ input, proposal }) =>
+        validateAndPersist(input, proposal, deps),
+      )
   );
 }
 
@@ -134,7 +140,12 @@ function fetchInput(
     repo.getHourlyAggregation(exchange, symbol, windowStart, windowEnd),
     repo.getCurrentParams(exchange, symbol),
   ])
-    .mapErr((e): WorkflowError => ({ type: "FETCH_INPUT_FAILED", message: e.message }))
+    .mapErr(
+      (e): WorkflowError => ({
+        type: "FETCH_INPUT_FAILED",
+        message: e.message,
+      }),
+    )
     .map(([aggregation, currentParams]) => ({
       exchange,
       symbol,
@@ -151,7 +162,10 @@ function fetchInput(
 function generateProposal(
   input: ReflectionInput,
   model: string,
-): ResultAsync<{ input: ReflectionInput; proposal: ProposalOutput }, WorkflowError> {
+): ResultAsync<
+  { input: ReflectionInput; proposal: ProposalOutput },
+  WorkflowError
+> {
   const agent = createReflectorAgent(model);
   const prompt = buildPrompt(input);
 
@@ -163,7 +177,7 @@ function generateProposal(
       type: "AGENT_FAILED",
       message: error instanceof Error ? error.message : "Unknown agent error",
     }),
-  ).map(response => ({
+  ).map((response) => ({
     input,
     proposal: response.object,
   }));
@@ -181,7 +195,9 @@ function validateAndPersist(
   const validationResult = validateProposal(proposal, input.currentParams);
 
   if (validationResult.isErr()) {
-    logger.warn("Proposal rejected by ParamGate", { error: validationResult.error });
+    logger.warn("Proposal rejected by ParamGate", {
+      error: validationResult.error,
+    });
     return errAsync({
       type: "GATE_REJECTED",
       error: validationResult.error,
@@ -211,8 +227,16 @@ function validateAndPersist(
 
   // Write to file first (requirement: file must succeed before DB)
   return deps.fileSink
-    .writeJsonLog(deps.logDir, input.exchange, input.symbol, proposalId, logContent)
-    .mapErr((e): WorkflowError => ({ type: "FILE_WRITE_FAILED", message: e.message }))
+    .writeJsonLog(
+      deps.logDir,
+      input.exchange,
+      input.symbol,
+      proposalId,
+      logContent,
+    )
+    .mapErr(
+      (e): WorkflowError => ({ type: "FILE_WRITE_FAILED", message: e.message }),
+    )
     .andThen(({ path, sha256 }) =>
       // Only insert to DB if file write succeeded
       deps.proposalRepo
@@ -229,7 +253,12 @@ function validateAndPersist(
           reasoningLogSha256: sha256,
           status: "pending",
         })
-        .mapErr((e): WorkflowError => ({ type: "DB_INSERT_FAILED", message: e.message }))
+        .mapErr(
+          (e): WorkflowError => ({
+            type: "DB_INSERT_FAILED",
+            message: e.message,
+          }),
+        )
         .map(() => ({
           proposalId,
           logPath: path,

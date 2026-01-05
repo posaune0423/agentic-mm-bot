@@ -19,9 +19,17 @@ export const strategyState = pgTable(
     modeSince: timestamp("mode_since", { withTimezone: true, mode: "date" }),
     pauseUntil: timestamp("pause_until", { withTimezone: true, mode: "date" }),
     paramsSetId: uuid("params_set_id"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
   },
-  table => [index("strategy_state_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc())],
+  (table) => [
+    index("strategy_state_exchange_symbol_ts_idx").on(
+      table.exchange,
+      table.symbol,
+      table.ts.desc(),
+    ),
+  ],
 );
 
 export type StrategyState = typeof strategyState.$inferSelect;

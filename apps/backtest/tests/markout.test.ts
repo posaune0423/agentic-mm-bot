@@ -9,7 +9,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { enrichFillsWithMarkout, calculateAverageMarkout } from "../src/report/markout";
+import {
+  enrichFillsWithMarkout,
+  calculateAverageMarkout,
+} from "../src/report/markout";
 import type { SimFill } from "../src/sim/sim-execution";
 import type { MdBbo } from "@agentic-mm-bot/db";
 
@@ -34,7 +37,11 @@ function createMockBbo(ts: Date, midPx: string): MdBbo {
 }
 
 // Helper to create mock fill
-function createMockFill(ts: Date, side: "buy" | "sell", midT0: string): SimFill {
+function createMockFill(
+  ts: Date,
+  side: "buy" | "sell",
+  midT0: string,
+): SimFill {
   return {
     ts,
     side,
@@ -158,7 +165,11 @@ describe("enrichFillsWithMarkout", () => {
 
 describe("calculateAverageMarkout", () => {
   it("should calculate average of valid markouts", () => {
-    const enriched = [{ markout10sBps: 100 } as any, { markout10sBps: 50 } as any, { markout10sBps: -30 } as any];
+    const enriched = [
+      { markout10sBps: 100 } as any,
+      { markout10sBps: 50 } as any,
+      { markout10sBps: -30 } as any,
+    ];
 
     const avg = calculateAverageMarkout(enriched);
 
@@ -167,7 +178,11 @@ describe("calculateAverageMarkout", () => {
   });
 
   it("should exclude null markouts from average", () => {
-    const enriched = [{ markout10sBps: 100 } as any, { markout10sBps: null } as any, { markout10sBps: 50 } as any];
+    const enriched = [
+      { markout10sBps: 100 } as any,
+      { markout10sBps: null } as any,
+      { markout10sBps: 50 } as any,
+    ];
 
     const avg = calculateAverageMarkout(enriched);
 
@@ -176,7 +191,10 @@ describe("calculateAverageMarkout", () => {
   });
 
   it("should return null when no valid markouts", () => {
-    const enriched = [{ markout10sBps: null } as any, { markout10sBps: null } as any];
+    const enriched = [
+      { markout10sBps: null } as any,
+      { markout10sBps: null } as any,
+    ];
 
     const avg = calculateAverageMarkout(enriched);
 

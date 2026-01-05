@@ -28,7 +28,10 @@ export type ParamGateError =
 /**
  * Get current value for a parameter from strategy params
  */
-function getCurrentValue(params: CurrentParamsSummary, param: ParamName): number {
+function getCurrentValue(
+  params: CurrentParamsSummary,
+  param: ParamName,
+): number {
   switch (param) {
     case "refreshIntervalMs":
       return params.refreshIntervalMs;
@@ -89,7 +92,8 @@ export function validateProposal(
       continue;
     }
 
-    const diffPct = Math.abs((proposedValue - currentValue) / currentValue) * 100;
+    const diffPct =
+      Math.abs((proposedValue - currentValue) / currentValue) * 100;
 
     if (diffPct > 10) {
       return err({

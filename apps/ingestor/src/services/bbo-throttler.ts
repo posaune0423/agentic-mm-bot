@@ -38,7 +38,8 @@ export class BboThrottler {
     // Price-change-based throttling
     let priceChanged = false;
     if (this.lastMid !== null && this.lastMid > 0) {
-      const changeBps = Math.abs((currentMid - this.lastMid) / this.lastMid) * 10000;
+      const changeBps =
+        Math.abs((currentMid - this.lastMid) / this.lastMid) * 10000;
       priceChanged = changeBps >= this.minChangeBps;
     }
 

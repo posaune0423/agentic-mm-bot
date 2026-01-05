@@ -10,17 +10,27 @@
 
 import { describe, expect, test, mock, beforeEach } from "bun:test";
 
-import { OrderStatus as ExtendedOrderStatus, OrderStatusReason } from "extended-typescript-sdk";
+import {
+  OrderStatus as ExtendedOrderStatus,
+  OrderStatusReason,
+} from "extended-typescript-sdk";
 
 import type { ExtendedConfig } from "../src/extended/types";
-import type { ExecutionEvent, FillEvent, OrderUpdateEvent, PlaceOrderRequest } from "../src/ports";
+import type {
+  ExecutionEvent,
+  FillEvent,
+  OrderUpdateEvent,
+  PlaceOrderRequest,
+} from "../src/ports";
 
 // Create a mock config
 const createMockConfig = (): ExtendedConfig => ({
   network: "testnet",
   vaultId: 12345,
-  starkPrivateKey: "0x0000000000000000000000000000000000000000000000000000000000000001",
-  starkPublicKey: "0x0000000000000000000000000000000000000000000000000000000000000002",
+  starkPrivateKey:
+    "0x0000000000000000000000000000000000000000000000000000000000000001",
+  starkPublicKey:
+    "0x0000000000000000000000000000000000000000000000000000000000000002",
   apiKey: "test-api-key",
 });
 
@@ -33,15 +43,31 @@ describe("ExtendedExecutionAdapter", () => {
           const message = error.message.toLowerCase();
 
           if (message.includes("rate limit")) {
-            return { type: "rate_limit" as const, message: error.message, retryAfterMs: 1000 };
+            return {
+              type: "rate_limit" as const,
+              message: error.message,
+              retryAfterMs: 1000,
+            };
           }
 
-          if (message.includes("post_only") || message.includes("post only failed")) {
-            return { type: "post_only_rejected" as const, message: error.message };
+          if (
+            message.includes("post_only") ||
+            message.includes("post only failed")
+          ) {
+            return {
+              type: "post_only_rejected" as const,
+              message: error.message,
+            };
           }
 
-          if (message.includes("insufficient") || message.includes("not enough")) {
-            return { type: "insufficient_balance" as const, message: error.message };
+          if (
+            message.includes("insufficient") ||
+            message.includes("not enough")
+          ) {
+            return {
+              type: "insufficient_balance" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -62,8 +88,14 @@ describe("ExtendedExecutionAdapter", () => {
         if (error instanceof Error) {
           const message = error.message.toLowerCase();
 
-          if (message.includes("post_only") || message.includes("post only failed")) {
-            return { type: "post_only_rejected" as const, message: error.message };
+          if (
+            message.includes("post_only") ||
+            message.includes("post only failed")
+          ) {
+            return {
+              type: "post_only_rejected" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -84,8 +116,14 @@ describe("ExtendedExecutionAdapter", () => {
         if (error instanceof Error) {
           const message = error.message.toLowerCase();
 
-          if (message.includes("insufficient") || message.includes("not enough")) {
-            return { type: "insufficient_balance" as const, message: error.message };
+          if (
+            message.includes("insufficient") ||
+            message.includes("not enough")
+          ) {
+            return {
+              type: "insufficient_balance" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -164,7 +202,10 @@ describe("ExtendedExecutionAdapter", () => {
 
     test("should map CANCELLED and EXPIRED to cancelled", () => {
       const mapOrderStatus = (status?: string) => {
-        if (status === ExtendedOrderStatus.CANCELLED || status === ExtendedOrderStatus.EXPIRED) {
+        if (
+          status === ExtendedOrderStatus.CANCELLED ||
+          status === ExtendedOrderStatus.EXPIRED
+        ) {
           return "cancelled";
         }
         return "pending";
@@ -282,7 +323,9 @@ describe("ExtendedExecutionAdapter", () => {
       };
 
       const reason =
-        order.statusReason === OrderStatusReason.POST_ONLY_FAILED ? "POST_ONLY_REJECTED" : order.statusReason;
+        order.statusReason === OrderStatusReason.POST_ONLY_FAILED ?
+          "POST_ONLY_REJECTED"
+        : order.statusReason;
 
       expect(reason).toBe("POST_ONLY_REJECTED");
     });
@@ -290,9 +333,15 @@ describe("ExtendedExecutionAdapter", () => {
 
   describe("cancel order validation", () => {
     test("should require either clientOrderId or exchangeOrderId", () => {
-      const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
+      const validateCancelRequest = (request: {
+        clientOrderId?: string;
+        exchangeOrderId?: string;
+      }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };
@@ -300,13 +349,21 @@ describe("ExtendedExecutionAdapter", () => {
       const result = validateCancelRequest({});
 
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("Either clientOrderId or exchangeOrderId is required");
+      expect(result.error).toBe(
+        "Either clientOrderId or exchangeOrderId is required",
+      );
     });
 
     test("should accept exchangeOrderId", () => {
-      const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
+      const validateCancelRequest = (request: {
+        clientOrderId?: string;
+        exchangeOrderId?: string;
+      }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };
@@ -317,9 +374,15 @@ describe("ExtendedExecutionAdapter", () => {
     });
 
     test("should accept clientOrderId", () => {
-      const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
+      const validateCancelRequest = (request: {
+        clientOrderId?: string;
+        exchangeOrderId?: string;
+      }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };
@@ -332,13 +395,15 @@ describe("ExtendedExecutionAdapter", () => {
 
   describe("place order request mapping", () => {
     test("should map buy side correctly", () => {
-      const mapSide = (side: "buy" | "sell") => (side === "buy" ? "BUY" : "SELL");
+      const mapSide = (side: "buy" | "sell") =>
+        side === "buy" ? "BUY" : "SELL";
 
       expect(mapSide("buy")).toBe("BUY");
     });
 
     test("should map sell side correctly", () => {
-      const mapSide = (side: "buy" | "sell") => (side === "buy" ? "BUY" : "SELL");
+      const mapSide = (side: "buy" | "sell") =>
+        side === "buy" ? "BUY" : "SELL";
 
       expect(mapSide("sell")).toBe("SELL");
     });

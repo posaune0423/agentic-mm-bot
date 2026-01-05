@@ -81,7 +81,11 @@ describe("Executor PAUSE Behavior", () => {
         dataStale: true,
       };
 
-      const riskEval = evaluateRisk(staleFeatures, defaultPosition, defaultParams);
+      const riskEval = evaluateRisk(
+        staleFeatures,
+        defaultPosition,
+        defaultParams,
+      );
       expect(riskEval.shouldPause).toBe(true);
       expect(riskEval.reasonCodes).toContain("DATA_STALE");
 

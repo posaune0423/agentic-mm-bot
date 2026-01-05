@@ -33,7 +33,12 @@ export type FileSinkError =
  * Requirements: 13.2
  * Format: llm-reflection-<exchange>-<symbol>-<utc-iso>-<proposal-id>.json
  */
-export function generateLogFilename(exchange: string, symbol: string, timestamp: Date, proposalId: string): string {
+export function generateLogFilename(
+  exchange: string,
+  symbol: string,
+  timestamp: Date,
+  proposalId: string,
+): string {
   const isoDate = timestamp.toISOString().replace(/[:.]/g, "-");
   const sanitizedSymbol = symbol.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
   const sanitizedExchange = exchange.toLowerCase();
@@ -51,7 +56,9 @@ export function calculateSha256(content: string): string {
 /**
  * Create log content with integrity hash
  */
-export function createLogContent(logData: Omit<ReasoningLogContent, "integrity">): ReasoningLogContent {
+export function createLogContent(
+  logData: Omit<ReasoningLogContent, "integrity">,
+): ReasoningLogContent {
   // Create content without integrity first
   const contentWithoutHash = JSON.stringify(logData, null, 2);
   const sha256 = calculateSha256(contentWithoutHash);
@@ -91,14 +98,20 @@ export function saveReasoningLog(
   const content = createLogContent(logData);
   const jsonContent = JSON.stringify(content, null, 2);
 
-  return ResultAsync.fromPromise(fs.mkdir(llmDir, { recursive: true }), e => ({
-    type: "DIRECTORY_CREATE_FAILED" as const,
-    message: e instanceof Error ? e.message : "Unknown error",
-  })).andThen(() =>
-    ResultAsync.fromPromise(fs.writeFile(filePath, jsonContent, "utf-8"), e => ({
-      type: "FILE_WRITE_FAILED" as const,
+  return ResultAsync.fromPromise(
+    fs.mkdir(llmDir, { recursive: true }),
+    (e) => ({
+      type: "DIRECTORY_CREATE_FAILED" as const,
       message: e instanceof Error ? e.message : "Unknown error",
-    })).map(() => ({
+    }),
+  ).andThen(() =>
+    ResultAsync.fromPromise(
+      fs.writeFile(filePath, jsonContent, "utf-8"),
+      (e) => ({
+        type: "FILE_WRITE_FAILED" as const,
+        message: e instanceof Error ? e.message : "Unknown error",
+      }),
+    ).map(() => ({
       logPath: filePath,
       sha256: content.integrity.sha256,
     })),
@@ -108,11 +121,13 @@ export function saveReasoningLog(
 /**
  * Verify integrity of a reasoning log file
  */
-export function verifyLogIntegrity(filePath: string): ResultAsync<boolean, FileSinkError> {
-  return ResultAsync.fromPromise(fs.readFile(filePath, "utf-8"), e => ({
+export function verifyLogIntegrity(
+  filePath: string,
+): ResultAsync<boolean, FileSinkError> {
+  return ResultAsync.fromPromise(fs.readFile(filePath, "utf-8"), (e) => ({
     type: "FILE_WRITE_FAILED" as const,
     message: e instanceof Error ? e.message : "Unknown error",
-  })).map(content => {
+  })).map((content) => {
     const parsed = JSON.parse(content) as ReasoningLogContent;
     const storedHash = parsed.integrity.sha256;
 

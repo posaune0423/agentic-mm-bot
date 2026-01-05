@@ -88,14 +88,16 @@ export function createIntervalWorker(options: WorkerOptions): void {
       try {
         await Promise.race([
           runningPromise,
-          new Promise<void>(resolve => {
+          new Promise<void>((resolve) => {
             setTimeout(() => {
               resolve();
             }, 5000); // 5 second timeout
           }),
         ]);
       } catch (error) {
-        logger.warn(`${name} running iteration error during shutdown`, { error });
+        logger.warn(`${name} running iteration error during shutdown`, {
+          error,
+        });
       }
     }
 

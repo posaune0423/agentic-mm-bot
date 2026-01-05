@@ -33,7 +33,12 @@ function createMockBbo(ts: Date, bidPx: string, askPx: string): MdBbo {
 }
 
 // Helper to create mock trade
-function createMockTrade(ts: Date, px: string, sz: string, side?: "buy" | "sell"): MdTrade {
+function createMockTrade(
+  ts: Date,
+  px: string,
+  sz: string,
+  side?: "buy" | "sell",
+): MdTrade {
   return {
     id: crypto.randomUUID(),
     ts,

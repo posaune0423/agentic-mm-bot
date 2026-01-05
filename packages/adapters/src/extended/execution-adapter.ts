@@ -41,7 +41,12 @@ import type {
   PlaceOrderRequest,
   PositionInfo,
 } from "../ports";
-import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, ExtendedTradeUpdate } from "./types";
+import type {
+  ExtendedConfig,
+  ExtendedAccountStreamData,
+  ExtendedOrderUpdate,
+  ExtendedTradeUpdate,
+} from "./types";
 
 /**
  * Extended Execution Adapter
@@ -56,12 +61,14 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private streamClient: PerpetualStreamClient;
 
   private eventHandlers: ((event: ExecutionEvent) => void)[] = [];
-  private accountStream: PerpetualStreamConnection<ExtendedAccountStreamData> | null = null;
+  private accountStream: PerpetualStreamConnection<ExtendedAccountStreamData> | null =
+    null;
   private isWasmInitialized = false;
 
   constructor(config: ExtendedConfig) {
     this.config = config;
-    this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.endpointConfig =
+      config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
 
     this.starkAccount = new StarkPerpetualAccount(
       config.vaultId,
@@ -70,8 +77,13 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       config.apiKey,
     );
 
-    this.tradingClient = new PerpetualTradingClient(this.endpointConfig, this.starkAccount);
-    this.streamClient = new PerpetualStreamClient({ apiUrl: this.endpointConfig.streamUrl });
+    this.tradingClient = new PerpetualTradingClient(
+      this.endpointConfig,
+      this.starkAccount,
+    );
+    this.streamClient = new PerpetualStreamClient({
+      apiUrl: this.endpointConfig.streamUrl,
+    });
   }
 
   /**
@@ -83,21 +95,29 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     this.isWasmInitialized = true;
   }
 
-  placeOrder(request: PlaceOrderRequest): ResultAsync<OrderResponse, ExecutionError> {
-    return ResultAsync.fromPromise(this.ensureWasmInitialized(), this.mapError).andThen(() =>
+  placeOrder(
+    request: PlaceOrderRequest,
+  ): ResultAsync<OrderResponse, ExecutionError> {
+    return ResultAsync.fromPromise(
+      this.ensureWasmInitialized(),
+      this.mapError,
+    ).andThen(() =>
       ResultAsync.fromPromise(
         this.tradingClient.placeOrder({
           marketName: request.symbol,
           amountOfSynthetic: new Decimal(request.size),
           price: new Decimal(request.price),
-          side: request.side === "buy" ? ExtendedOrderSide.BUY : ExtendedOrderSide.SELL,
+          side:
+            request.side === "buy" ?
+              ExtendedOrderSide.BUY
+            : ExtendedOrderSide.SELL,
           postOnly: request.postOnly,
           externalId: request.clientOrderId,
           timeInForce: request.postOnly ? TimeInForce.GTT : TimeInForce.IOC,
           selfTradeProtectionLevel: SelfTradeProtectionLevel.ACCOUNT,
         }),
         this.mapError,
-      ).map(response => ({
+      ).map((response) => ({
         clientOrderId: response.data?.id ?? request.clientOrderId,
         exchangeOrderId: response.data?.id,
         status: this.mapOrderStatus(response.data?.status),
@@ -106,11 +126,16 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     );
   }
 
-  cancelOrder(request: CancelOrderRequest): ResultAsync<OrderResponse, ExecutionError> {
+  cancelOrder(
+    request: CancelOrderRequest,
+  ): ResultAsync<OrderResponse, ExecutionError> {
     if (request.exchangeOrderId) {
       const orderId = parseInt(request.exchangeOrderId, 10);
 
-      return ResultAsync.fromPromise(this.tradingClient.orders.cancelOrder(orderId), this.mapError).map(() => ({
+      return ResultAsync.fromPromise(
+        this.tradingClient.orders.cancelOrder(orderId),
+        this.mapError,
+      ).map(() => ({
         clientOrderId: request.clientOrderId ?? "",
         exchangeOrderId: request.exchangeOrderId,
         status: "cancelled" as const,
@@ -120,7 +145,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
     if (request.clientOrderId) {
       return ResultAsync.fromPromise(
-        this.tradingClient.orders.cancelOrderByExternalId(request.clientOrderId),
+        this.tradingClient.orders.cancelOrderByExternalId(
+          request.clientOrderId,
+        ),
         this.mapError,
       ).map(() => ({
         clientOrderId: request.clientOrderId ?? "",
@@ -136,21 +163,23 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   cancelAllOrders(symbol: string): ResultAsync<void, ExecutionError> {
-    return ResultAsync.fromPromise(this.tradingClient.orders.massCancel({ markets: [symbol] }), this.mapError).map(
-      () => undefined,
-    );
+    return ResultAsync.fromPromise(
+      this.tradingClient.orders.massCancel({ markets: [symbol] }),
+      this.mapError,
+    ).map(() => undefined);
   }
 
   getOpenOrders(symbol: string): ResultAsync<OpenOrder[], ExecutionError> {
     return ResultAsync.fromPromise(
       this.tradingClient.account.getOpenOrders({ marketNames: [symbol] }),
       this.mapError,
-    ).map(response =>
+    ).map((response) =>
       (response.data ?? []).map((o: OpenOrderModel) => ({
         clientOrderId: o.externalId,
         exchangeOrderId: o.id.toString(),
         symbol: o.market,
-        side: (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
+        side:
+          (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
         price: o.price.toString(),
         size: o.qty.toString(),
         filledSize: o.filledQty?.toString() ?? "0",
@@ -160,16 +189,21 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     );
   }
 
-  getPosition(symbol: string): ResultAsync<PositionInfo | null, ExecutionError> {
+  getPosition(
+    symbol: string,
+  ): ResultAsync<PositionInfo | null, ExecutionError> {
     return ResultAsync.fromPromise(
       this.tradingClient.account.getPositions({ marketNames: [symbol] }),
       this.mapError,
-    ).map(response => {
+    ).map((response) => {
       const positions = response.data ?? [];
       if (positions.length === 0) return null;
 
       const p = positions[0] as PositionModel;
-      const size = (p.side as string) === "LONG" ? p.size.toString() : "-" + p.size.toString();
+      const size =
+        (p.side as string) === "LONG" ?
+          p.size.toString()
+        : "-" + p.size.toString();
 
       return {
         symbol: p.market,
@@ -188,7 +222,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   connectPrivateStream(): ResultAsync<void, ExecutionError> {
     return ResultAsync.fromPromise(
       (async () => {
-        const connection = this.streamClient.subscribeToAccountUpdates(this.config.apiKey);
+        const connection = this.streamClient.subscribeToAccountUpdates(
+          this.config.apiKey,
+        );
         this.accountStream = await connection.connect();
 
         // Start listening for messages
@@ -200,7 +236,10 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
   disconnectPrivateStream(): ResultAsync<void, ExecutionError> {
     if (this.accountStream) {
-      return ResultAsync.fromPromise(this.accountStream.close(), this.mapError).map(() => {
+      return ResultAsync.fromPromise(
+        this.accountStream.close(),
+        this.mapError,
+      ).map(() => {
         this.accountStream = null;
       });
     }
@@ -253,7 +292,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
     // Detect POST_ONLY_REJECTED
     const reason =
-      order.statusReason === OrderStatusReason.POST_ONLY_FAILED ? "POST_ONLY_REJECTED" : order.statusReason;
+      order.statusReason === OrderStatusReason.POST_ONLY_FAILED ?
+        "POST_ONLY_REJECTED"
+      : order.statusReason;
 
     this.emitEvent({
       type: "order_update",
@@ -301,7 +342,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     if (statusStr === "NEW" || statusStr === "UNTRIGGERED") return "pending";
     if (statusStr === "PARTIALLY_FILLED") return "open";
     if (statusStr === "FILLED") return "filled";
-    if (statusStr === "CANCELLED" || statusStr === "EXPIRED") return "cancelled";
+    if (statusStr === "CANCELLED" || statusStr === "EXPIRED")
+      return "cancelled";
     if (statusStr === "REJECTED") return "rejected";
 
     return "pending";
@@ -326,7 +368,10 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     if (error instanceof Error) {
       const message = error.message.toLowerCase();
 
-      if (message.includes("post_only") || message.includes("post only failed")) {
+      if (
+        message.includes("post_only") ||
+        message.includes("post only failed")
+      ) {
         return {
           type: "post_only_rejected",
           message: error.message,

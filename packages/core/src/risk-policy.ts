@@ -8,7 +8,13 @@
  * This module is pure (no I/O, no throw).
  */
 
-import type { Features, Position, ReasonCode, RiskEvaluation, StrategyParams } from "./types";
+import type {
+  Features,
+  Position,
+  ReasonCode,
+  RiskEvaluation,
+  StrategyParams,
+} from "./types";
 
 /**
  * Configuration for pause minimum duration
@@ -46,7 +52,11 @@ const DEFENSIVE_TOX_THRESHOLD = "0.7"; // 70% imbalance
  * @param params - Strategy parameters
  * @returns Risk evaluation result
  */
-export function evaluateRisk(features: Features, position: Position, params: StrategyParams): RiskEvaluation {
+export function evaluateRisk(
+  features: Features,
+  position: Position,
+  params: StrategyParams,
+): RiskEvaluation {
   const reasonCodes: ReasonCode[] = [];
   let shouldPause = false;
   let shouldDefensive = false;
@@ -122,7 +132,10 @@ export function evaluateRisk(features: Features, position: Position, params: Str
  * @param nowMs - Current time
  * @returns true if pause duration has elapsed
  */
-export function isPauseDurationElapsed(pauseUntilMs: number | undefined, nowMs: number): boolean {
+export function isPauseDurationElapsed(
+  pauseUntilMs: number | undefined,
+  nowMs: number,
+): boolean {
   if (pauseUntilMs === undefined) {
     return true;
   }

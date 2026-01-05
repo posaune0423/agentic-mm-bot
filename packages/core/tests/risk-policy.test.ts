@@ -7,7 +7,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Features, Position, StrategyParams } from "../src/types";
-import { calculatePauseUntil, evaluateRisk, isPauseDurationElapsed, PAUSE_MIN_DURATION_MS } from "../src/risk-policy";
+import {
+  calculatePauseUntil,
+  evaluateRisk,
+  isPauseDurationElapsed,
+  PAUSE_MIN_DURATION_MS,
+} from "../src/risk-policy";
 
 const createDefaultParams = (): StrategyParams => ({
   baseHalfSpreadBps: "10",
@@ -39,15 +44,25 @@ const createDefaultPosition = (): Position => ({
 describe("evaluateRisk", () => {
   describe("PAUSE conditions (highest priority)", () => {
     test("should return shouldPause=true when data is stale", () => {
-      const features: Features = { ...createDefaultFeatures(), dataStale: true };
-      const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
+      const features: Features = {
+        ...createDefaultFeatures(),
+        dataStale: true,
+      };
+      const result = evaluateRisk(
+        features,
+        createDefaultPosition(),
+        createDefaultParams(),
+      );
 
       expect(result.shouldPause).toBe(true);
       expect(result.reasonCodes).toContain("DATA_STALE");
     });
 
     test("should return shouldPause=true when mark-index divergence exceeds threshold", () => {
-      const features: Features = { ...createDefaultFeatures(), markIndexDivBps: "60" };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        markIndexDivBps: "60",
+      };
       const params = createDefaultParams();
       const result = evaluateRisk(features, createDefaultPosition(), params);
 
@@ -85,8 +100,15 @@ describe("evaluateRisk", () => {
 
   describe("DEFENSIVE conditions", () => {
     test("should return shouldDefensive=true when volatility is high", () => {
-      const features: Features = { ...createDefaultFeatures(), realizedVol10s: "60" };
-      const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
+      const features: Features = {
+        ...createDefaultFeatures(),
+        realizedVol10s: "60",
+      };
+      const result = evaluateRisk(
+        features,
+        createDefaultPosition(),
+        createDefaultParams(),
+      );
 
       expect(result.shouldPause).toBe(false);
       expect(result.shouldDefensive).toBe(true);
@@ -94,8 +116,15 @@ describe("evaluateRisk", () => {
     });
 
     test("should return shouldDefensive=true when toxicity is high", () => {
-      const features: Features = { ...createDefaultFeatures(), tradeImbalance1s: "0.8" };
-      const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
+      const features: Features = {
+        ...createDefaultFeatures(),
+        tradeImbalance1s: "0.8",
+      };
+      const result = evaluateRisk(
+        features,
+        createDefaultPosition(),
+        createDefaultParams(),
+      );
 
       expect(result.shouldPause).toBe(false);
       expect(result.shouldDefensive).toBe(true);
@@ -105,7 +134,11 @@ describe("evaluateRisk", () => {
 
   describe("NORMAL conditions", () => {
     test("should return both false when all conditions are normal", () => {
-      const result = evaluateRisk(createDefaultFeatures(), createDefaultPosition(), createDefaultParams());
+      const result = evaluateRisk(
+        createDefaultFeatures(),
+        createDefaultPosition(),
+        createDefaultParams(),
+      );
 
       expect(result.shouldPause).toBe(false);
       expect(result.shouldDefensive).toBe(false);
@@ -120,7 +153,11 @@ describe("evaluateRisk", () => {
         dataStale: true, // PAUSE condition
         realizedVol10s: "60", // DEFENSIVE condition
       };
-      const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
+      const result = evaluateRisk(
+        features,
+        createDefaultPosition(),
+        createDefaultParams(),
+      );
 
       expect(result.shouldPause).toBe(true);
       expect(result.shouldDefensive).toBe(false);

@@ -16,7 +16,9 @@ import type {
   NewStrategyParams,
 } from "@agentic-mm-bot/db";
 
-export type ProposalRepositoryError = { type: "DB_ERROR"; message: string } | { type: "NOT_FOUND"; message: string };
+export type ProposalRepositoryError =
+  | { type: "DB_ERROR"; message: string }
+  | { type: "NOT_FOUND"; message: string };
 
 /**
  * Unified Proposal Repository Interface
@@ -31,7 +33,10 @@ export interface ProposalRepository {
   /**
    * Get pending proposals for a symbol
    */
-  getPendingProposals(exchange: string, symbol: string): ResultAsync<LlmProposal[], ProposalRepositoryError>;
+  getPendingProposals(
+    exchange: string,
+    symbol: string,
+  ): ResultAsync<LlmProposal[], ProposalRepositoryError>;
 
   /**
    * Update proposal status (applied/rejected)
@@ -50,7 +55,9 @@ export interface ProposalRepository {
   /**
    * Save a new proposal
    */
-  saveProposal(proposal: NewLlmProposal): ResultAsync<LlmProposal, ProposalRepositoryError>;
+  saveProposal(
+    proposal: NewLlmProposal,
+  ): ResultAsync<LlmProposal, ProposalRepositoryError>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Executor operations (proposal application & params management)
@@ -59,20 +66,31 @@ export interface ProposalRepository {
   /**
    * Save param rollout audit record
    */
-  saveParamRollout(rollout: NewParamRollout): ResultAsync<void, ProposalRepositoryError>;
+  saveParamRollout(
+    rollout: NewParamRollout,
+  ): ResultAsync<void, ProposalRepositoryError>;
 
   /**
    * Create new strategy params
    */
-  createStrategyParams(params: NewStrategyParams): ResultAsync<StrategyParams, ProposalRepositoryError>;
+  createStrategyParams(
+    params: NewStrategyParams,
+  ): ResultAsync<StrategyParams, ProposalRepositoryError>;
 
   /**
    * Set current strategy params (unset old, set new)
    */
-  setCurrentParams(exchange: string, symbol: string, newParamsId: string): ResultAsync<void, ProposalRepositoryError>;
+  setCurrentParams(
+    exchange: string,
+    symbol: string,
+    newParamsId: string,
+  ): ResultAsync<void, ProposalRepositoryError>;
 
   /**
    * Get current strategy params
    */
-  getCurrentParams(exchange: string, symbol: string): ResultAsync<StrategyParams, ProposalRepositoryError>;
+  getCurrentParams(
+    exchange: string,
+    symbol: string,
+  ): ResultAsync<StrategyParams, ProposalRepositoryError>;
 }

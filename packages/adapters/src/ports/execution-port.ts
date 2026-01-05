@@ -15,7 +15,12 @@ export type OrderSide = "buy" | "sell";
 /**
  * Order status
  */
-export type OrderStatus = "pending" | "open" | "filled" | "cancelled" | "rejected";
+export type OrderStatus =
+  | "pending"
+  | "open"
+  | "filled"
+  | "cancelled"
+  | "rejected";
 
 /**
  * Place order request
@@ -130,12 +135,16 @@ export interface ExecutionPort {
   /**
    * Place a new order
    */
-  placeOrder(request: PlaceOrderRequest): ResultAsync<OrderResponse, ExecutionError>;
+  placeOrder(
+    request: PlaceOrderRequest,
+  ): ResultAsync<OrderResponse, ExecutionError>;
 
   /**
    * Cancel an order
    */
-  cancelOrder(request: CancelOrderRequest): ResultAsync<OrderResponse, ExecutionError>;
+  cancelOrder(
+    request: CancelOrderRequest,
+  ): ResultAsync<OrderResponse, ExecutionError>;
 
   /**
    * Cancel all orders for a symbol

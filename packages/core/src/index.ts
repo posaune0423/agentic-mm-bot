@@ -47,7 +47,12 @@ export { decide, createInitialState } from "./strategy-engine";
 // ─────────────────────────────────────────────────────────────────────────────
 // Risk Policy
 // ─────────────────────────────────────────────────────────────────────────────
-export { evaluateRisk, isPauseDurationElapsed, calculatePauseUntil, PAUSE_MIN_DURATION_MS } from "./risk-policy";
+export {
+  evaluateRisk,
+  isPauseDurationElapsed,
+  calculatePauseUntil,
+  PAUSE_MIN_DURATION_MS,
+} from "./risk-policy";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quote Calculator
@@ -78,5 +83,14 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 // ParamGate (Future Extension: LLM)
 // ─────────────────────────────────────────────────────────────────────────────
-export type { ParamProposal, ParamGateResult, RollbackConditions } from "./param-gate";
-export { validateProposal, isWithinChangeLimit, isWithinPercentageRange, ALLOWED_PARAM_KEYS } from "./param-gate";
+export type {
+  ParamProposal,
+  ParamGateResult,
+  RollbackConditions,
+} from "./param-gate";
+export {
+  validateProposal,
+  isWithinChangeLimit,
+  isWithinPercentageRange,
+  ALLOWED_PARAM_KEYS,
+} from "./param-gate";

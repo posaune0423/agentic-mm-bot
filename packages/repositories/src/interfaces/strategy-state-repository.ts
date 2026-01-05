@@ -40,7 +40,9 @@ export interface StrategyStateRepository {
   /**
    * Save a new strategy state snapshot
    */
-  save(snapshot: StrategyStateSnapshot): Promise<Result<void, StrategyStateRepositoryError>>;
+  save(
+    snapshot: StrategyStateSnapshot,
+  ): Promise<Result<void, StrategyStateRepositoryError>>;
 
   /**
    * Get the latest strategy state snapshot for a symbol
@@ -48,5 +50,7 @@ export interface StrategyStateRepository {
   getLatest(
     exchange: string,
     symbol: string,
-  ): Promise<Result<StrategyStateSnapshot | null, StrategyStateRepositoryError>>;
+  ): Promise<
+    Result<StrategyStateSnapshot | null, StrategyStateRepositoryError>
+  >;
 }

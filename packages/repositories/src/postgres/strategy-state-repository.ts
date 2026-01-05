@@ -20,9 +20,13 @@ import type {
 /**
  * Create a Postgres strategy state repository
  */
-export function createPostgresStrategyStateRepository(db: Db): StrategyStateRepository {
+export function createPostgresStrategyStateRepository(
+  db: Db,
+): StrategyStateRepository {
   return {
-    async save(snapshot: StrategyStateSnapshot): Promise<Result<void, StrategyStateRepositoryError>> {
+    async save(
+      snapshot: StrategyStateSnapshot,
+    ): Promise<Result<void, StrategyStateRepositoryError>> {
       try {
         await db.insert(strategyState).values({
           ts: snapshot.ts,
@@ -45,12 +49,19 @@ export function createPostgresStrategyStateRepository(db: Db): StrategyStateRepo
     async getLatest(
       exchange: string,
       symbol: string,
-    ): Promise<Result<StrategyStateSnapshot | null, StrategyStateRepositoryError>> {
+    ): Promise<
+      Result<StrategyStateSnapshot | null, StrategyStateRepositoryError>
+    > {
       try {
         const result = await db
           .select()
           .from(strategyState)
-          .where(and(eq(strategyState.exchange, exchange), eq(strategyState.symbol, symbol)))
+          .where(
+            and(
+              eq(strategyState.exchange, exchange),
+              eq(strategyState.symbol, symbol),
+            ),
+          )
           .orderBy(desc(strategyState.ts))
           .limit(1);
 

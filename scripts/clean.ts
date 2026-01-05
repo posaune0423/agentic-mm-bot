@@ -2,14 +2,24 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 // 削除対象のディレクトリ・ファイル名
-const COMMON_TARGETS = ["node_modules", ".turbo", ".next", "dist", "build", "out", "coverage", "*.tsbuildinfo"];
+const COMMON_TARGETS = [
+  "node_modules",
+  ".turbo",
+  ".next",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  "*.tsbuildinfo",
+];
 
 // コントラクト開発固有の削除対象
 const CONTRACTS_TARGETS = ["artifacts", "cache", "typechain-types"];
 
 async function getWorkspacePaths(): Promise<string[]> {
   const packageJson = await Bun.file("package.json").json();
-  const patterns = packageJson.workspaces?.packages ?? packageJson.workspaces ?? [];
+  const patterns =
+    packageJson.workspaces?.packages ?? packageJson.workspaces ?? [];
 
   const paths: string[] = ["."]; // ルートディレクトリも含める
 
@@ -25,7 +35,7 @@ async function getWorkspacePaths(): Promise<string[]> {
 
     // エントリーごとの package.json チェックも並列化
     await Promise.all(
-      entries.map(async entry => {
+      entries.map(async (entry) => {
         const fullPath = join(dir, entry);
         if (entry === "node_modules") return;
 
@@ -48,10 +58,13 @@ async function clean() {
   const workspaces = await getWorkspacePaths();
 
   // 全ワークスペース × 全ターゲット の処理を並列化
-  const tasks = workspaces.flatMap(ws => {
-    const targets = [...COMMON_TARGETS, ...(ws.includes("packages/contracts") ? CONTRACTS_TARGETS : [])];
+  const tasks = workspaces.flatMap((ws) => {
+    const targets = [
+      ...COMMON_TARGETS,
+      ...(ws.includes("packages/contracts") ? CONTRACTS_TARGETS : []),
+    ];
 
-    return targets.map(async target => {
+    return targets.map(async (target) => {
       if (target.includes("*")) {
         // ワイルドカードの場合は glob スキャンしながら並列削除
         const glob = new Bun.Glob(target);

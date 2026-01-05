@@ -6,7 +6,16 @@
  * - Used for audit and recovery
  */
 
-import { boolean, index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const exOrderEvent = pgTable(
   "ex_order_event",
@@ -27,8 +36,12 @@ export const exOrderEvent = pgTable(
     paramsSetId: uuid("params_set_id"),
     rawJson: jsonb("raw_json"),
   },
-  table => [
-    index("ex_order_event_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc()),
+  (table) => [
+    index("ex_order_event_exchange_symbol_ts_idx").on(
+      table.exchange,
+      table.symbol,
+      table.ts.desc(),
+    ),
     index("ex_order_event_client_order_id_idx").on(table.clientOrderId),
   ],
 );

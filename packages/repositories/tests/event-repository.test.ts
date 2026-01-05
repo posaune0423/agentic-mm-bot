@@ -7,7 +7,11 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 import { createPostgresEventRepository } from "../src/postgres/event-repository";
-import type { EventRepository, OrderEventRecord, FillRecord } from "../src/interfaces/event-repository";
+import type {
+  EventRepository,
+  OrderEventRecord,
+  FillRecord,
+} from "../src/interfaces/event-repository";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock DB

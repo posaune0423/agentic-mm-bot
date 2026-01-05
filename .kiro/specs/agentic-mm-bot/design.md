@@ -414,7 +414,10 @@ interface FeatureEngineService {
 // connect → for-await で非同期ストリームを消費
 const streamClient = new PerpetualStreamClient({ apiUrl: STREAM_URL });
 
-const orderbookStream = streamClient.subscribeToOrderbooks({ marketName: SYMBOL, depth: 1 });
+const orderbookStream = streamClient.subscribeToOrderbooks({
+  marketName: SYMBOL,
+  depth: 1,
+});
 await orderbookStream.connect();
 for await (const update of orderbookStream) {
   /* normalize & emit */
@@ -441,7 +444,11 @@ for await (const update of orderbookStream) {
 {
   "ts": 1749073200000,
   "type": "SNAPSHOT",
-  "data": { "m": "BTC-USD", "b": [{ "p": "97000.5", "q": "0.5" }], "a": [{ "p": "97001.0", "q": "0.3" }] },
+  "data": {
+    "m": "BTC-USD",
+    "b": [{ "p": "97000.5", "q": "0.5" }],
+    "a": [{ "p": "97001.0", "q": "0.3" }]
+  },
   "seq": 12345
 }
 ```
@@ -473,7 +480,17 @@ for await (const update of orderbookStream) {
 ```json
 {
   "ts": 1749073200000,
-  "data": [{ "m": "BTC-USD", "S": "BUY", "tT": "TRADE", "T": 1749073199999, "p": "97000.5", "q": "0.1", "i": 987654 }],
+  "data": [
+    {
+      "m": "BTC-USD",
+      "S": "BUY",
+      "tT": "TRADE",
+      "T": 1749073199999,
+      "p": "97000.5",
+      "q": "0.1",
+      "i": 987654
+    }
+  ],
   "seq": 12346
 }
 ```
@@ -604,7 +621,11 @@ for await (const update of orderbookStream) {
 ##### MarketDataEvent Union型
 
 ```typescript
-export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent;
+export type MarketDataEvent =
+  | BboEvent
+  | TradeEvent
+  | PriceEvent
+  | FundingRateEvent;
 
 export interface BboEvent {
   type: "bbo";
@@ -879,7 +900,11 @@ export function validateProposal(
     const proposed = parseFloat(change.toValue);
     const diffPct = Math.abs((proposed - current) / current) * 100;
     if (diffPct > 10) {
-      return err({ type: "CHANGE_EXCEEDS_10PCT", param: change.param, diffPct });
+      return err({
+        type: "CHANGE_EXCEEDS_10PCT",
+        param: change.param,
+        diffPct,
+      });
     }
   }
 

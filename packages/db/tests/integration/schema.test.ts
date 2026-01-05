@@ -29,7 +29,8 @@ import {
 } from "../../src";
 
 // Test database URL - should point to a test database
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
 const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
 
@@ -38,7 +39,9 @@ describeDb("Database Schema Integration", () => {
 
   beforeAll(async () => {
     if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+      throw new Error(
+        "TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.",
+      );
     }
 
     const url = TEST_DATABASE_URL;
@@ -177,13 +180,25 @@ describeDb("Database Schema Integration", () => {
       const result = await db
         .select()
         .from(latestTop)
-        .where(and(eq(latestTop.exchange, "extended"), eq(latestTop.symbol, "TEST-UPSERT")));
+        .where(
+          and(
+            eq(latestTop.exchange, "extended"),
+            eq(latestTop.symbol, "TEST-UPSERT"),
+          ),
+        );
 
       expect(result).toHaveLength(1);
       expect(result[0].bestBidPx).toBe("99.00");
 
       // Clean up
-      await db.delete(latestTop).where(and(eq(latestTop.exchange, "extended"), eq(latestTop.symbol, "TEST-UPSERT")));
+      await db
+        .delete(latestTop)
+        .where(
+          and(
+            eq(latestTop.exchange, "extended"),
+            eq(latestTop.symbol, "TEST-UPSERT"),
+          ),
+        );
     });
   });
 
@@ -202,7 +217,10 @@ describeDb("Database Schema Integration", () => {
         postOnly: true,
       };
 
-      const result = await db.insert(exOrderEvent).values(testEvent).returning();
+      const result = await db
+        .insert(exOrderEvent)
+        .values(testEvent)
+        .returning();
 
       expect(result).toHaveLength(1);
       expect(result[0].eventType).toBe("place");
@@ -253,7 +271,10 @@ describeDb("Database Schema Integration", () => {
         pauseUntil: null,
       };
 
-      const result = await db.insert(strategyState).values(testState).returning();
+      const result = await db
+        .insert(strategyState)
+        .values(testState)
+        .returning();
 
       expect(result).toHaveLength(1);
       expect(result[0].mode).toBe("PAUSE");

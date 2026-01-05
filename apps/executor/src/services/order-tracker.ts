@@ -7,7 +7,11 @@
  */
 
 import type { Ms, PriceStr, Side, SizeStr } from "@agentic-mm-bot/core";
-import type { FillEvent, OpenOrder, OrderUpdateEvent } from "@agentic-mm-bot/adapters";
+import type {
+  FillEvent,
+  OpenOrder,
+  OrderUpdateEvent,
+} from "@agentic-mm-bot/adapters";
 
 /**
  * Tracked order
@@ -69,7 +73,11 @@ export class OrderTracker {
    * Update from order update event
    */
   updateFromOrderEvent(event: OrderUpdateEvent): void {
-    if (event.status === "cancelled" || event.status === "rejected" || event.status === "filled") {
+    if (
+      event.status === "cancelled" ||
+      event.status === "rejected" ||
+      event.status === "filled"
+    ) {
       this.orders.delete(event.clientOrderId);
     }
   }
@@ -113,21 +121,21 @@ export class OrderTracker {
    * Check if we have active orders on a side
    */
   hasOrderOnSide(side: Side): boolean {
-    return Array.from(this.orders.values()).some(o => o.side === side);
+    return Array.from(this.orders.values()).some((o) => o.side === side);
   }
 
   /**
    * Get bid order (if any)
    */
   getBidOrder(): TrackedOrder | undefined {
-    return Array.from(this.orders.values()).find(o => o.side === "buy");
+    return Array.from(this.orders.values()).find((o) => o.side === "buy");
   }
 
   /**
    * Get ask order (if any)
    */
   getAskOrder(): TrackedOrder | undefined {
-    return Array.from(this.orders.values()).find(o => o.side === "sell");
+    return Array.from(this.orders.values()).find((o) => o.side === "sell");
   }
 
   /**

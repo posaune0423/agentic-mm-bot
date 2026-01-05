@@ -45,7 +45,10 @@ async function main(): Promise<void> {
   const db = getDb(env.DATABASE_URL);
 
   // Initialize services
-  const bboThrottler = new BboThrottler(env.BBO_THROTTLE_MS, env.BBO_MIN_CHANGE_BPS);
+  const bboThrottler = new BboThrottler(
+    env.BBO_THROTTLE_MS,
+    env.BBO_MIN_CHANGE_BPS,
+  );
   const eventWriter = new EventWriter(db);
   const latestStateManager = new LatestStateManager(db);
 
@@ -165,7 +168,7 @@ async function main(): Promise<void> {
   // Set up event handlers
   // ============================================================================
 
-  marketDataAdapter.onEvent(event => {
+  marketDataAdapter.onEvent((event) => {
     switch (event.type) {
       case "bbo":
         handleBbo(event);
@@ -271,7 +274,7 @@ async function main(): Promise<void> {
   logger.info("Ingestor running");
 }
 
-main().catch(error => {
+main().catch((error) => {
   logger.error("Fatal error", error);
   process.exit(1);
 });

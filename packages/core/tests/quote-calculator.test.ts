@@ -158,14 +158,20 @@ describe("generateQuoteIntent", () => {
     const features = createDefaultFeatures();
     const position = createDefaultPosition();
 
-    const result = generateQuoteIntent(params, features, position, ["NORMAL_CONDITIONS"]);
+    const result = generateQuoteIntent(params, features, position, [
+      "NORMAL_CONDITIONS",
+    ]);
 
     expect(result.type).toBe("QUOTE");
     expect(result.postOnly).toBe(true);
-    const expectedSize = (parseFloat(params.quoteSizeUsd) / parseFloat(features.midPx)).toFixed(6);
+    const expectedSize = (
+      parseFloat(params.quoteSizeUsd) / parseFloat(features.midPx)
+    ).toFixed(6);
     expect(result.size).toBe(expectedSize);
     expect(result.reasonCodes).toContain("NORMAL_CONDITIONS");
     expect(parseFloat(result.bidPx)).toBeLessThan(parseFloat(features.midPx));
-    expect(parseFloat(result.askPx)).toBeGreaterThan(parseFloat(features.midPx));
+    expect(parseFloat(result.askPx)).toBeGreaterThan(
+      parseFloat(features.midPx),
+    );
   });
 });

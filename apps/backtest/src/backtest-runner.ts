@@ -19,11 +19,19 @@ import {
 import type { MarketDataRepository } from "@agentic-mm-bot/repositories";
 import { logger } from "@agentic-mm-bot/utils";
 
-import { loadMarketData, mergeToEventStream, type MarketEvent } from "./data/event-stream";
+import {
+  loadMarketData,
+  mergeToEventStream,
+  type MarketEvent,
+} from "./data/event-stream";
 import { MarketDataState } from "./data/market-data-state";
 import { SimExecution } from "./sim/sim-execution";
 import { executeSimActions, planSimActions } from "./sim/action-planner";
-import { calculateAverageMarkout, enrichFillsWithMarkout, type EnrichedFill } from "./report/markout";
+import {
+  calculateAverageMarkout,
+  enrichFillsWithMarkout,
+  type EnrichedFill,
+} from "./report/markout";
 import { writeFillsCsv } from "./report/csv-writer";
 
 /**
@@ -58,8 +66,19 @@ export interface BacktestResults {
  * @param config - Backtest configuration
  * @returns Backtest results
  */
-export async function runBacktest(repo: MarketDataRepository, config: BacktestConfig): Promise<BacktestResults> {
-  const { exchange, symbol, startTime, endTime, tickIntervalMs, params, outputCsvPath } = config;
+export async function runBacktest(
+  repo: MarketDataRepository,
+  config: BacktestConfig,
+): Promise<BacktestResults> {
+  const {
+    exchange,
+    symbol,
+    startTime,
+    endTime,
+    tickIntervalMs,
+    params,
+    outputCsvPath,
+  } = config;
 
   // Step 1: Load market data
   logger.info("Loading market data", {
@@ -69,7 +88,12 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
     endTime: endTime.toISOString(),
   });
 
-  const marketData = await loadMarketData(repo, { exchange, symbol, startTime, endTime });
+  const marketData = await loadMarketData(repo, {
+    exchange,
+    symbol,
+    startTime,
+    endTime,
+  });
 
   logger.info("Data loaded", {
     bboCount: marketData.bboData.length,
@@ -90,7 +114,10 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   // Step 3: Initialize state
   const marketState = new MarketDataState(exchange, symbol);
   const simExec = new SimExecution();
-  let strategyState: StrategyState = createInitialState(startTime.getTime(), "NORMAL");
+  let strategyState: StrategyState = createInitialState(
+    startTime.getTime(),
+    "NORMAL",
+  );
 
   // Step 4: Run fixed-tick simulation
   const startMs = startTime.getTime();
@@ -102,7 +129,10 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
 
   for (let tickMs = startMs; tickMs <= endMs; tickMs += tickIntervalMs) {
     // Process all events up to current tick time
-    while (eventIndex < events.length && events[eventIndex].ts.getTime() <= tickMs) {
+    while (
+      eventIndex < events.length &&
+      events[eventIndex].ts.getTime() <= tickMs
+    ) {
       const event = events[eventIndex];
       processEvent(event, marketState);
       eventIndex++;
@@ -120,7 +150,12 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
     const recentTrades = marketState.getTradesInWindow(tickMs, tickIntervalMs);
 
     // Check for touch fills before decision
-    const fills = simExec.checkTouchFill(recentTrades, marketState.getMidPx(), strategyState.mode, []);
+    const fills = simExec.checkTouchFill(
+      recentTrades,
+      marketState.getMidPx(),
+      strategyState.mode,
+      [],
+    );
 
     if (fills.length > 0) {
       logger.debug("Touch fills executed", { count: fills.length });
@@ -135,7 +170,13 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
     const midSnapshots10s = marketState.getMidSnapshotsInWindow(tickMs, 10_000);
 
     // Compute features
-    const features = computeFeatures(snapshot, trades1s, trades10s, midSnapshots10s, params);
+    const features = computeFeatures(
+      snapshot,
+      trades1s,
+      trades10s,
+      midSnapshots10s,
+      params,
+    );
 
     // Get position
     const position = simExec.getPosition();
@@ -159,7 +200,14 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
 
     // Plan and execute actions
     for (const intent of output.intents) {
-      const actions = planSimActions(intent, simExec, lastQuoteMs, tickMs, params, features.midPx);
+      const actions = planSimActions(
+        intent,
+        simExec,
+        lastQuoteMs,
+        tickMs,
+        params,
+        features.midPx,
+      );
       executeSimActions(actions, simExec, tickMs);
 
       // Update last quote time if we placed orders
@@ -171,7 +219,10 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
 
   // Step 5: Calculate markout for fills
   logger.info("Calculating markout for fills");
-  const enrichedFills = enrichFillsWithMarkout(simExec.getFills(), marketData.bboData);
+  const enrichedFills = enrichFillsWithMarkout(
+    simExec.getFills(),
+    marketData.bboData,
+  );
   const avgMarkout = calculateAverageMarkout(enrichedFills);
 
   // Step 6: Output CSV if path specified
