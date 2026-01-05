@@ -16,7 +16,7 @@
   "dependencies": {
     "@agentic-mm-bot/db": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
-    "@t3-oss/env-core": "^0.13.10",
+    "@t3-oss/env-core": "catalog:tooling",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",

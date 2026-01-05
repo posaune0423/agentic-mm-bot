@@ -25,7 +25,8 @@
         "prettier": "latest",
         "prettier-plugin-organize-imports": "latest",
         "prettier-plugin-tailwindcss": "latest",
-        "typescript": "latest"
+        "typescript": "latest",
+        "@t3-oss/env-core": "latest"
       }
     }
   },
