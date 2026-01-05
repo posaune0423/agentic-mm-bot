@@ -621,11 +621,7 @@ for await (const update of orderbookStream) {
 ##### MarketDataEvent Union型
 
 ```typescript
-export type MarketDataEvent =
-  | BboEvent
-  | TradeEvent
-  | PriceEvent
-  | FundingRateEvent;
+export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent;
 
 export interface BboEvent {
   type: "bbo";

@@ -58,9 +58,7 @@ function parseModelString(modelString: string): {
 } {
   const parts = modelString.split("/");
   if (parts.length < 2) {
-    throw new Error(
-      `Invalid model string: ${modelString}. Expected format: provider/model-name`,
-    );
+    throw new Error(`Invalid model string: ${modelString}. Expected format: provider/model-name`);
   }
   return {
     provider: parts[0],

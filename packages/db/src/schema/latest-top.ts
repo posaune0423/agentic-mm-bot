@@ -6,13 +6,7 @@
  * - Composite PK: (exchange, symbol)
  */
 
-import {
-  numeric,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 export const latestTop = pgTable(
   "latest_top",
@@ -27,11 +21,9 @@ export const latestTop = pgTable(
     midPx: numeric("mid_px").notNull(),
     markPx: numeric("mark_px"),
     indexPx: numeric("index_px"),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.exchange, table.symbol] })],
+  table => [primaryKey({ columns: [table.exchange, table.symbol] })],
 );
 
 export type LatestTop = typeof latestTop.$inferSelect;

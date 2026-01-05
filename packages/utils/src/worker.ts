@@ -88,7 +88,7 @@ export function createIntervalWorker(options: WorkerOptions): void {
       try {
         await Promise.race([
           runningPromise,
-          new Promise<void>((resolve) => {
+          new Promise<void>(resolve => {
             setTimeout(() => {
               resolve();
             }, 5000); // 5 second timeout

@@ -7,15 +7,7 @@
  * - Reference price is mid (9.2)
  */
 
-import {
-  index,
-  integer,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { exFill } from "./ex-fill";
 
@@ -54,16 +46,10 @@ export const fillsEnriched = pgTable(
     // Context
     state: text("state").notNull(),
     paramsSetId: uuid("params_set_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
-  (table) => [
-    index("fills_enriched_exchange_symbol_ts_idx").on(
-      table.exchange,
-      table.symbol,
-      table.ts.desc(),
-    ),
+  table => [
+    index("fills_enriched_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc()),
     index("fills_enriched_fill_id_idx").on(table.fillId),
   ],
 );

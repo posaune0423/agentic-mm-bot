@@ -8,23 +8,10 @@
 import { eq, and, gte, lte, asc, count, sql } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
-import {
-  fillsEnriched,
-  exOrderEvent,
-  strategyState,
-  strategyParams,
-  type Db,
-} from "@agentic-mm-bot/db";
+import { fillsEnriched, exOrderEvent, strategyState, strategyParams, type Db } from "@agentic-mm-bot/db";
 
-import type {
-  MetricsRepository,
-  MetricsRepositoryError,
-} from "../interfaces/metrics-repository";
-import type {
-  HourlyAggregation,
-  CurrentParamsSummary,
-  WorstFillSummary,
-} from "../types";
+import type { MetricsRepository, MetricsRepositoryError } from "../interfaces/metrics-repository";
+import type { HourlyAggregation, CurrentParamsSummary, WorstFillSummary } from "../types";
 
 export function createPostgresMetricsRepository(db: Db): MetricsRepository {
   return {
@@ -99,12 +86,9 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
           `);
 
           const percentiles = percentilesResult.rows[0];
-          const markout10sP10 =
-            percentiles.p10 ? parseFloat(percentiles.p10) : null;
-          const markout10sP50 =
-            percentiles.p50 ? parseFloat(percentiles.p50) : null;
-          const markout10sP90 =
-            percentiles.p90 ? parseFloat(percentiles.p90) : null;
+          const markout10sP10 = percentiles.p10 ? parseFloat(percentiles.p10) : null;
+          const markout10sP50 = percentiles.p50 ? parseFloat(percentiles.p50) : null;
+          const markout10sP90 = percentiles.p90 ? parseFloat(percentiles.p90) : null;
 
           // Get worst fills
           const worstFillsResult = await db
@@ -128,17 +112,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             .orderBy(asc(fillsEnriched.markout10sBps))
             .limit(5);
 
-          const worstFills: WorstFillSummary[] = worstFillsResult.map(
-            (row) => ({
-              fillId: row.id,
-              ts: row.ts,
-              side: row.side,
-              fillPx: row.fillPx,
-              fillSz: row.fillSz,
-              markout10sBps:
-                row.markout10sBps ? parseFloat(row.markout10sBps) : null,
-            }),
-          );
+          const worstFills: WorstFillSummary[] = worstFillsResult.map(row => ({
+            fillId: row.id,
+            ts: row.ts,
+            side: row.side,
+            fillPx: row.fillPx,
+            fillSz: row.fillSz,
+            markout10sBps: row.markout10sBps ? parseFloat(row.markout10sBps) : null,
+          }));
 
           return {
             windowStart,
@@ -152,17 +133,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             worstFills,
           };
         })(),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
       );
     },
 
-    getCurrentParams(
-      exchange: string,
-      symbol: string,
-    ): ResultAsync<CurrentParamsSummary, MetricsRepositoryError> {
+    getCurrentParams(exchange: string, symbol: string): ResultAsync<CurrentParamsSummary, MetricsRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .select()
@@ -175,11 +153,11 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             ),
           )
           .limit(1),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
-      ).andThen((rows) => {
+      ).andThen(rows => {
         if (rows.length === 0) {
           // Fallback to default params if not found (Requirement: Work with empty DB)
           return ResultAsync.fromSafePromise(
@@ -246,19 +224,18 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
           )
           .orderBy(asc(fillsEnriched.markout10sBps))
           .limit(limit),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
-      ).map((rows) =>
-        rows.map((row) => ({
+      ).map(rows =>
+        rows.map(row => ({
           fillId: row.id,
           ts: row.ts,
           side: row.side,
           fillPx: row.fillPx,
           fillSz: row.fillSz,
-          markout10sBps:
-            row.markout10sBps ? parseFloat(row.markout10sBps) : null,
+          markout10sBps: row.markout10sBps ? parseFloat(row.markout10sBps) : null,
         })),
       );
     },

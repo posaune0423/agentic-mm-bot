@@ -14,15 +14,8 @@ import { resolve } from "path";
 // Load .env from project root (three levels up from apps/executor)
 config({ path: resolve(process.cwd(), "../../.env") });
 
-import {
-  createInitialState,
-  type StrategyParams,
-  type StrategyState,
-} from "@agentic-mm-bot/core";
-import {
-  ExtendedExecutionAdapter,
-  ExtendedMarketDataAdapter,
-} from "@agentic-mm-bot/adapters";
+import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
+import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
@@ -31,10 +24,7 @@ import { MarketDataCache } from "./services/market-data-cache";
 import { OrderTracker } from "./services/order-tracker";
 import { PositionTracker } from "./services/position-tracker";
 import { executeTick } from "./usecases/decision-cycle";
-import {
-  createPostgresStrategyStateRepository,
-  createPostgresEventRepository,
-} from "@agentic-mm-bot/repositories";
+import { createPostgresStrategyStateRepository, createPostgresEventRepository } from "@agentic-mm-bot/repositories";
 
 /**
  * Main executor function
@@ -84,10 +74,7 @@ async function main(): Promise<void> {
     orderTracker.syncFromOpenOrders(openOrdersResult.value);
     logger.info("Synced open orders", { count: openOrdersResult.value.length });
   } else {
-    logger.warn(
-      "Failed to sync open orders, proceeding with empty tracker",
-      openOrdersResult.error,
-    );
+    logger.warn("Failed to sync open orders, proceeding with empty tracker", openOrdersResult.error);
   }
 
   // TODO: Load from DB or use defaults
@@ -106,10 +93,7 @@ async function main(): Promise<void> {
 
   // Load last state from DB or initialize (Requirement 4.11)
   let state: StrategyState;
-  const savedState = await strategyStateRepo.getLatest(
-    env.EXCHANGE,
-    env.SYMBOL,
-  );
+  const savedState = await strategyStateRepo.getLatest(env.EXCHANGE, env.SYMBOL);
 
   if (savedState.isOk() && savedState.value) {
     logger.info("Restored state from DB", {
@@ -128,7 +112,7 @@ async function main(): Promise<void> {
   }
 
   // Set up market data event handlers
-  marketDataAdapter.onEvent((event) => {
+  marketDataAdapter.onEvent(event => {
     switch (event.type) {
       case "bbo":
         marketDataCache.updateBbo(event);
@@ -152,7 +136,7 @@ async function main(): Promise<void> {
   });
 
   // Set up execution event handlers
-  executionAdapter.onEvent((event) => {
+  executionAdapter.onEvent(event => {
     switch (event.type) {
       case "fill":
         orderTracker.updateFromFill(event);
@@ -225,10 +209,7 @@ async function main(): Promise<void> {
   logger.info("Connecting to private stream...");
   const privateResult = await executionAdapter.connectPrivateStream();
   if (privateResult.isErr()) {
-    logger.warn(
-      "Failed to connect to private stream, using REST fallback",
-      privateResult.error,
-    );
+    logger.warn("Failed to connect to private stream, using REST fallback", privateResult.error);
   }
 
   // Tick loop
@@ -257,7 +238,7 @@ async function main(): Promise<void> {
           positionTracker,
           executionPort: executionAdapter,
           params,
-          onStateChange: (newState) => {
+          onStateChange: newState => {
             logger.info("State changed", {
               from: state.mode,
               to: newState.mode,
@@ -331,7 +312,7 @@ async function main(): Promise<void> {
 }
 
 // Run
-main().catch((error) => {
+main().catch(error => {
   logger.error("Fatal error", error);
   process.exit(1);
 });

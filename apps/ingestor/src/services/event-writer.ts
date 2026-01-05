@@ -69,11 +69,7 @@ export class EventWriter {
     return this.deadLetterBuffer.length;
   }
 
-  private async flushWithRetry(
-    table: MdTable,
-    events: readonly MdInsert[],
-    maxRetries = 3,
-  ): Promise<void> {
+  private async flushWithRetry(table: MdTable, events: readonly MdInsert[], maxRetries = 3): Promise<void> {
     if (events.length === 0) return;
 
     let lastError: unknown = null;
@@ -81,17 +77,11 @@ export class EventWriter {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         if (table === mdBbo) {
-          await this.db
-            .insert(mdBbo)
-            .values(events as (typeof mdBbo.$inferInsert)[]);
+          await this.db.insert(mdBbo).values(events as (typeof mdBbo.$inferInsert)[]);
         } else if (table === mdTrade) {
-          await this.db
-            .insert(mdTrade)
-            .values(events as (typeof mdTrade.$inferInsert)[]);
+          await this.db.insert(mdTrade).values(events as (typeof mdTrade.$inferInsert)[]);
         } else {
-          await this.db
-            .insert(mdPrice)
-            .values(events as (typeof mdPrice.$inferInsert)[]);
+          await this.db.insert(mdPrice).values(events as (typeof mdPrice.$inferInsert)[]);
         }
         return;
       } catch (error: unknown) {
@@ -212,9 +202,7 @@ export class EventWriter {
     // attempt: 1 -> 100ms, 2 -> 200ms, 3 -> 400ms ...
     const base = this.retryBaseDelayMs * 2 ** (attempt - 1);
     // up to 25% jitter
-    const jitter = Math.floor(
-      Math.random() * Math.max(1, Math.floor(base * 0.25)),
-    );
+    const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(base * 0.25)));
     return base + jitter;
   }
 
@@ -244,10 +232,7 @@ export class EventWriter {
 
 type MdTable = typeof mdBbo | typeof mdTrade | typeof mdPrice;
 
-type MdInsert =
-  | typeof mdBbo.$inferInsert
-  | typeof mdTrade.$inferInsert
-  | typeof mdPrice.$inferInsert;
+type MdInsert = typeof mdBbo.$inferInsert | typeof mdTrade.$inferInsert | typeof mdPrice.$inferInsert;
 
 type DeadLetterEntry =
   | {
@@ -276,5 +261,5 @@ function getTableName(table: MdTable): DeadLetterEntry["table"] {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

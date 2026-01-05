@@ -69,10 +69,7 @@ export async function calculateTradeImbalance1s(
   for (const trade of trades) {
     const sz = parseFloat(trade.sz);
     // Use explicit side if available, otherwise infer from price vs mid
-    const isBuy =
-      trade.side ?
-        trade.side.toLowerCase() === "buy"
-      : parseFloat(trade.px) >= mid;
+    const isBuy = trade.side ? trade.side.toLowerCase() === "buy" : parseFloat(trade.px) >= mid;
 
     if (isBuy) {
       buyVol += sz;
@@ -96,12 +93,7 @@ export async function calculateTradeImbalance1s(
  *
  * Count trades with type in ('liq', 'delev')
  */
-export async function calculateLiqCount10s(
-  db: Db,
-  exchange: string,
-  symbol: string,
-  t0: Date,
-): Promise<number> {
+export async function calculateLiqCount10s(db: Db, exchange: string, symbol: string, t0: Date): Promise<number> {
   const windowStart = new Date(t0.getTime() - 10_000);
 
   const result = await db
@@ -170,14 +162,7 @@ export async function calculateRealizedVol10s(
       ts: mdBbo.ts,
     })
     .from(mdBbo)
-    .where(
-      and(
-        eq(mdBbo.exchange, exchange),
-        eq(mdBbo.symbol, symbol),
-        gte(mdBbo.ts, windowStart),
-        lte(mdBbo.ts, t0),
-      ),
-    )
+    .where(and(eq(mdBbo.exchange, exchange), eq(mdBbo.symbol, symbol), gte(mdBbo.ts, windowStart), lte(mdBbo.ts, t0)))
     .orderBy(asc(mdBbo.ts))
     .limit(2000); // Cap to prevent excessive memory
 
@@ -198,9 +183,7 @@ export async function calculateRealizedVol10s(
 
   // Calculate standard deviation
   const mean = logReturns.reduce((a, b) => a + b, 0) / logReturns.length;
-  const variance =
-    logReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) /
-    (logReturns.length - 1);
+  const variance = logReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (logReturns.length - 1);
   const stdDev = Math.sqrt(variance);
 
   return stdDev.toFixed(8);
@@ -222,12 +205,11 @@ export async function calculateAllFeatures(
   markPx: string | null,
   indexPx: string | null,
 ): Promise<FeatureResult> {
-  const [tradeImbalance1sT0, liqCount10sT0, realizedVol10sT0] =
-    await Promise.all([
-      calculateTradeImbalance1s(db, exchange, symbol, t0, midT0),
-      calculateLiqCount10s(db, exchange, symbol, t0),
-      calculateRealizedVol10s(db, exchange, symbol, t0),
-    ]);
+  const [tradeImbalance1sT0, liqCount10sT0, realizedVol10sT0] = await Promise.all([
+    calculateTradeImbalance1s(db, exchange, symbol, t0, midT0),
+    calculateLiqCount10s(db, exchange, symbol, t0),
+    calculateRealizedVol10s(db, exchange, symbol, t0),
+  ]);
 
   const markIndexDivBpsT0 = calculateMarkIndexDivBps(markPx, indexPx, midT0);
 

@@ -19,15 +19,11 @@ export const env = createEnv({
     DATABASE_URL: z.url(),
 
     // Logging
-    LOG_LEVEL: z
-      .enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"])
-      .default("INFO"),
+    LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
     LOG_DIR: z.string().default("./logs"),
 
     // Application
-    APP_ENV: z
-      .enum(["development", "test", "production"])
-      .default("development"),
+    APP_ENV: z.enum(["development", "test", "production"]).default("development"),
 
     // Trading
     EXCHANGE: z.string().default("extended"),

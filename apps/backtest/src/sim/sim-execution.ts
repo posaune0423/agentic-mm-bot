@@ -7,15 +7,7 @@
  * - Fill price is the order price (not trade price)
  */
 
-import type {
-  Ms,
-  Position,
-  PriceStr,
-  Side,
-  SizeStr,
-  StrategyMode,
-  ReasonCode,
-} from "@agentic-mm-bot/core";
+import type { Ms, Position, PriceStr, Side, SizeStr, StrategyMode, ReasonCode } from "@agentic-mm-bot/core";
 import type { TradeData } from "@agentic-mm-bot/core";
 
 /**
@@ -119,12 +111,7 @@ export class SimExecution {
    * - BUY: trade_px <= bid_px → fill
    * - SELL: trade_px >= ask_px → fill
    */
-  checkTouchFill(
-    trades: TradeData[],
-    midPx: PriceStr,
-    mode: StrategyMode,
-    reasonCodes: ReasonCode[],
-  ): SimFill[] {
+  checkTouchFill(trades: TradeData[], midPx: PriceStr, mode: StrategyMode, reasonCodes: ReasonCode[]): SimFill[] {
     const newFills: SimFill[] = [];
 
     for (const trade of trades) {
@@ -135,13 +122,7 @@ export class SimExecution {
         const bidPrice = parseFloat(this.bidOrder.price);
         if (tradePx <= bidPrice) {
           // Fill at order price (maker)
-          const fill = this.executeFill(
-            this.bidOrder,
-            new Date(trade.ts),
-            midPx,
-            mode,
-            reasonCodes,
-          );
+          const fill = this.executeFill(this.bidOrder, new Date(trade.ts), midPx, mode, reasonCodes);
           newFills.push(fill);
           this.bidOrder = undefined;
         }
@@ -152,13 +133,7 @@ export class SimExecution {
         const askPrice = parseFloat(this.askOrder.price);
         if (tradePx >= askPrice) {
           // Fill at order price (maker)
-          const fill = this.executeFill(
-            this.askOrder,
-            new Date(trade.ts),
-            midPx,
-            mode,
-            reasonCodes,
-          );
+          const fill = this.executeFill(this.askOrder, new Date(trade.ts), midPx, mode, reasonCodes);
           newFills.push(fill);
           this.askOrder = undefined;
         }

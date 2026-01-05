@@ -11,17 +11,7 @@ import type { EnrichedFill } from "./markout";
 /**
  * CSV header columns
  */
-const CSV_HEADERS = [
-  "ts",
-  "side",
-  "order_px",
-  "sz",
-  "mid_t0",
-  "mid_t10s",
-  "markout_10s_bps",
-  "mode",
-  "reason_codes",
-];
+const CSV_HEADERS = ["ts", "side", "order_px", "sz", "mid_t0", "mid_t10s", "markout_10s_bps", "mode", "reason_codes"];
 
 /**
  * Format a date to ISO string

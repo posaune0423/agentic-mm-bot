@@ -9,11 +9,7 @@
 
 import type { Ms, PriceStr, Snapshot, SizeStr } from "@agentic-mm-bot/core";
 import type { MidSnapshot, TradeData } from "@agentic-mm-bot/core";
-import type {
-  BboEvent,
-  PriceEvent,
-  TradeEvent,
-} from "@agentic-mm-bot/adapters";
+import type { BboEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
 const MID_SNAPSHOTS_WINDOW_MS = 10_000; // 10 seconds
@@ -110,7 +106,7 @@ export class MarketDataCache {
    */
   getTradesInWindow(nowMs: Ms, windowMs: Ms): TradeData[] {
     const cutoff = nowMs - windowMs;
-    return this.trades.filter((t) => t.ts >= cutoff);
+    return this.trades.filter(t => t.ts >= cutoff);
   }
 
   /**
@@ -118,18 +114,14 @@ export class MarketDataCache {
    */
   getMidSnapshotsInWindow(nowMs: Ms, windowMs: Ms): MidSnapshot[] {
     const cutoff = nowMs - windowMs;
-    return this.midSnapshots.filter((s) => s.ts >= cutoff);
+    return this.midSnapshots.filter(s => s.ts >= cutoff);
   }
 
   /**
    * Check if we have valid data
    */
   hasValidData(): boolean {
-    return (
-      this.lastUpdateMs > 0 &&
-      parseFloat(this.bestBidPx) > 0 &&
-      parseFloat(this.bestAskPx) > 0
-    );
+    return this.lastUpdateMs > 0 && parseFloat(this.bestBidPx) > 0 && parseFloat(this.bestAskPx) > 0;
   }
 
   /**
@@ -139,7 +131,7 @@ export class MarketDataCache {
     const tradeCutoff = nowMs - TRADES_WINDOW_MS;
     const midCutoff = nowMs - MID_SNAPSHOTS_WINDOW_MS;
 
-    this.trades = this.trades.filter((t) => t.ts >= tradeCutoff);
-    this.midSnapshots = this.midSnapshots.filter((s) => s.ts >= midCutoff);
+    this.trades = this.trades.filter(t => t.ts >= tradeCutoff);
+    this.midSnapshots = this.midSnapshots.filter(s => s.ts >= midCutoff);
   }
 }

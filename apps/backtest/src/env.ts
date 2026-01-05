@@ -17,9 +17,7 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
-    LOG_LEVEL: z
-      .enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"])
-      .default("INFO"),
+    LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
     EXCHANGE: z.string().default("extended"),
     SYMBOL: z.string(),
     START_TIME: z.coerce.date(),

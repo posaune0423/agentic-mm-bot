@@ -6,16 +6,7 @@
  * - (exchange, symbol, ts DESC) index for efficient queries
  */
 
-import {
-  bigint,
-  index,
-  jsonb,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const mdBbo = pgTable(
   "md_bbo",
@@ -30,18 +21,10 @@ export const mdBbo = pgTable(
     bestAskSz: numeric("best_ask_sz").notNull(),
     midPx: numeric("mid_px").notNull(),
     seq: bigint("seq", { mode: "number" }),
-    ingestTs: timestamp("ingest_ts", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    ingestTs: timestamp("ingest_ts", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     rawJson: jsonb("raw_json"),
   },
-  (table) => [
-    index("md_bbo_exchange_symbol_ts_idx").on(
-      table.exchange,
-      table.symbol,
-      table.ts.desc(),
-    ),
-  ],
+  table => [index("md_bbo_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc())],
 );
 
 export type MdBbo = typeof mdBbo.$inferSelect;

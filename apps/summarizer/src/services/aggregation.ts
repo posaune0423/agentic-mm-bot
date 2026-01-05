@@ -8,12 +8,7 @@
  */
 
 import { eq, and, gte, lte, sql, asc, count } from "drizzle-orm";
-import {
-  fillsEnriched,
-  exOrderEvent,
-  strategyState,
-  type Db,
-} from "@agentic-mm-bot/db";
+import { fillsEnriched, exOrderEvent, strategyState, type Db } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,7 +80,7 @@ export async function getWorstFills(
     .orderBy(asc(fillsEnriched.markout10sBps)) // Most negative first
     .limit(limit);
 
-  return result.map((row) => ({
+  return result.map(row => ({
     fillId: row.fillId, // Now correctly returns ex_fill.id reference
     ts: row.ts,
     side: row.side,
@@ -180,13 +175,7 @@ export async function getAggregation(
   const markout10sP90 = p90 ? parseFloat(p90) : null;
 
   // Get worst fills
-  const worstFills = await getWorstFills(
-    db,
-    exchange,
-    symbol,
-    windowStart,
-    windowEnd,
-  );
+  const worstFills = await getWorstFills(db, exchange, symbol, windowStart, windowEnd);
 
   return {
     windowStart,
@@ -214,24 +203,10 @@ export async function generate1MinAggregation(
   symbol: string,
 ): Promise<AggregationResult | null> {
   const now = new Date();
-  const windowEnd = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    now.getHours(),
-    now.getMinutes(),
-    0,
-    0,
-  );
+  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0, 0);
   const windowStart = new Date(windowEnd.getTime() - 60_000);
 
-  const agg = await getAggregation(
-    db,
-    exchange,
-    symbol,
-    windowStart,
-    windowEnd,
-  );
+  const agg = await getAggregation(db, exchange, symbol, windowStart, windowEnd);
 
   if (agg.fillsCount > 0 || agg.cancelCount > 0 || agg.pauseCount > 0) {
     logger.info("1-minute aggregation", {
@@ -256,24 +231,10 @@ export async function generate1HourAggregation(
   symbol: string,
 ): Promise<AggregationResult | null> {
   const now = new Date();
-  const windowEnd = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    now.getHours(),
-    0,
-    0,
-    0,
-  );
+  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
   const windowStart = new Date(windowEnd.getTime() - 3600_000);
 
-  const agg = await getAggregation(
-    db,
-    exchange,
-    symbol,
-    windowStart,
-    windowEnd,
-  );
+  const agg = await getAggregation(db, exchange, symbol, windowStart, windowEnd);
 
   if (agg.fillsCount > 0 || agg.cancelCount > 0 || agg.pauseCount > 0) {
     logger.info("1-hour aggregation", {

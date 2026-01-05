@@ -27,16 +27,12 @@ export const ExtendedConfigSchema = z.object({
   /**
    * Stark private key (hex string)
    */
-  starkPrivateKey: z
-    .string()
-    .regex(/^0x[a-fA-F0-9]+$/, "Must be a hex string starting with 0x"),
+  starkPrivateKey: z.string().regex(/^0x[a-fA-F0-9]+$/, "Must be a hex string starting with 0x"),
 
   /**
    * Stark public key (hex string)
    */
-  starkPublicKey: z
-    .string()
-    .regex(/^0x[a-fA-F0-9]+$/, "Must be a hex string starting with 0x"),
+  starkPublicKey: z.string().regex(/^0x[a-fA-F0-9]+$/, "Must be a hex string starting with 0x"),
 
   /**
    * API key from Extended Exchange
@@ -87,10 +83,7 @@ export interface ExtendedWsPriceMessage {
   };
 }
 
-export type ExtendedWsMessage =
-  | ExtendedWsBboMessage
-  | ExtendedWsTradeMessage
-  | ExtendedWsPriceMessage;
+export type ExtendedWsMessage = ExtendedWsBboMessage | ExtendedWsTradeMessage | ExtendedWsPriceMessage;
 
 /**
  * Account stream data for private WebSocket

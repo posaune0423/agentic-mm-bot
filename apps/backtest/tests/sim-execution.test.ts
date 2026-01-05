@@ -20,9 +20,7 @@ describe("SimExecution", () => {
       simExec.placeBid("100", "1", 1000);
 
       // Trade at 99 (below bid) should trigger fill
-      const trades: TradeData[] = [
-        { ts: 2000, px: "99", sz: "0.5", side: "sell" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "99", sz: "0.5", side: "sell" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 
@@ -36,9 +34,7 @@ describe("SimExecution", () => {
       const simExec = new SimExecution();
       simExec.placeBid("100", "1", 1000);
 
-      const trades: TradeData[] = [
-        { ts: 2000, px: "100", sz: "0.5", side: "sell" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "100", sz: "0.5", side: "sell" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 
@@ -50,9 +46,7 @@ describe("SimExecution", () => {
       const simExec = new SimExecution();
       simExec.placeBid("100", "1", 1000);
 
-      const trades: TradeData[] = [
-        { ts: 2000, px: "101", sz: "0.5", side: "sell" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "101", sz: "0.5", side: "sell" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 
@@ -68,9 +62,7 @@ describe("SimExecution", () => {
       simExec.placeAsk("101", "1", 1000);
 
       // Trade at 102 (above ask) should trigger fill
-      const trades: TradeData[] = [
-        { ts: 2000, px: "102", sz: "0.5", side: "buy" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "102", sz: "0.5", side: "buy" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 
@@ -84,9 +76,7 @@ describe("SimExecution", () => {
       const simExec = new SimExecution();
       simExec.placeAsk("101", "1", 1000);
 
-      const trades: TradeData[] = [
-        { ts: 2000, px: "101", sz: "0.5", side: "buy" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "101", sz: "0.5", side: "buy" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 
@@ -98,9 +88,7 @@ describe("SimExecution", () => {
       const simExec = new SimExecution();
       simExec.placeAsk("101", "1", 1000);
 
-      const trades: TradeData[] = [
-        { ts: 2000, px: "100", sz: "0.5", side: "buy" },
-      ];
+      const trades: TradeData[] = [{ ts: 2000, px: "100", sz: "0.5", side: "buy" }];
 
       const fills = simExec.checkTouchFill(trades, "100.5", "NORMAL", []);
 

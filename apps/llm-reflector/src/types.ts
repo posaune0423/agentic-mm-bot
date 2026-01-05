@@ -5,17 +5,10 @@
  */
 
 import type { ParamProposal, RollbackConditions } from "@agentic-mm-bot/core";
-import type {
-  HourlyAggregation,
-  CurrentParamsSummary,
-} from "@agentic-mm-bot/repositories";
+import type { HourlyAggregation, CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
 // Re-export shared types from repositories package
-export type {
-  HourlyAggregation,
-  CurrentParamsSummary,
-  WorstFillSummary,
-} from "@agentic-mm-bot/repositories";
+export type { HourlyAggregation, CurrentParamsSummary, WorstFillSummary } from "@agentic-mm-bot/repositories";
 
 /**
  * LLM input summary

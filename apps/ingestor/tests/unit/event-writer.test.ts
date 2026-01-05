@@ -19,9 +19,7 @@ type InsertCall = { table: unknown; values: unknown[] };
 class FakeDb {
   readonly calls: InsertCall[] = [];
 
-  constructor(
-    private readonly impl: (table: unknown, values: unknown[]) => Promise<void>,
-  ) {}
+  constructor(private readonly impl: (table: unknown, values: unknown[]) => Promise<void>) {}
 
   insert(table: unknown): { values: (values: unknown[]) => Promise<void> } {
     return {
@@ -63,7 +61,7 @@ describe("EventWriter", () => {
 
   test("flush should retry and eventually succeed", async () => {
     let tradeAttempts = 0;
-    const fakeDb = new FakeDb(async (table) => {
+    const fakeDb = new FakeDb(async table => {
       if (table !== mdTrade) return;
       tradeAttempts++;
       if (tradeAttempts < 3) throw new Error("temporary failure");
@@ -90,7 +88,7 @@ describe("EventWriter", () => {
 
   test("flush should move events to dead letter after max retries", async () => {
     let priceAttempts = 0;
-    const fakeDb = new FakeDb(async (table) => {
+    const fakeDb = new FakeDb(async table => {
       if (table !== mdPrice) return;
       priceAttempts++;
       throw new Error("permanent failure");
@@ -119,10 +117,10 @@ describe("EventWriter", () => {
     let resolveBbo: (() => void) | null = null;
     let bboAttempts = 0;
 
-    const fakeDb = new FakeDb(async (table) => {
+    const fakeDb = new FakeDb(async table => {
       if (table !== mdBbo) return;
       bboAttempts++;
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         resolveBbo = resolve;
       });
     });

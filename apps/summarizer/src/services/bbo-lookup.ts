@@ -72,14 +72,7 @@ export async function findClosestBbo(
       ts: mdBbo.ts,
     })
     .from(mdBbo)
-    .where(
-      and(
-        eq(mdBbo.exchange, exchange),
-        eq(mdBbo.symbol, symbol),
-        gte(mdBbo.ts, minTs),
-        lte(mdBbo.ts, maxTs),
-      ),
-    )
+    .where(and(eq(mdBbo.exchange, exchange), eq(mdBbo.symbol, symbol), gte(mdBbo.ts, minTs), lte(mdBbo.ts, maxTs)))
     .orderBy(sql`ABS(EXTRACT(EPOCH FROM ${mdBbo.ts}) - ${targetEpoch})`)
     .limit(1);
 
@@ -126,12 +119,7 @@ export async function findClosestPrice(
     })
     .from(mdPrice)
     .where(
-      and(
-        eq(mdPrice.exchange, exchange),
-        eq(mdPrice.symbol, symbol),
-        gte(mdPrice.ts, minTs),
-        lte(mdPrice.ts, maxTs),
-      ),
+      and(eq(mdPrice.exchange, exchange), eq(mdPrice.symbol, symbol), gte(mdPrice.ts, minTs), lte(mdPrice.ts, maxTs)),
     )
     .orderBy(sql`ABS(EXTRACT(EPOCH FROM ${mdPrice.ts}) - ${targetEpoch})`)
     .limit(1);

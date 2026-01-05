@@ -9,14 +9,7 @@
  * This module is pure (no I/O, no throw).
  */
 
-import type {
-  BpsStr,
-  Features,
-  Ms,
-  PriceStr,
-  Snapshot,
-  StrategyParams,
-} from "./types";
+import type { BpsStr, Features, Ms, PriceStr, Snapshot, StrategyParams } from "./types";
 
 /**
  * Trade data for feature calculation
@@ -67,11 +60,7 @@ export function calculateMid(bestBid: PriceStr, bestAsk: PriceStr): PriceStr {
  * Requirements: 6.1
  * spread_bps = (best_ask - best_bid) / mid * 10000
  */
-export function calculateSpreadBps(
-  bestBid: PriceStr,
-  bestAsk: PriceStr,
-  midPx: PriceStr,
-): BpsStr {
+export function calculateSpreadBps(bestBid: PriceStr, bestAsk: PriceStr, midPx: PriceStr): BpsStr {
   const bid = parseFloat(bestBid);
   const ask = parseFloat(bestAsk);
   const mid = parseFloat(midPx);
@@ -98,10 +87,7 @@ export function calculateSpreadBps(
  * @param midPx - Current mid price for side inference
  * @returns Trade imbalance (-1 to 1)
  */
-export function calculateTradeImbalance1s(
-  trades: TradeData[],
-  midPx: PriceStr,
-): BpsStr {
+export function calculateTradeImbalance1s(trades: TradeData[], midPx: PriceStr): BpsStr {
   if (trades.length === 0) {
     return "0";
   }
@@ -164,8 +150,7 @@ export function calculateRealizedVol10s(midSnapshots: MidSnapshot[]): BpsStr {
 
   // Calculate standard deviation
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const variance =
-    returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
   const std = Math.sqrt(variance);
 
   // Convert to bps (multiply by 10000)
@@ -215,7 +200,7 @@ export function calculateMarkIndexDivBps(
  * @returns Count of liquidation trades
  */
 export function calculateLiqCount10s(trades: TradeData[]): number {
-  return trades.filter((t) => t.type === "liq" || t.type === "delev").length;
+  return trades.filter(t => t.type === "liq" || t.type === "delev").length;
 }
 
 /**
@@ -228,11 +213,7 @@ export function calculateLiqCount10s(trades: TradeData[]): number {
  * @param staleCancelMs - Stale threshold
  * @returns true if data is stale
  */
-export function isDataStale(
-  lastUpdateMs: Ms,
-  nowMs: Ms,
-  staleCancelMs: Ms,
-): boolean {
+export function isDataStale(lastUpdateMs: Ms, nowMs: Ms, staleCancelMs: Ms): boolean {
   return nowMs - lastUpdateMs > staleCancelMs;
 }
 
@@ -256,24 +237,12 @@ export function computeFeatures(
   params: StrategyParams,
 ): Features {
   const midPx = calculateMid(snapshot.bestBidPx, snapshot.bestAskPx);
-  const spreadBps = calculateSpreadBps(
-    snapshot.bestBidPx,
-    snapshot.bestAskPx,
-    midPx,
-  );
+  const spreadBps = calculateSpreadBps(snapshot.bestBidPx, snapshot.bestAskPx, midPx);
   const tradeImbalance1s = calculateTradeImbalance1s(trades1s, midPx);
   const realizedVol10s = calculateRealizedVol10s(midSnapshots10s);
-  const markIndexDivBps = calculateMarkIndexDivBps(
-    snapshot.markPx,
-    snapshot.indexPx,
-    midPx,
-  );
+  const markIndexDivBps = calculateMarkIndexDivBps(snapshot.markPx, snapshot.indexPx, midPx);
   const liqCount10s = calculateLiqCount10s(trades10s);
-  const dataStale = isDataStale(
-    snapshot.lastUpdateMs,
-    snapshot.nowMs,
-    params.staleCancelMs,
-  );
+  const dataStale = isDataStale(snapshot.lastUpdateMs, snapshot.nowMs, params.staleCancelMs);
 
   return {
     midPx,

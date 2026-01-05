@@ -100,8 +100,7 @@ function buildUserPrompt(input: LlmInputSummary): string {
 
   const worstFillsText = aggregation.worstFills
     .map(
-      (f, i) =>
-        `  ${i + 1}. ${f.side} @ ${f.fillPx} (size: ${f.fillSz}, markout10s: ${f.markout10sBps ?? "N/A"} bps)`,
+      (f, i) => `  ${i + 1}. ${f.side} @ ${f.fillPx} (size: ${f.fillSz}, markout10s: ${f.markout10sBps ?? "N/A"} bps)`,
     )
     .join("\n");
 
@@ -157,11 +156,11 @@ export function generateProposal(
       system: systemPrompt,
       prompt: userPrompt,
     }),
-    (e) => ({
+    e => ({
       type: "LLM_API_ERROR" as const,
       message: e instanceof Error ? e.message : "Unknown error",
     }),
-  ).map((result) => {
+  ).map(result => {
     const obj = result.object as z.infer<typeof LlmResponseSchema>;
 
     // Filter out undefined values from changes

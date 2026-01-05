@@ -5,20 +5,10 @@
  */
 
 // BBO/Price lookup
-export {
-  findClosestBbo,
-  findClosestPrice,
-  BBO_TOLERANCE,
-  type BboRef,
-  type PriceRef,
-} from "./bbo-lookup";
+export { findClosestBbo, findClosestPrice, BBO_TOLERANCE, type BboRef, type PriceRef } from "./bbo-lookup";
 
 // Markout calculation
-export {
-  calculateMarkoutBps,
-  calculateAllMarkouts,
-  type MarkoutResult,
-} from "./markout-calculator";
+export { calculateMarkoutBps, calculateAllMarkouts, type MarkoutResult } from "./markout-calculator";
 
 // Feature calculation
 export {

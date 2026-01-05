@@ -13,9 +13,7 @@ import type { ExFill } from "@agentic-mm-bot/db";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FillsRepositoryError =
-  | { type: "DB_ERROR"; message: string }
-  | { type: "NOT_FOUND"; message: string };
+export type FillsRepositoryError = { type: "DB_ERROR"; message: string } | { type: "NOT_FOUND"; message: string };
 
 /**
  * Enriched fill record for insert
@@ -57,22 +55,15 @@ export interface FillsRepository {
    * Only returns fills older than horizonCutoff to ensure
    * all markout horizons (1s, 10s, 60s) have data available.
    */
-  getUnprocessedFills(
-    horizonCutoff: Date,
-    limit: number,
-  ): ResultAsync<ExFill[], FillsRepositoryError>;
+  getUnprocessedFills(horizonCutoff: Date, limit: number): ResultAsync<ExFill[], FillsRepositoryError>;
 
   /**
    * Insert an enriched fill record
    */
-  insertEnrichedFill(
-    fill: EnrichedFillInsert,
-  ): ResultAsync<void, FillsRepositoryError>;
+  insertEnrichedFill(fill: EnrichedFillInsert): ResultAsync<void, FillsRepositoryError>;
 
   /**
    * Batch insert enriched fill records
    */
-  insertEnrichedFillBatch(
-    fills: EnrichedFillInsert[],
-  ): ResultAsync<void, FillsRepositoryError>;
+  insertEnrichedFillBatch(fills: EnrichedFillInsert[]): ResultAsync<void, FillsRepositoryError>;
 }

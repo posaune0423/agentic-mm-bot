@@ -6,12 +6,7 @@
  * - Read → Decide → Execute → Persist
  */
 
-import type {
-  DecideInput,
-  DecideOutput,
-  StrategyParams,
-  StrategyState,
-} from "@agentic-mm-bot/core";
+import type { DecideInput, DecideOutput, StrategyParams, StrategyState } from "@agentic-mm-bot/core";
 import { computeFeatures, decide } from "@agentic-mm-bot/core";
 import type { ExecutionPort } from "@agentic-mm-bot/adapters";
 import { logger } from "@agentic-mm-bot/utils";
@@ -19,10 +14,7 @@ import { logger } from "@agentic-mm-bot/utils";
 import type { MarketDataCache } from "../services/market-data-cache";
 import type { OrderTracker } from "../services/order-tracker";
 import type { PositionTracker } from "../services/position-tracker";
-import {
-  generateClientOrderId,
-  planExecution,
-} from "../services/execution-planner";
+import { generateClientOrderId, planExecution } from "../services/execution-planner";
 
 /**
  * Decision cycle dependencies
@@ -45,18 +37,9 @@ export interface DecisionCycleDeps {
  * - Run strategy decision
  * - Execute plan
  */
-export async function executeTick(
-  deps: DecisionCycleDeps,
-  currentState: StrategyState,
-): Promise<DecideOutput> {
+export async function executeTick(deps: DecisionCycleDeps, currentState: StrategyState): Promise<DecideOutput> {
   const nowMs = Date.now();
-  const {
-    marketDataCache,
-    orderTracker,
-    positionTracker,
-    executionPort,
-    params,
-  } = deps;
+  const { marketDataCache, orderTracker, positionTracker, executionPort, params } = deps;
 
   // Step 1: Build snapshot
   const snapshot = marketDataCache.getSnapshot(nowMs);
@@ -64,19 +47,10 @@ export async function executeTick(
   // Step 2: Get trades for feature calculation
   const trades1s = marketDataCache.getTradesInWindow(nowMs, 1000);
   const trades10s = marketDataCache.getTradesInWindow(nowMs, 10_000);
-  const midSnapshots10s = marketDataCache.getMidSnapshotsInWindow(
-    nowMs,
-    10_000,
-  );
+  const midSnapshots10s = marketDataCache.getMidSnapshotsInWindow(nowMs, 10_000);
 
   // Step 3: Compute features
-  const features = computeFeatures(
-    snapshot,
-    trades1s,
-    trades10s,
-    midSnapshots10s,
-    params,
-  );
+  const features = computeFeatures(snapshot, trades1s, trades10s, midSnapshots10s, params);
 
   // Step 4: Get position
   const position = positionTracker.getPosition();
@@ -108,13 +82,7 @@ export async function executeTick(
     );
 
     for (const action of actions) {
-      await executeAction(
-        action,
-        executionPort,
-        orderTracker,
-        snapshot.symbol,
-        nowMs,
-      );
+      await executeAction(action, executionPort, orderTracker, snapshot.symbol, nowMs);
     }
   }
 
@@ -160,10 +128,7 @@ async function executeAction(
       }
 
       // Throttle cancel_all calls to prevent API spam
-      if (
-        lastCancelAllMs !== undefined &&
-        nowMs - lastCancelAllMs < CANCEL_ALL_THROTTLE_MS
-      ) {
+      if (lastCancelAllMs !== undefined && nowMs - lastCancelAllMs < CANCEL_ALL_THROTTLE_MS) {
         logger.debug("Skipping cancel_all (throttled)");
         break;
       }

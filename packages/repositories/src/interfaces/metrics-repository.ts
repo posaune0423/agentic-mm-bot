@@ -8,15 +8,9 @@
 
 import type { ResultAsync } from "neverthrow";
 
-import type {
-  HourlyAggregation,
-  CurrentParamsSummary,
-  WorstFillSummary,
-} from "../types";
+import type { HourlyAggregation, CurrentParamsSummary, WorstFillSummary } from "../types";
 
-export type MetricsRepositoryError =
-  | { type: "DB_ERROR"; message: string }
-  | { type: "NOT_FOUND"; message: string };
+export type MetricsRepositoryError = { type: "DB_ERROR"; message: string } | { type: "NOT_FOUND"; message: string };
 
 export interface MetricsRepository {
   /**
@@ -32,10 +26,7 @@ export interface MetricsRepository {
   /**
    * Get current strategy params
    */
-  getCurrentParams(
-    exchange: string,
-    symbol: string,
-  ): ResultAsync<CurrentParamsSummary, MetricsRepositoryError>;
+  getCurrentParams(exchange: string, symbol: string): ResultAsync<CurrentParamsSummary, MetricsRepositoryError>;
 
   /**
    * Get worst fills for a time window

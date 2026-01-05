@@ -83,10 +83,8 @@ export function isWithinPercentageRange(
   proposed: number | string,
   maxPercentage: number,
 ): boolean {
-  const origNum =
-    typeof original === "string" ? parseFloat(original) : original;
-  const propNum =
-    typeof proposed === "string" ? parseFloat(proposed) : proposed;
+  const origNum = typeof original === "string" ? parseFloat(original) : original;
+  const propNum = typeof proposed === "string" ? parseFloat(proposed) : proposed;
 
   // Edge case: if original is 0, only allow 0 as proposed
   if (origNum === 0) {
@@ -103,10 +101,7 @@ export function isWithinPercentageRange(
 /**
  * Check if the number of changes is within the limit
  */
-export function isWithinChangeLimit(
-  changes: Record<string, unknown>,
-  limit: number,
-): boolean {
+export function isWithinChangeLimit(changes: Record<string, unknown>, limit: number): boolean {
   return Object.keys(changes).length <= limit;
 }
 
@@ -130,10 +125,7 @@ function hasRollbackConditions(conditions: RollbackConditions): boolean {
  * - Rollback conditions required (10.2)
  * - Valid parameter keys only
  */
-export function validateProposal(
-  proposal: ParamProposal,
-  currentParams: StrategyParams,
-): ParamGateResult {
+export function validateProposal(proposal: ParamProposal, currentParams: StrategyParams): ParamGateResult {
   const errors: string[] = [];
 
   // Check change limit
@@ -153,13 +145,7 @@ export function validateProposal(
     const currentValue = currentParams[key as keyof StrategyParams];
 
     // Check percentage range
-    if (
-      !isWithinPercentageRange(
-        currentValue,
-        proposedValue,
-        MAX_PERCENTAGE_CHANGE,
-      )
-    ) {
+    if (!isWithinPercentageRange(currentValue, proposedValue, MAX_PERCENTAGE_CHANGE)) {
       errors.push(`PERCENTAGE_EXCEEDED:${key}`);
     }
   }

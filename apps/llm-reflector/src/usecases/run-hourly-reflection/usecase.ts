@@ -35,15 +35,7 @@ export type RunResult =
  */
 export function getLastCompleteHourWindow(): { start: Date; end: Date } {
   const now = new Date();
-  const end = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    now.getHours(),
-    0,
-    0,
-    0,
-  );
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
   const start = new Date(end.getTime() - 3600_000);
   return { start, end };
 }
@@ -76,9 +68,7 @@ function markHourAsProcessed(): void {
 /**
  * Execute the hourly reflection
  */
-export function runHourlyReflection(
-  deps: RunHourlyReflectionDeps,
-): ResultAsync<RunResult, never> {
+export function runHourlyReflection(deps: RunHourlyReflectionDeps): ResultAsync<RunResult, never> {
   // Check if we should run
   if (!shouldRunForCurrentHour()) {
     return okAsync({

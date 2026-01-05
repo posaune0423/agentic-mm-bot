@@ -21,10 +21,7 @@ import {
   type NewStrategyParams,
 } from "@agentic-mm-bot/db";
 
-import type {
-  ProposalRepository,
-  ProposalRepositoryError,
-} from "../interfaces/proposal-repository";
+import type { ProposalRepository, ProposalRepositoryError } from "../interfaces/proposal-repository";
 
 /**
  * Create a unified Postgres proposal repository
@@ -35,22 +32,15 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
     // Common operations
     // ─────────────────────────────────────────────────────────────────────────────
 
-    getPendingProposals(
-      exchange: string,
-      symbol: string,
-    ): ResultAsync<LlmProposal[], ProposalRepositoryError> {
+    getPendingProposals(exchange: string, symbol: string): ResultAsync<LlmProposal[], ProposalRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .select()
           .from(llmProposal)
           .where(
-            and(
-              eq(llmProposal.exchange, exchange),
-              eq(llmProposal.symbol, symbol),
-              eq(llmProposal.status, "pending"),
-            ),
+            and(eq(llmProposal.exchange, exchange), eq(llmProposal.symbol, symbol), eq(llmProposal.status, "pending")),
           ),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -73,7 +63,7 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
             rejectReason,
           })
           .where(eq(llmProposal.id, proposalId)),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -84,16 +74,14 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
     // LLM Reflector operations
     // ─────────────────────────────────────────────────────────────────────────────
 
-    saveProposal(
-      proposal: NewLlmProposal,
-    ): ResultAsync<LlmProposal, ProposalRepositoryError> {
+    saveProposal(proposal: NewLlmProposal): ResultAsync<LlmProposal, ProposalRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .insert(llmProposal)
           .values(proposal)
           .returning()
-          .then((rows) => rows[0]),
-        (e) => ({
+          .then(rows => rows[0]),
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -104,28 +92,21 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
     // Executor operations
     // ─────────────────────────────────────────────────────────────────────────────
 
-    saveParamRollout(
-      rollout: NewParamRollout,
-    ): ResultAsync<void, ProposalRepositoryError> {
-      return ResultAsync.fromPromise(
-        db.insert(paramRollout).values(rollout),
-        (e) => ({
-          type: "DB_ERROR" as const,
-          message: e instanceof Error ? e.message : "Unknown error",
-        }),
-      ).map(() => undefined);
+    saveParamRollout(rollout: NewParamRollout): ResultAsync<void, ProposalRepositoryError> {
+      return ResultAsync.fromPromise(db.insert(paramRollout).values(rollout), e => ({
+        type: "DB_ERROR" as const,
+        message: e instanceof Error ? e.message : "Unknown error",
+      })).map(() => undefined);
     },
 
-    createStrategyParams(
-      params: NewStrategyParams,
-    ): ResultAsync<StrategyParams, ProposalRepositoryError> {
+    createStrategyParams(params: NewStrategyParams): ResultAsync<StrategyParams, ProposalRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .insert(strategyParams)
           .values(params)
           .returning()
-          .then((rows) => rows[0]),
-        (e) => ({
+          .then(rows => rows[0]),
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -152,22 +133,16 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
             );
 
           // Set new params as current
-          await db
-            .update(strategyParams)
-            .set({ isCurrent: true })
-            .where(eq(strategyParams.id, newParamsId));
+          await db.update(strategyParams).set({ isCurrent: true }).where(eq(strategyParams.id, newParamsId));
         })(),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
       );
     },
 
-    getCurrentParams(
-      exchange: string,
-      symbol: string,
-    ): ResultAsync<StrategyParams, ProposalRepositoryError> {
+    getCurrentParams(exchange: string, symbol: string): ResultAsync<StrategyParams, ProposalRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .select()
@@ -180,11 +155,11 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
             ),
           )
           .limit(1),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
-      ).andThen((rows) => {
+      ).andThen(rows => {
         if (rows.length === 0) {
           // Fallback to default params if not found (Requirement: Work with empty DB)
           return ResultAsync.fromSafePromise(

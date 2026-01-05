@@ -9,15 +9,7 @@
 
 import { eq, and, gte, lte, asc, sql } from "drizzle-orm";
 import { ok, err, type Result, ResultAsync } from "neverthrow";
-import {
-  mdBbo,
-  mdTrade,
-  mdPrice,
-  latestTop,
-  type Db,
-  type MdBbo,
-  type MdTrade,
-} from "@agentic-mm-bot/db";
+import { mdBbo, mdTrade, mdPrice, latestTop, type Db, type MdBbo, type MdTrade } from "@agentic-mm-bot/db";
 
 import type {
   MarketDataRepository,
@@ -34,62 +26,46 @@ import type {
 /**
  * Create a Postgres market data repository
  */
-export function createPostgresMarketDataRepository(
-  db: Db,
-): MarketDataRepository {
+export function createPostgresMarketDataRepository(db: Db): MarketDataRepository {
   return {
     // ─────────────────────────────────────────────────────────────────────────────
     // Batch Insert
     // ─────────────────────────────────────────────────────────────────────────────
 
-    insertBboBatch(
-      records: BboInsert[],
-    ): ResultAsync<void, MarketDataRepositoryError> {
+    insertBboBatch(records: BboInsert[]): ResultAsync<void, MarketDataRepositoryError> {
       if (records.length === 0) {
         return ResultAsync.fromSafePromise(Promise.resolve(undefined));
       }
 
-      return ResultAsync.fromPromise(db.insert(mdBbo).values(records), (e) => ({
+      return ResultAsync.fromPromise(db.insert(mdBbo).values(records), e => ({
         type: "DB_ERROR" as const,
         message: e instanceof Error ? e.message : "Unknown error",
       })).map(() => undefined);
     },
 
-    insertTradeBatch(
-      records: TradeInsert[],
-    ): ResultAsync<void, MarketDataRepositoryError> {
+    insertTradeBatch(records: TradeInsert[]): ResultAsync<void, MarketDataRepositoryError> {
       if (records.length === 0) {
         return ResultAsync.fromSafePromise(Promise.resolve(undefined));
       }
 
-      return ResultAsync.fromPromise(
-        db.insert(mdTrade).values(records),
-        (e) => ({
-          type: "DB_ERROR" as const,
-          message: e instanceof Error ? e.message : "Unknown error",
-        }),
-      ).map(() => undefined);
+      return ResultAsync.fromPromise(db.insert(mdTrade).values(records), e => ({
+        type: "DB_ERROR" as const,
+        message: e instanceof Error ? e.message : "Unknown error",
+      })).map(() => undefined);
     },
 
-    insertPriceBatch(
-      records: PriceInsert[],
-    ): ResultAsync<void, MarketDataRepositoryError> {
+    insertPriceBatch(records: PriceInsert[]): ResultAsync<void, MarketDataRepositoryError> {
       if (records.length === 0) {
         return ResultAsync.fromSafePromise(Promise.resolve(undefined));
       }
 
-      return ResultAsync.fromPromise(
-        db.insert(mdPrice).values(records),
-        (e) => ({
-          type: "DB_ERROR" as const,
-          message: e instanceof Error ? e.message : "Unknown error",
-        }),
-      ).map(() => undefined);
+      return ResultAsync.fromPromise(db.insert(mdPrice).values(records), e => ({
+        type: "DB_ERROR" as const,
+        message: e instanceof Error ? e.message : "Unknown error",
+      })).map(() => undefined);
     },
 
-    upsertLatestTop(
-      state: LatestTopState,
-    ): ResultAsync<void, MarketDataRepositoryError> {
+    upsertLatestTop(state: LatestTopState): ResultAsync<void, MarketDataRepositoryError> {
       return ResultAsync.fromPromise(
         db
           .insert(latestTop)
@@ -120,7 +96,7 @@ export function createPostgresMarketDataRepository(
               updatedAt: new Date(),
             },
           }),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -151,12 +127,7 @@ export function createPostgresMarketDataRepository(
           })
           .from(mdBbo)
           .where(
-            and(
-              eq(mdBbo.exchange, exchange),
-              eq(mdBbo.symbol, symbol),
-              gte(mdBbo.ts, minTs),
-              lte(mdBbo.ts, maxTs),
-            ),
+            and(eq(mdBbo.exchange, exchange), eq(mdBbo.symbol, symbol), gte(mdBbo.ts, minTs), lte(mdBbo.ts, maxTs)),
           )
           .orderBy(sql`ABS(EXTRACT(EPOCH FROM ${mdBbo.ts}) - ${targetEpoch})`)
           .limit(1);
@@ -252,7 +223,7 @@ export function createPostgresMarketDataRepository(
             ),
           )
           .orderBy(asc(mdTrade.ts)),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -280,7 +251,7 @@ export function createPostgresMarketDataRepository(
           )
           .orderBy(asc(mdBbo.ts))
           .limit(limit),
-        (e) => ({
+        e => ({
           type: "DB_ERROR" as const,
           message: e instanceof Error ? e.message : "Unknown error",
         }),
@@ -338,7 +309,7 @@ export function createPostgresMarketDataRepository(
             )
             .orderBy(asc(mdPrice.ts)),
         ]),
-        (e) => {
+        e => {
           let errorMessage = "Unknown error";
           if (e instanceof Error) {
             errorMessage = e.message;

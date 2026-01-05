@@ -37,9 +37,7 @@ export function loadEnv(): Env {
   const result = EnvSchema.safeParse(process.env);
 
   if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
-      .join("\n");
+    const issues = result.error.issues.map(issue => `  - ${issue.path.join(".")}: ${issue.message}`).join("\n");
 
     throw new Error(`❌ Environment validation failed:\n${issues}`);
   }
@@ -53,9 +51,7 @@ export function loadEnv(): Env {
   }
 
   if (provider === "anthropic" && !env.ANTHROPIC_API_KEY) {
-    throw new Error(
-      "❌ ANTHROPIC_API_KEY is required when using anthropic models",
-    );
+    throw new Error("❌ ANTHROPIC_API_KEY is required when using anthropic models");
   }
 
   return env;

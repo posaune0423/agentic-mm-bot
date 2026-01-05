@@ -6,15 +6,7 @@
  * - Referenced by fills_enriched for markout calculation
  */
 
-import {
-  index,
-  jsonb,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const exFill = pgTable(
   "ex_fill",
@@ -34,13 +26,7 @@ export const exFill = pgTable(
     paramsSetId: uuid("params_set_id").notNull(),
     rawJson: jsonb("raw_json"),
   },
-  (table) => [
-    index("ex_fill_exchange_symbol_ts_idx").on(
-      table.exchange,
-      table.symbol,
-      table.ts.desc(),
-    ),
-  ],
+  table => [index("ex_fill_exchange_symbol_ts_idx").on(table.exchange, table.symbol, table.ts.desc())],
 );
 
 export type ExFill = typeof exFill.$inferSelect;

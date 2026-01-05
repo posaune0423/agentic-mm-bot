@@ -9,12 +9,7 @@
  */
 
 import { eq, and, lte, isNull } from "drizzle-orm";
-import {
-  exFill,
-  fillsEnriched,
-  type Db,
-  type ExFill,
-} from "@agentic-mm-bot/db";
+import { exFill, fillsEnriched, type Db, type ExFill } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import {
@@ -37,13 +32,7 @@ const MAX_HORIZON_MS = 60_000;
  */
 async function processFill(db: Db, fill: ExFill): Promise<void> {
   // Get reference prices at different time horizons
-  const bboT0 = await findClosestBbo(
-    db,
-    fill.exchange,
-    fill.symbol,
-    fill.ts,
-    BBO_TOLERANCE.t0,
-  );
+  const bboT0 = await findClosestBbo(db, fill.exchange, fill.symbol, fill.ts, BBO_TOLERANCE.t0);
   const bboT1s = await findClosestBbo(
     db,
     fill.exchange,
@@ -67,13 +56,7 @@ async function processFill(db: Db, fill: ExFill): Promise<void> {
   );
 
   // Get mark/index price for divergence calculation
-  const priceT0 = await findClosestPrice(
-    db,
-    fill.exchange,
-    fill.symbol,
-    fill.ts,
-    BBO_TOLERANCE.t0,
-  );
+  const priceT0 = await findClosestPrice(db, fill.exchange, fill.symbol, fill.ts, BBO_TOLERANCE.t0);
 
   // Extract mid prices
   const midT0 = bboT0?.midPx ?? null;
@@ -82,14 +65,7 @@ async function processFill(db: Db, fill: ExFill): Promise<void> {
   const midT60s = bboT60s?.midPx ?? null;
 
   // Calculate markouts
-  const markouts = calculateAllMarkouts(
-    fill.side,
-    fill.fillPx,
-    midT0,
-    midT1s,
-    midT10s,
-    midT60s,
-  );
+  const markouts = calculateAllMarkouts(fill.side, fill.fillPx, midT0, midT1s, midT10s, midT60s);
 
   // Calculate features (Requirement 9.5)
   const features = await calculateAllFeatures(

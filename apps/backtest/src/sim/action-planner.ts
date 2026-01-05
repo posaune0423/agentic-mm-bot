@@ -8,12 +8,7 @@
  * Simplified version of executor's execution-planner for backtest use.
  */
 
-import type {
-  Ms,
-  OrderIntent,
-  PriceStr,
-  StrategyParams,
-} from "@agentic-mm-bot/core";
+import type { Ms, OrderIntent, PriceStr, StrategyParams } from "@agentic-mm-bot/core";
 import { priceExceedsThreshold } from "@agentic-mm-bot/core";
 import type { SimExecution, SimOrder } from "./sim-execution";
 
@@ -69,16 +64,12 @@ export function planSimActions(
   const currentAsk = simExec.getAskOrder();
 
   // Check refresh interval
-  const canRefresh =
-    lastQuoteMs === undefined ||
-    nowMs - lastQuoteMs >= params.refreshIntervalMs;
+  const canRefresh = lastQuoteMs === undefined || nowMs - lastQuoteMs >= params.refreshIntervalMs;
 
   // Process bid side
   if (currentBid) {
     const stale = isOrderStale(currentBid, nowMs, params.staleCancelMs);
-    const needsUpdate =
-      priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) &&
-      canRefresh;
+    const needsUpdate = priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
     if (stale || needsUpdate) {
       // Cancel existing and place new
@@ -91,9 +82,7 @@ export function planSimActions(
   // Process ask side
   if (currentAsk) {
     const stale = isOrderStale(currentAsk, nowMs, params.staleCancelMs);
-    const needsUpdate =
-      priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) &&
-      canRefresh;
+    const needsUpdate = priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
     if (stale || needsUpdate) {
       // Cancel existing and place new
@@ -109,11 +98,7 @@ export function planSimActions(
 /**
  * Execute simulated actions
  */
-export function executeSimActions(
-  actions: SimAction[],
-  simExec: SimExecution,
-  nowMs: Ms,
-): void {
+export function executeSimActions(actions: SimAction[], simExec: SimExecution, nowMs: Ms): void {
   for (const action of actions) {
     switch (action.type) {
       case "cancel_all":

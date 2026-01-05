@@ -10,16 +10,8 @@
 
 import type { ResultAsync } from "neverthrow";
 import { ok, err } from "neverthrow";
-import {
-  validateProposal,
-  type ParamProposal,
-  type StrategyParams as CoreStrategyParams,
-} from "@agentic-mm-bot/core";
-import type {
-  LlmProposal,
-  StrategyParams,
-  NewStrategyParams,
-} from "@agentic-mm-bot/db";
+import { validateProposal, type ParamProposal, type StrategyParams as CoreStrategyParams } from "@agentic-mm-bot/core";
+import type { LlmProposal, StrategyParams, NewStrategyParams } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import type { ProposalRepository } from "@agentic-mm-bot/repositories";
@@ -98,26 +90,16 @@ function applyChanges(
     symbol: current.symbol,
     isCurrent: false, // Will be set to true after insert
     createdBy: "llm",
-    baseHalfSpreadBps: String(
-      changes.baseHalfSpreadBps ?? current.baseHalfSpreadBps,
-    ),
+    baseHalfSpreadBps: String(changes.baseHalfSpreadBps ?? current.baseHalfSpreadBps),
     volSpreadGain: String(changes.volSpreadGain ?? current.volSpreadGain),
     toxSpreadGain: String(changes.toxSpreadGain ?? current.toxSpreadGain),
     quoteSizeUsd: String(changes.quoteSizeUsd ?? current.quoteSizeUsd),
-    refreshIntervalMs: Number(
-      changes.refreshIntervalMs ?? current.refreshIntervalMs,
-    ),
+    refreshIntervalMs: Number(changes.refreshIntervalMs ?? current.refreshIntervalMs),
     staleCancelMs: Number(changes.staleCancelMs ?? current.staleCancelMs),
     maxInventory: String(changes.maxInventory ?? current.maxInventory),
-    inventorySkewGain: String(
-      changes.inventorySkewGain ?? current.inventorySkewGain,
-    ),
-    pauseMarkIndexBps: String(
-      changes.pauseMarkIndexBps ?? current.pauseMarkIndexBps,
-    ),
-    pauseLiqCount10s: Number(
-      changes.pauseLiqCount10s ?? current.pauseLiqCount10s,
-    ),
+    inventorySkewGain: String(changes.inventorySkewGain ?? current.inventorySkewGain),
+    pauseMarkIndexBps: String(changes.pauseMarkIndexBps ?? current.pauseMarkIndexBps),
+    pauseLiqCount10s: Number(changes.pauseLiqCount10s ?? current.pauseLiqCount10s),
   };
 }
 
@@ -157,10 +139,7 @@ function checkOperationalGates(
     };
   }
 
-  if (
-    context.markout10sP50 !== undefined &&
-    context.markout10sP50 < options.minMarkout10sP50ForApply
-  ) {
+  if (context.markout10sP50 !== undefined && context.markout10sP50 < options.minMarkout10sP50ForApply) {
     return {
       pass: false,
       reason: `Markout P50 (${context.markout10sP50}) below threshold (${options.minMarkout10sP50ForApply})`,
@@ -185,14 +164,10 @@ export async function tryApplyProposal(
   // Step 1: Schema validation (10.5)
   const proposalData: ParamProposal = {
     changes: proposal.proposalJson as Record<string, string | number>,
-    rollbackConditions:
-      proposal.rollbackJson as ParamProposal["rollbackConditions"],
+    rollbackConditions: proposal.rollbackJson as ParamProposal["rollbackConditions"],
   };
 
-  const validationResult = validateProposal(
-    proposalData,
-    toCoreparams(currentParams),
-  );
+  const validationResult = validateProposal(proposalData, toCoreparams(currentParams));
   if (!validationResult.valid) {
     // Reject and save audit
     await repo.updateProposalStatus(
@@ -224,12 +199,7 @@ export async function tryApplyProposal(
   // Step 2: Operational gates (10.5)
   const gateResult = checkOperationalGates(context, options);
   if (!gateResult.pass) {
-    await repo.updateProposalStatus(
-      proposal.id,
-      "rejected",
-      "executor",
-      `Operational gate: ${gateResult.reason}`,
-    );
+    await repo.updateProposalStatus(proposal.id, "rejected", "executor", `Operational gate: ${gateResult.reason}`);
 
     await repo.saveParamRollout({
       ts: new Date(),
@@ -260,11 +230,7 @@ export async function tryApplyProposal(
   const newParams = createResult.value;
 
   // Set as current
-  const setResult = await repo.setCurrentParams(
-    options.exchange,
-    options.symbol,
-    newParams.id,
-  );
+  const setResult = await repo.setCurrentParams(options.exchange, options.symbol, newParams.id);
   if (setResult.isErr()) {
     return err({ type: "DB_ERROR", message: setResult.error.message });
   }
@@ -315,10 +281,7 @@ export async function processPendingProposals(
   }
 
   // Get current params
-  const paramsResult = await repo.getCurrentParams(
-    options.exchange,
-    options.symbol,
-  );
+  const paramsResult = await repo.getCurrentParams(options.exchange, options.symbol);
   if (paramsResult.isErr()) {
     logger.error("Failed to get current params", { error: paramsResult.error });
     return null;
@@ -326,10 +289,7 @@ export async function processPendingProposals(
   const currentParams = paramsResult.value;
 
   // Get pending proposals
-  const proposalsResult = await repo.getPendingProposals(
-    options.exchange,
-    options.symbol,
-  );
+  const proposalsResult = await repo.getPendingProposals(options.exchange, options.symbol);
   if (proposalsResult.isErr()) {
     logger.error("Failed to get pending proposals", {
       error: proposalsResult.error,
@@ -347,13 +307,7 @@ export async function processPendingProposals(
 
   logger.info("Processing pending proposal", { proposalId: proposal.id });
 
-  const result = await tryApplyProposal(
-    repo,
-    proposal,
-    currentParams,
-    context,
-    options,
-  );
+  const result = await tryApplyProposal(repo, proposal, currentParams, context, options);
   if (result.isErr()) {
     logger.error("Failed to apply proposal", { error: result.error });
     return null;

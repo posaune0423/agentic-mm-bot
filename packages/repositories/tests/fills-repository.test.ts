@@ -7,10 +7,7 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 import { createPostgresFillsRepository } from "../src/postgres/fills-repository";
-import type {
-  FillsRepository,
-  EnrichedFillInsert,
-} from "../src/interfaces/fills-repository";
+import type { FillsRepository, EnrichedFillInsert } from "../src/interfaces/fills-repository";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock DB
@@ -121,10 +118,7 @@ describe("FillsRepository.getUnprocessedFills", () => {
         leftJoin: mock(() => ({
           where: mock(() => ({
             limit: mock(() =>
-              Promise.resolve([
-                { ex_fill: mockFill },
-                { ex_fill: { ...mockFill, id: "fill-456" } },
-              ]).then((rows) => rows),
+              Promise.resolve([{ ex_fill: mockFill }, { ex_fill: { ...mockFill, id: "fill-456" } }]).then(rows => rows),
             ),
           })),
         })),
@@ -185,9 +179,7 @@ describe("FillsRepository.insertEnrichedFill", () => {
   it("should return Err with DB_ERROR on insert failure", async () => {
     const db = createMockDb();
     db.insert = mock(() => ({
-      values: mock(() =>
-        Promise.reject(new Error("Unique constraint violation")),
-      ),
+      values: mock(() => Promise.reject(new Error("Unique constraint violation"))),
     }));
     const repo = createPostgresFillsRepository(db);
 
@@ -266,11 +258,7 @@ describe("FillsRepository.insertEnrichedFillBatch", () => {
     const db = createMockDb();
     const repo = createPostgresFillsRepository(db);
 
-    const fills = [
-      createSampleFill("fill-1"),
-      createSampleFill("fill-2"),
-      createSampleFill("fill-3"),
-    ];
+    const fills = [createSampleFill("fill-1"), createSampleFill("fill-2"), createSampleFill("fill-3")];
 
     const result = await repo.insertEnrichedFillBatch(fills);
 

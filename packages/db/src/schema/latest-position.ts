@@ -6,13 +6,7 @@
  * - Used for inventory management
  */
 
-import {
-  numeric,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 export const latestPosition = pgTable(
   "latest_position",
@@ -23,11 +17,9 @@ export const latestPosition = pgTable(
     positionSz: numeric("position_sz").notNull(),
     entryPx: numeric("entry_px"),
     unrealizedPnl: numeric("unrealized_pnl"),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.exchange, table.symbol] })],
+  table => [primaryKey({ columns: [table.exchange, table.symbol] })],
 );
 
 export type LatestPosition = typeof latestPosition.$inferSelect;

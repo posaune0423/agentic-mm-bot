@@ -219,11 +219,7 @@ describe("ProposalRepository.updateProposalStatus", () => {
     const db = createMockDb();
     const repo = createPostgresProposalRepository(db);
 
-    const result = await repo.updateProposalStatus(
-      "proposal-123",
-      "applied",
-      "param-applier",
-    );
+    const result = await repo.updateProposalStatus("proposal-123", "applied", "param-applier");
 
     expect(result.isOk()).toBe(true);
     expect(db.update).toHaveBeenCalled();
@@ -252,11 +248,7 @@ describe("ProposalRepository.updateProposalStatus", () => {
     }));
     const repo = createPostgresProposalRepository(db);
 
-    const result = await repo.updateProposalStatus(
-      "proposal-123",
-      "applied",
-      "param-applier",
-    );
+    const result = await repo.updateProposalStatus("proposal-123", "applied", "param-applier");
 
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
