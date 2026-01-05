@@ -101,10 +101,49 @@
 - [x] 9.3 executor が欠損時に quote しないことと、PAUSEで cancel_all が走ることを検証する
   - _Requirements: 6.6, 4.5, 14.3.2_
 
-- [x] 10. Future Extension: LLM 改善ループ（将来拡張）
-- [x] 10.1 llm-reflector が提案を生成してDBへ保存できる
-  - _Requirements: 10.1, 10.2_
-- [x] 10.2 executor が提案を検証し、適用/拒否の監査ログを残せる
+- [ ] 10. LLM 改善ループ（Mastra ベース llm-reflector）
+- [ ] 10.1 `apps/llm-reflector/package.json` に Mastra 関連依存を追加する
+  - `@mastra/core` を追加し、`ai` / `@ai-sdk/openai` は削除可能か検討する
+  - `MODEL` 環境変数を前提とした pluggable 設計にする
+  - _Requirements: 10.1_
+- [ ] 10.2 `apps/llm-reflector/src/env.ts` を Mastra 対応に更新する
+  - `MODEL` 環境変数（例: `openai/gpt-4o`）を追加する
+  - 既存の `OPENAI_MODEL` からの移行互換を保つ
+  - _Requirements: 1.4_
+- [ ] 10.3 DB リポジトリ層を実装する
+  - `repositories/interfaces/aggregation-repository.ts`: 1時間集計・worst fills 取得契約
+  - `repositories/interfaces/proposal-repository.ts`: llm_proposal CRUD 契約
+  - `repositories/postgres/*`: Drizzle 実装
+  - _Requirements: 10.1, 12.4_
+- [ ] 10.4 ファイル永続化ポートを実装する
+  - `ports/file-sink-port.ts`: `LOG_DIR/llm/` への書き込み + sha256 算出
+  - ファイル名規約: `llm-reflection-<exchange>-<symbol>-<utc-iso>-<proposal-id>.json`
+  - _Requirements: 13.1, 13.2, 13.3, 13.4_
+- [ ] 10.5 Mastra Agent を定義する
+  - `mastra/agents/reflector-agent.ts`: 提案生成 Agent（structuredOutput 使用）
+  - model router 形式で `MODEL` 環境変数からプロバイダ/モデルを解決する
+  - _Requirements: 10.1_
+- [ ] 10.6 Mastra Workflow を実装する
+  - `mastra/workflows/reflection-workflow.ts`: FetchInput → BuildPrompt → Agent → Gate → File → DB
+  - Zod スキーマで入出力を厳密化する
+  - _Requirements: 10.1, 10.2, 10.3_
+- [ ] 10.7 ParamGate（検証ロジック）を実装する
+  - 最大2変更、各変更が現行値の ±10% 以内、rollback 条件必須を検証する
+  - 検証失敗時は DB に提案を保存しない
+  - _Requirements: 10.2, 10.5_
+- [ ] 10.8 usecase を実装する
+  - `usecases/run-hourly-reflection/usecase.ts`: 1回分の実行オーケストレーション
+  - idempotency: 同一 `input_window_start/end` の提案が既にある場合はスキップする
+  - _Requirements: 10.1_
+- [ ] 10.9 `apps/llm-reflector/src/main.ts` を実装する
+  - interval ループ（`RUN_INTERVAL_MS`）で毎時1回の提案生成を行う
+  - graceful shutdown を実装する
+  - _Requirements: 10.1_
+- [ ] 10.10 ユニットテストを実装する
+  - ParamGate: 最大2変更、±10%、rollback 必須の検証
+  - reasoning log writer: ファイル命名、sha256 算出、失敗時の挙動
+  - _Requirements: 14.1_
+- [ ] 10.11 executor が提案を検証し、適用/拒否の監査ログを残せる
+  - `param_rollout` に apply/reject/rollback を記録する
+  - 運用ゲート（PAUSE多発/データ欠損/取引所エラー時の禁止）を実装する
   - _Requirements: 10.4, 10.5, 10.6_
-- [x] 10.3 推論ログをファイルへ永続化し、DBで参照できる
-  - _Requirements: 13.1, 13.4_

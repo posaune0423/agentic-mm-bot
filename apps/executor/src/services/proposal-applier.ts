@@ -14,7 +14,7 @@ import { validateProposal, type ParamProposal, type StrategyParams as CoreStrate
 import type { LlmProposal, StrategyParams, NewStrategyParams } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
-import type { ExecutorProposalRepository } from "../repositories/interfaces/proposal-repository";
+import type { ProposalRepository } from "@agentic-mm-bot/repositories";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -155,7 +155,7 @@ function checkOperationalGates(
  * Requirements: 10.4, 10.5, 10.6
  */
 export async function tryApplyProposal(
-  repo: ExecutorProposalRepository,
+  repo: ProposalRepository,
   proposal: LlmProposal,
   currentParams: StrategyParams,
   context: OperationalContext,
@@ -270,7 +270,7 @@ export async function tryApplyProposal(
  * - Apply at 5-minute boundaries (max 1 per boundary)
  */
 export async function processPendingProposals(
-  repo: ExecutorProposalRepository,
+  repo: ProposalRepository,
   options: ProposalApplierOptions,
   context: OperationalContext,
   nowMs: number,

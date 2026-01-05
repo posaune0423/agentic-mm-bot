@@ -11,6 +11,10 @@
 - **`apps/llm-reflector`**: 直近集計 + 現パラメータから改善案を生成（LLM）、推論ログ保存 + 提案をDB保存
 - **`apps/backtest`**: `md_*` をリプレイして同じ戦略ロジックでシミュレーション
 
+## ドキュメント
+
+- **用語集**: `docs/taxonomy.md`
+
 ## 技術スタック
 
 - **Runtime**: Bun

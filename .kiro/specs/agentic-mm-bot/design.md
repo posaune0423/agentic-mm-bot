@@ -4,7 +4,7 @@
 
 本設計は `agentic-mm-bot` のMVPを、要件（`requirements.md`）から解釈ブレなく実装するための技術設計（HOW）を定義する。対象venue(v1)は Extended とし、coreは venue-agnostic（adapter差し替え可能）とする。
 
-本MVPでは **LLMはスコープ外**とし、`apps/llm-reflector` を実装しない。後付けできるように、LLM関連は **Future Extension** に隔離して契約のみ保持する。
+LLM改善ループ（`apps/llm-reflector`）は **Mastra** を使用し、毎時の提案生成・安全ゲート・監査ログを実現する。詳細は「Future Extension（LLM Worker — Mastra ベース）」を参照。
 
 ### Goals
 
@@ -17,7 +17,6 @@
 ### Non-Goals
 
 - L2 full orderbook、ニュース/SNS、複数取引所同時稼働、高度なqueue推定、RL（PPO/SAC）（1.6）
-- LLMワーカー（`apps/llm-reflector`）の実装と運用（Future Extensionへ移動）
 
 ## Architecture
 
@@ -32,6 +31,7 @@ flowchart LR
     Executor
     Summarizer
     Backtest
+    LlmReflector
   end
 
   subgraph Core
@@ -53,6 +53,11 @@ flowchart LR
     StrategyRuntime
     ExecutionPlanner
     EventWriter
+  end
+
+  subgraph MastraLayer ["Mastra (LLM)"]
+    ReflectorAgent
+    ReflectionWorkflow
   end
 
   subgraph Db
@@ -80,6 +85,8 @@ flowchart LR
   EventWriter --> Db
   Summarizer --> Db
   Backtest --> Db
+  LlmReflector --> Db
+  LlmReflector --> MastraLayer
 
   Apps --> Obs
 ```
@@ -691,9 +698,221 @@ DBのテーブル定義は `requirements.md` の **12.1–12.4** と **Data Mode
 - executorが毎tickでmd_tradeをDBから引く方式は負荷要因になりうる（6.1–6.5）
   - MVPはDBクエリで開始し、必要ならリングバッファへ移行する（設計上許容）
 
-### Future Extension（LLM Worker）
+### Future Extension（LLM Worker — Mastra ベース）
 
-MVPでは `apps/llm-reflector` を省略する。一方で、後日追加しても executor の構造が崩れないよう、以下は契約として保持する：
+要件 `10.1–10.6` と `13.1–13.4` を満たす `apps/llm-reflector` を **Mastra** で実装する。
+
+#### 実行形態
+
+- **Bun 常駐ワーカー（interval実行）** を正とする（`apps/summarizer` と同型）
+- `RUN_INTERVAL_MS` で `runOnce()` を回し、1時間に最大1回だけ提案生成（要件 `10.1`）
+
+#### 依存/境界（Hexagonalに沿う）
+
+- `apps/llm-reflector` は **composition root**。戦略ロジックは持たず「入力収集 → 生成 → 検証 → 永続化」だけを担う
+- DBスキーマは SoT として `packages/db` を利用（`llm_proposal`, `strategy_params`, `fills_enriched`, `ex_order_event`, `strategy_state`）
+- 外部I/Oは以下に隔離:
+  - **DB**: `repositories/interfaces/*` と `repositories/postgres/*`
+  - **FS**: `ports/file-sink-port.ts`（`LOG_DIR/llm` への書き込み + sha256算出）
+  - **LLM**: Mastra Agent（model router）
+
+#### ディレクトリ構成
+
+```
+apps/llm-reflector/
+└─ src/
+   ├─ main.ts                           # intervalループ、graceful shutdown
+   ├─ env.ts                            # Zod検証（既存appパターン）
+   ├─ mastra/
+   │  ├─ agents/
+   │  │  └─ reflector-agent.ts          # 提案生成Agent
+   │  └─ workflows/
+   │     └─ reflection-workflow.ts      # 収集→生成→検証→永続化
+   ├─ usecases/
+   │  └─ run-hourly-reflection/
+   │     └─ usecase.ts                  # 1回分の実行オーケストレーション
+   ├─ repositories/
+   │  ├─ interfaces/
+   │  │  ├─ index.ts
+   │  │  ├─ aggregation-repository.ts
+   │  │  └─ proposal-repository.ts
+   │  └─ postgres/
+   │     ├─ index.ts
+   │     ├─ aggregation-repository.ts
+   │     └─ proposal-repository.ts
+   ├─ ports/
+   │  └─ file-sink-port.ts
+   └─ services/
+      └─ reasoning-log-writer.ts
+```
+
+#### データ契約（Zod スキーマ）
+
+##### ReflectionInput（入力）
+
+要件 `10.1` の「直近1時間集計 + worst fills(top5) + 現在params」を DBから再計算して生成する。
+
+```typescript
+export const ReflectionInputSchema = z.object({
+  windowStart: z.date(),
+  windowEnd: z.date(),
+  aggregation: z.object({
+    fillsCount: z.number(),
+    cancelCount: z.number(),
+    pauseCount: z.number(),
+    markout10sP10: z.number().nullable(),
+    markout10sP50: z.number().nullable(),
+    markout10sP90: z.number().nullable(),
+  }),
+  worstFills: z
+    .array(
+      z.object({
+        fillId: z.string(),
+        ts: z.date(),
+        side: z.string(),
+        fillPx: z.string(),
+        fillSz: z.string(),
+        markout10sBps: z.number().nullable(),
+      }),
+    )
+    .max(5),
+  currentParams: StrategyParamsSchema, // strategy_params.is_current = true
+  currentParamsSetId: z.string().uuid(),
+});
+```
+
+##### ProposalOutput（LLM出力）
+
+要件 `10.2` を Zod + 自前ゲートで厳密化。
+
+```typescript
+export const ParamChangeSchema = z.object({
+  param: z.enum([
+    "baseHalfSpreadBps",
+    "volSpreadGain",
+    "toxSpreadGain",
+    "quoteSizeBase",
+    "refreshIntervalMs",
+    "staleCancelMs",
+    "maxInventory",
+    "inventorySkewGain",
+    "pauseMarkIndexBps",
+    "pauseLiqCount10s",
+  ]),
+  fromValue: z.string(),
+  toValue: z.string(),
+});
+
+export const ProposalOutputSchema = z.object({
+  changes: z.array(ParamChangeSchema).min(1).max(2), // 最大2変更
+  rollbackConditions: z.array(z.string()).min(1), // 必須
+  reasoningTrace: z.array(z.string()).min(1), // 箇条書き配列
+});
+```
+
+##### ReasoningLog（ファイル保存）
+
+要件 `13.1–13.4` に沿って JSON を保存。
+
+- 保存先: `${LOG_DIR}/llm/`
+- ファイル名: `llm-reflection-<exchange>-<symbol>-<utc-iso>-<proposal-id>.json`
+
+```typescript
+export const ReasoningLogSchema = z.object({
+  proposalId: z.string().uuid(),
+  timestamp: z.string().datetime(),
+  inputSummary: ReflectionInputSchema,
+  currentParams: StrategyParamsSchema,
+  proposal: ProposalOutputSchema,
+  rollbackConditions: z.array(z.string()),
+  reasoningTrace: z.array(z.string()),
+  integrity: z.object({
+    sha256: z.string(),
+  }),
+});
+```
+
+#### Mastra ワークフロー設計
+
+Mastra の `createWorkflow` / `createStep` と Agent の `structuredOutput` を使い、生成物を Zod スキーマで強制する。
+
+```mermaid
+flowchart TD
+  startNode[Start] --> fetchInput[FetchInputFromDb]
+  fetchInput --> buildPrompt[BuildPrompt]
+  buildPrompt --> agentGenerate[MastraAgentGenerateStructured]
+  agentGenerate --> gateValidate[ParamGateAndSanityChecks]
+  gateValidate --> writeFile[WriteReasoningLogToFile]
+  writeFile --> insertDb[InsertLlmProposal]
+  insertDb --> doneNode[Done]
+
+  gateValidate -->|"invalid"| rejectNode[RejectWithoutInsert]
+  writeFile -->|"fs fail"| rejectNode
+```
+
+##### ステップ詳細
+
+| Step                          | 責務                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| FetchInputFromDb              | `fills_enriched` / `ex_order_event` / `strategy_state` / `strategy_params` を読み、入力を組み立てる               |
+| BuildPrompt                   | 入力を「短い要約 + JSON制約」の形に整形                                                                           |
+| MastraAgentGenerateStructured | `structuredOutput: { schema: ProposalOutputSchema }` を使用し、スキーマ準拠のJSONを強制                           |
+| ParamGateAndSanityChecks      | 最大2変更、各変更が現行値の ±10% 以内、rollback条件必須を検証                                                     |
+| WriteReasoningLogToFile       | `FileSinkPort` で推論ログをファイル保存し sha256 を算出                                                           |
+| InsertLlmProposal             | **ファイル保存が成功した場合のみ** `llm_proposal` に insert（要件 `10.3` の「失敗時は提案をDBへ保存しない」対応） |
+
+#### ParamGate（検証ロジック）
+
+```typescript
+export function validateProposal(
+  proposal: ProposalOutput,
+  currentParams: StrategyParams,
+): Result<void, ParamGateError> {
+  // 1. 最大2変更
+  if (proposal.changes.length > 2) {
+    return err({ type: "TOO_MANY_CHANGES", count: proposal.changes.length });
+  }
+
+  // 2. 各変更が ±10% 以内
+  for (const change of proposal.changes) {
+    const current = parseFloat(currentParams[change.param]);
+    const proposed = parseFloat(change.toValue);
+    const diffPct = Math.abs((proposed - current) / current) * 100;
+    if (diffPct > 10) {
+      return err({ type: "CHANGE_EXCEEDS_10PCT", param: change.param, diffPct });
+    }
+  }
+
+  // 3. rollback条件必須
+  if (proposal.rollbackConditions.length === 0) {
+    return err({ type: "MISSING_ROLLBACK_CONDITIONS" });
+  }
+
+  return ok(undefined);
+}
+```
+
+#### 環境変数（pluggable 向け）
+
+既存appの `env.ts` パターン（Zod + `safeParse(process.env)`）に合わせつつ、Mastra の model router を前提に以下を導入:
+
+| Variable          | Required | Default         | Description                                     |
+| ----------------- | -------- | --------------- | ----------------------------------------------- |
+| `DATABASE_URL`    | Yes      | -               | Postgres接続URL                                 |
+| `LOG_DIR`         | No       | `./logs`        | 推論ログ保存先                                  |
+| `MODEL`           | No       | `openai/gpt-4o` | Mastra model router 形式（例: `openai/gpt-4o`） |
+| `OPENAI_API_KEY`  | Yes\*    | -               | Mastra が自動検出                               |
+| `EXCHANGE`        | No       | `extended`      | 対象取引所                                      |
+| `SYMBOL`          | No       | `BTC-USD`       | 対象シンボル                                    |
+| `RUN_INTERVAL_MS` | No       | `60000`         | runOnce() の実行間隔                            |
+
+\*プロバイダに応じて `ANTHROPIC_API_KEY` 等も可
+
+#### idempotency
+
+- 同一 `exchange/symbol` かつ同一 `input_window_start/end` の提案が既にある場合はスキップ（重複生成防止）
+
+#### Ports（契約）
 
 - `ProposalPort`: `llm_proposal` の生成/取得/ステータス更新（10.1–10.6）
 - `FileSinkPort`: reasoning_trace のファイル永続化（失敗時は提案をDBへ保存しない）（13.1）

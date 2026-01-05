@@ -1,0 +1,36 @@
+{
+  "name": "@agentic-mm-bot/repositories",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@agentic-mm-bot/core": "workspace:*",
+    "@agentic-mm-bot/db": "workspace:*",
+    "@agentic-mm-bot/utils": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@agentic-mm-bot/eslint-config": "workspace:*",
+    "@agentic-mm-bot/prettier-config": "workspace:*",
+    "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@types/bun": "catalog:tooling",
+    "@typescript/native-preview": "catalog:tooling",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling"
+  },
+  "prettier": "@agentic-mm-bot/prettier-config"
+}

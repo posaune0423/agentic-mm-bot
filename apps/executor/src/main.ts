@@ -11,20 +11,19 @@
 import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
-import { initLogger, logger } from "@agentic-mm-bot/utils";
+import { logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { MarketDataCache } from "./services/market-data-cache";
 import { OrderTracker } from "./services/order-tracker";
 import { PositionTracker } from "./services/position-tracker";
 import { executeTick } from "./usecases/decision-cycle";
-import { createPostgresStrategyStateRepository, createPostgresEventRepository } from "./repositories";
+import { createPostgresStrategyStateRepository, createPostgresEventRepository } from "@agentic-mm-bot/repositories";
 
 /**
  * Main executor function
  */
 async function main(): Promise<void> {
-  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Initialize database connection

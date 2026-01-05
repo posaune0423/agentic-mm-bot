@@ -16,10 +16,9 @@
   "dependencies": {
     "@agentic-mm-bot/core": "workspace:*",
     "@agentic-mm-bot/db": "workspace:*",
+    "@agentic-mm-bot/repositories": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
-    "@ai-sdk/openai": "^1.3.22",
-    "@t3-oss/env-core": "catalog:tooling",
-    "ai": "^4.3.16",
+    "@mastra/core": "^0.10.5",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",
@@ -32,6 +31,7 @@
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/bun": "catalog:tooling",
     "@types/pg": "^8.16.0",
+    "@types/uuid": "^10.0.0",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"

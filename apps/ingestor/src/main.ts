@@ -16,7 +16,7 @@ import {
   type TradeEvent,
 } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
-import { initLogger, logger } from "@agentic-mm-bot/utils";
+import { logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { BboThrottler, EventWriter, LatestStateManager } from "./services";
@@ -27,7 +27,6 @@ import type { IngestorMetrics } from "./types";
 // ============================================================================
 
 async function main(): Promise<void> {
-  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting ingestor", {
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,

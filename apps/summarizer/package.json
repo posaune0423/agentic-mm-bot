@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@agentic-mm-bot/db": "workspace:*",
+    "@agentic-mm-bot/repositories": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
     "@t3-oss/env-core": "catalog:tooling",
     "drizzle-orm": "catalog:",
