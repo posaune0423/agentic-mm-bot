@@ -19,7 +19,7 @@ import {
   type ExFill,
   getDb,
 } from "@agentic-mm-bot/db";
-import { logger } from "@agentic-mm-bot/utils";
+import { initLogger, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 
@@ -403,6 +403,7 @@ async function generate1HourAggregation(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting summarizer");
 
   const db = getDb(env.DATABASE_URL);

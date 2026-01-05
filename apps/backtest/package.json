@@ -17,7 +17,7 @@
     "@agentic-mm-bot/core": "workspace:*",
     "@agentic-mm-bot/db": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
-    "@t3-oss/env-core": "latest",
+    "@t3-oss/env-core": "^0.13.10",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",

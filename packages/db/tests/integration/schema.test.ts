@@ -37,7 +37,12 @@ describeDb("Database Schema Integration", () => {
   let db: Db | undefined;
 
   beforeAll(async () => {
-    db = getDb(TEST_DATABASE_URL);
+    if (!TEST_DATABASE_URL) {
+      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+    }
+
+    const url = TEST_DATABASE_URL;
+    db = getDb(url);
   });
 
   afterAll(async () => {

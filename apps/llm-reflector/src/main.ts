@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { validateProposal, type StrategyParams } from "@agentic-mm-bot/core";
 import { getDb } from "@agentic-mm-bot/db";
-import { logger } from "@agentic-mm-bot/utils";
+import { initLogger, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { createPostgresProposalRepository, createPostgresMetricsRepository } from "./repositories";
@@ -46,6 +46,7 @@ function toStrategyParams(params: CurrentParamsSummary): StrategyParams {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting llm-reflector");
 
   const db = getDb(env.DATABASE_URL);

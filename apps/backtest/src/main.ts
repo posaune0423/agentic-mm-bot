@@ -22,7 +22,7 @@ import {
   type TradeData,
   type Snapshot,
 } from "@agentic-mm-bot/core";
-import { logger } from "@agentic-mm-bot/utils";
+import { initLogger, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 
@@ -59,6 +59,7 @@ interface BacktestResults {
 }
 
 async function main(): Promise<void> {
+  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting backtest", {
     symbol: env.SYMBOL,
     startTime: env.START_TIME,

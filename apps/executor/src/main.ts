@@ -11,7 +11,7 @@
 import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
-import { logger } from "@agentic-mm-bot/utils";
+import { initLogger, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { MarketDataCache } from "./services/market-data-cache";
@@ -24,6 +24,7 @@ import { createPostgresStrategyStateRepository, createPostgresEventRepository } 
  * Main executor function
  */
 async function main(): Promise<void> {
+  initLogger({ level: env.LOG_LEVEL });
   logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Initialize database connection

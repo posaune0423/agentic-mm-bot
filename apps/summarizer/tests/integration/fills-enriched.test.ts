@@ -23,6 +23,10 @@ describeDb("Summarizer fills_enriched Integration", () => {
   let testBboIds: string[] = [];
 
   beforeAll(async () => {
+    if (!TEST_DATABASE_URL) {
+      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+    }
+
     db = getDb(TEST_DATABASE_URL);
   });
 
