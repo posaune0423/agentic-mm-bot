@@ -15,7 +15,6 @@ import {
   type StrategyParams,
   type Features,
   type Position,
-  type Snapshot,
   type StrategyState,
   type DecideInput,
 } from "@agentic-mm-bot/core";
@@ -45,6 +44,7 @@ describe("Executor PAUSE Behavior", () => {
     realizedVol10s: "0.001",
     markIndexDivBps: "10",
     liqCount10s: 0,
+    dataStale: false,
   };
 
   describe("PAUSE state transitions", () => {
@@ -52,9 +52,9 @@ describe("Executor PAUSE Behavior", () => {
       const nowMs = Date.now();
       const state: StrategyState = {
         mode: "PAUSE",
-        modeSince: nowMs - 60_000,
-        pauseUntil: null,
-        lastQuoteMs: 0,
+        modeSinceMs: nowMs - 60_000,
+        pauseUntilMs: nowMs + 10_000, // keep PAUSE
+        lastQuoteMs: undefined,
       };
 
       const input: DecideInput = {
@@ -74,55 +74,37 @@ describe("Executor PAUSE Behavior", () => {
 
     it("should transition to PAUSE when data is stale", () => {
       const nowMs = Date.now();
-      const state: StrategyState = {
-        mode: "NORMAL",
-        modeSince: nowMs - 60_000,
-        pauseUntil: null,
-        lastQuoteMs: 0,
-      };
+      const state = createInitialState(nowMs, "NORMAL");
 
-      // Features with data stale indication
       const staleFeatures: Features = {
         ...normalFeatures,
-        midPx: "", // Empty indicates stale
+        dataStale: true,
       };
 
-      const snapshot: Snapshot = {
-        exchange: "extended",
-        symbol: "BTC-USD",
-        nowMs,
-        bestBidPx: "",
-        bestAskPx: "",
-        dataStale: true, // Explicitly stale
-      };
-
-      // Risk evaluation should recommend PAUSE
-      const riskEval = evaluateRisk(snapshot, staleFeatures, defaultParams, "NORMAL");
-
+      const riskEval = evaluateRisk(staleFeatures, defaultPosition, defaultParams);
       expect(riskEval.shouldPause).toBe(true);
       expect(riskEval.reasonCodes).toContain("DATA_STALE");
+
+      const output = decide({
+        nowMs,
+        state,
+        features: staleFeatures,
+        params: defaultParams,
+        position: defaultPosition,
+      });
+      expect(output.nextState.mode).toBe("PAUSE");
+      expect(output.intents[0]?.type).toBe("CANCEL_ALL");
     });
 
     it("should transition to PAUSE when mark-index divergence exceeds threshold", () => {
       const nowMs = Date.now();
-
-      const snapshot: Snapshot = {
-        exchange: "extended",
-        symbol: "BTC-USD",
-        nowMs,
-        bestBidPx: "50000",
-        bestAskPx: "50010",
-        markPx: "50500", // 100 bps divergence (threshold is 50)
-        indexPx: "50000",
-        dataStale: false,
-      };
 
       const features: Features = {
         ...normalFeatures,
         markIndexDivBps: "100", // > pauseMarkIndexBps (50)
       };
 
-      const riskEval = evaluateRisk(snapshot, features, defaultParams, "NORMAL");
+      const riskEval = evaluateRisk(features, defaultPosition, defaultParams);
 
       expect(riskEval.shouldPause).toBe(true);
       expect(riskEval.reasonCodes).toContain("MARK_INDEX_DIVERGED");
@@ -131,21 +113,12 @@ describe("Executor PAUSE Behavior", () => {
     it("should transition to PAUSE when liquidation count exceeds threshold", () => {
       const nowMs = Date.now();
 
-      const snapshot: Snapshot = {
-        exchange: "extended",
-        symbol: "BTC-USD",
-        nowMs,
-        bestBidPx: "50000",
-        bestAskPx: "50010",
-        dataStale: false,
-      };
-
       const features: Features = {
         ...normalFeatures,
         liqCount10s: 5, // > pauseLiqCount10s (3)
       };
 
-      const riskEval = evaluateRisk(snapshot, features, defaultParams, "NORMAL");
+      const riskEval = evaluateRisk(features, defaultPosition, defaultParams);
 
       expect(riskEval.shouldPause).toBe(true);
       expect(riskEval.reasonCodes).toContain("LIQUIDATION_SPIKE");
@@ -154,27 +127,13 @@ describe("Executor PAUSE Behavior", () => {
     it("should transition to PAUSE when inventory exceeds limit", () => {
       const nowMs = Date.now();
 
-      const snapshot: Snapshot = {
-        exchange: "extended",
-        symbol: "BTC-USD",
-        nowMs,
-        bestBidPx: "50000",
-        bestAskPx: "50010",
-        dataStale: false,
-      };
-
       const position: Position = {
         size: "1.5", // > maxInventory (1)
       };
 
-      const riskEval = evaluateRisk(snapshot, normalFeatures, defaultParams, "NORMAL");
-
-      // Check with position
-      const absPosition = Math.abs(parseFloat(position.size));
-      const maxInventory = parseFloat(defaultParams.maxInventory);
-      const inventoryExceeded = absPosition > maxInventory;
-
-      expect(inventoryExceeded).toBe(true);
+      const riskEval = evaluateRisk(normalFeatures, position, defaultParams);
+      expect(riskEval.shouldPause).toBe(true);
+      expect(riskEval.reasonCodes).toContain("INVENTORY_LIMIT");
     });
   });
 
@@ -185,49 +144,33 @@ describe("Executor PAUSE Behavior", () => {
       // State was in PAUSE, now conditions are normal
       const state: StrategyState = {
         mode: "PAUSE",
-        modeSince: nowMs - 30_000, // Been in PAUSE for 30s
-        pauseUntil: nowMs - 10_000, // PAUSE duration expired 10s ago
-        lastQuoteMs: 0,
+        modeSinceMs: nowMs - 30_000, // Been in PAUSE for 30s
+        pauseUntilMs: nowMs - 10_000, // PAUSE duration expired 10s ago
+        lastQuoteMs: undefined,
       };
 
-      const snapshot: Snapshot = {
-        exchange: "extended",
-        symbol: "BTC-USD",
+      const output = decide({
         nowMs,
-        bestBidPx: "50000",
-        bestAskPx: "50010",
-        dataStale: false,
-      };
+        state,
+        features: normalFeatures,
+        params: defaultParams,
+        position: defaultPosition,
+      });
 
-      // Risk evaluation with normal conditions
-      const riskEval = evaluateRisk(snapshot, normalFeatures, defaultParams, "PAUSE");
-
-      // If shouldPause is false and we're in PAUSE, we should go to DEFENSIVE
-      if (!riskEval.shouldPause) {
-        // The expected behavior is to recover to DEFENSIVE, not NORMAL
-        expect(riskEval.recommendedMode).toBe("DEFENSIVE");
-      }
+      expect(output.nextState.mode).toBe("DEFENSIVE");
+      expect(output.intents[0]?.type).toBe("QUOTE");
     });
   });
 
   describe("Decision cycle with missing data", () => {
     it("should not generate QUOTE intent when features are missing", () => {
       const nowMs = Date.now();
-      const state: StrategyState = {
-        mode: "NORMAL",
-        modeSince: nowMs - 60_000,
-        pauseUntil: null,
-        lastQuoteMs: 0,
-      };
+      const state = createInitialState(nowMs, "NORMAL");
 
-      // Empty/invalid features indicate missing data
+      // Missing data should be represented as dataStale
       const missingFeatures: Features = {
-        midPx: "",
-        spreadBps: "",
-        tradeImbalance1s: "0",
-        realizedVol10s: "0",
-        markIndexDivBps: "",
-        liqCount10s: 0,
+        ...normalFeatures,
+        dataStale: true,
       };
 
       const input: DecideInput = {
@@ -240,9 +183,8 @@ describe("Executor PAUSE Behavior", () => {
 
       const output = decide(input);
 
-      // Should either PAUSE or at least not quote
-      const hasQuoteIntent = output.intents.some(i => i.type === "QUOTE");
-      expect(hasQuoteIntent).toBe(false);
+      expect(output.nextState.mode).toBe("PAUSE");
+      expect(output.intents[0]?.type).toBe("CANCEL_ALL");
     });
   });
 });
