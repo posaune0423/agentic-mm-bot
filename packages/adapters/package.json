@@ -13,6 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@agentic-mm-bot/utils": "workspace:*",
     "decimal.js": "^10.5.0",
     "extended-typescript-sdk": "^0.0.1",
     "neverthrow": "^8.2.0",
