@@ -9,6 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
@@ -18,11 +20,13 @@
     "neverthrow": "^8.2.0"
   },
   "devDependencies": {
+    "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/bun": "catalog:tooling",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"
-  }
+  },
+  "prettier": "@agentic-mm-bot/prettier-config"
 }
