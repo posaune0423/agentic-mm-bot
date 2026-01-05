@@ -31,19 +31,17 @@ import {
 // Test database URL - should point to a test database
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
-describe("Database Schema Integration", () => {
-  let db: Db;
+const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
+
+describeDb("Database Schema Integration", () => {
+  let db: Db | undefined;
 
   beforeAll(async () => {
-    if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL or DATABASE_URL must be set");
-    }
-
     db = getDb(TEST_DATABASE_URL);
   });
 
   afterAll(async () => {
-    await db.$client.end();
+    await db?.$client.end();
   });
 
   describe("md_bbo table", () => {

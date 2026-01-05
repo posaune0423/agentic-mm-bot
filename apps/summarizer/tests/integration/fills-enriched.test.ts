@@ -13,22 +13,22 @@ import { exFill, fillsEnriched, mdBbo, getDb, type Db, type NewExFill, type NewM
 // Test database URL
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
-describe("Summarizer fills_enriched Integration", () => {
-  let db: Db;
+const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
+
+describeDb("Summarizer fills_enriched Integration", () => {
+  let db: Db | undefined;
 
   // Test data IDs for cleanup
   let testFillId: string;
   let testBboIds: string[] = [];
 
   beforeAll(async () => {
-    if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL or DATABASE_URL must be set");
-    }
-
     db = getDb(TEST_DATABASE_URL);
   });
 
   afterAll(async () => {
+    if (!db) return;
+
     // Clean up test data
     if (testFillId) {
       await db.delete(fillsEnriched).where(eq(fillsEnriched.fillId, testFillId));
