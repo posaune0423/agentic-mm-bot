@@ -4,15 +4,14 @@
  * Requirements: 10.1, 10.6
  */
 
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq, and } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
-import { llmProposal, type LlmProposal, type NewLlmProposal } from "@agentic-mm-bot/db";
+import { llmProposal, type Db, type LlmProposal, type NewLlmProposal } from "@agentic-mm-bot/db";
 
 import type { ProposalRepository, ProposalRepositoryError } from "../interfaces/proposal-repository";
 
-export function createPostgresProposalRepository(db: NodePgDatabase): ProposalRepository {
+export function createPostgresProposalRepository(db: Db): ProposalRepository {
   return {
     saveProposal(proposal: NewLlmProposal): ResultAsync<LlmProposal, ProposalRepositoryError> {
       return ResultAsync.fromPromise(

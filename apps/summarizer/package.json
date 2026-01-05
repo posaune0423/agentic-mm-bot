@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "bun run --hot src/main.ts",
     "start": "bun run src/main.ts",
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
@@ -14,7 +16,7 @@
   "dependencies": {
     "@agentic-mm-bot/db": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
-    "@t3-oss/env-core": "latest",
+    "@t3-oss/env-core": "catalog:tooling",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",
@@ -22,11 +24,13 @@
   },
   "devDependencies": {
     "@agentic-mm-bot/eslint-config": "workspace:*",
+    "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/bun": "catalog:tooling",
     "@types/pg": "^8.16.0",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"
-  }
+  },
+  "prettier": "@agentic-mm-bot/prettier-config"
 }

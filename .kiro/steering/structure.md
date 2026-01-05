@@ -1,3 +1,72 @@
+# 構造 / 依存関係（Steering）
+
+このリポジトリは **apps（実行単位）** と **packages（共有ライブラリ）** に分かれます。基本方針は「`core` を純粋に保ち、I/O は周辺へ押し出す」です。
+
+## ディレクトリ構成（パターン）
+
+- **`apps/*`**: 実行プロセス（CLI/常駐）
+  - `src/main.ts`: composition root（env/DB/adapter/repository を組み立てる）
+  - `src/env.ts`: 環境変数の定義とバリデーション
+  - `src/services/*`: 状態やキャッシュ等のアプリ内コンポーネント（例: tracker/cache）
+  - `src/usecases/*`: 1回の処理単位のオーケストレーション（Read → Decide → Execute）
+  - `src/repositories/interfaces/*`: app 内で必要な永続化の契約
+  - `src/repositories/postgres/*`: Postgres/Drizzle 実装
+- **`packages/*`**: 共有ライブラリ
+  - `packages/core`: 戦略の純ロジック（意思決定・特徴量・リスク・パラメータゲート）
+  - `packages/adapters`: 取引所/データソースの adapter と port インターフェース
+  - `packages/db`: Drizzle schema（DB の Single Source of Truth）
+  - `packages/utils`: logger 等の横断ユーティリティ
+  - `packages/*-config`: eslint/prettier/tsconfig の共有設定
+
+## 依存方向（Golden Rule）
+
+- `apps/*` → `packages/*` は依存してよい
+- **`packages/core` は他の packages（db/adapters/utils）に依存しない**
+- `packages/db` は schema 定義に集中し、アプリのユースケースは持たない
+- `packages/adapters` は **port（インターフェース）** と **実装（例: extended）** を分離する
+
+## 実行時データフロー（概念図）
+
+```mermaid
+flowchart LR
+  Ingestor["apps/ingestor<br/>Market data ingest"] --> DB["packages/db<br/>Postgres tables"]
+  Executor["apps/executor<br/>Run strategy + execution"] --> DB
+  DB --> Summarizer["apps/summarizer<br/>fills_enriched/metrics"]
+  Summarizer --> Reflector["apps/llm-reflector<br/>LLM proposal"]
+  Reflector --> DB
+  DB --> Executor
+  DB --> Backtest["apps/backtest<br/>Replay + simulate"]
+```
+
+## DBスキーマ運用（パターン）
+
+`packages/db` の方針:
+
+- 主要テーブルは **`(exchange, symbol)`** を持つ
+- 時刻カラムは **`ts`**（UTCの timestamptz）
+- **Market Data は append**（`md_*`）
+- **Latest は upsert**（`latest_*`）
+- 実行イベントは `ex_*`、分析系は `fills_enriched`、設定/状態は `strategy_*`、提案系は `llm_*` / `param_rollout`
+
+## Executor の内部構造（パターン）
+
+- **Read**: `MarketDataCache` から snapshot / rolling window を構築
+- **Decide**: `packages/core` の `computeFeatures` → `decide`
+- **Execute**: intent を plan に落とし `ExecutionPort` へ（post-only maker 前提）
+- **Persist**:
+  - イベント（fill/order_update）をバッファして定期 flush（非同期・ノンブロッキング）
+  - state を定期保存し、再起動時に復元
+
+## ドリフト（検知したもの）
+
+- README / `docker-compose.yaml` に `apps/server` が登場する場合がありますが、現コードの中心は `apps/{executor,ingestor,summarizer,llm-reflector,backtest}` です。追加のHTTPサーバを前提にする場合は、別途 `structure.md` を更新してください。
+
+---
+
+## 旧内容（Legacy / 参考）
+
+以下は過去のテンプレート/別プロダクト想定の記述が残っている可能性があります。**現行の Source of Truth はこのファイル上部**（「構造 / 依存関係（Steering）」以降）です。
+
 # Structure Steering
 
 > **Last Updated**: 2025-12-30  

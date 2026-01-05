@@ -7,10 +7,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import { eq, and } from "drizzle-orm";
 import {
+  getDb,
   mdBbo,
   mdTrade,
   mdPrice,
@@ -19,6 +18,7 @@ import {
   exOrderEvent,
   strategyState,
   fillsEnriched,
+  type Db,
   type NewMdBbo,
   type NewMdTrade,
   type NewMdPrice,
@@ -31,21 +31,22 @@ import {
 // Test database URL - should point to a test database
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
-describe("Database Schema Integration", () => {
-  let pool: Pool;
-  let db: NodePgDatabase;
+const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
+
+describeDb("Database Schema Integration", () => {
+  let db: Db | undefined;
 
   beforeAll(async () => {
     if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL or DATABASE_URL must be set");
+      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
     }
 
-    pool = new Pool({ connectionString: TEST_DATABASE_URL });
-    db = drizzle(pool);
+    const url = TEST_DATABASE_URL;
+    db = getDb(url);
   });
 
   afterAll(async () => {
-    await pool.end();
+    await db?.$client.end();
   });
 
   describe("md_bbo table", () => {

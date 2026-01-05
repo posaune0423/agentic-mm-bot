@@ -6,11 +6,14 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
     "test": "bun test"
   },
   "dependencies": {
+    "@agentic-mm-bot/utils": "workspace:*",
     "decimal.js": "^10.5.0",
     "extended-typescript-sdk": "^0.0.1",
     "neverthrow": "^8.2.0",
@@ -18,10 +21,12 @@
   },
   "devDependencies": {
     "@agentic-mm-bot/eslint-config": "workspace:*",
+    "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/bun": "catalog:tooling",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"
-  }
+  },
+  "prettier": "@agentic-mm-bot/prettier-config"
 }

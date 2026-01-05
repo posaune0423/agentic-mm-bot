@@ -6,9 +6,8 @@
  * - Queues events in memory and flushes periodically
  */
 
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { ok, err, type Result } from "neverthrow";
-import { exOrderEvent, exFill } from "@agentic-mm-bot/db";
+import { exOrderEvent, exFill, type Db } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import type {
@@ -21,7 +20,7 @@ import type {
 /**
  * Create a Postgres event repository with async batch writes
  */
-export function createPostgresEventRepository(db: NodePgDatabase): EventRepository {
+export function createPostgresEventRepository(db: Db): EventRepository {
   const orderEventQueue: OrderEventRecord[] = [];
   const fillQueue: FillRecord[] = [];
   let flushIntervalId: ReturnType<typeof setInterval> | null = null;

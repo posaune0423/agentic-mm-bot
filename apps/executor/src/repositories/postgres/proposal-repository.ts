@@ -4,7 +4,6 @@
  * Requirements: 10.4, 10.5, 10.6
  */
 
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq, and } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
@@ -12,6 +11,7 @@ import {
   llmProposal,
   paramRollout,
   strategyParams,
+  type Db,
   type LlmProposal,
   type NewParamRollout,
   type StrategyParams,
@@ -20,7 +20,7 @@ import {
 
 import type { ExecutorProposalRepository, ProposalRepositoryError } from "../interfaces/proposal-repository";
 
-export function createPostgresProposalRepository(db: NodePgDatabase): ExecutorProposalRepository {
+export function createPostgresProposalRepository(db: Db): ExecutorProposalRepository {
   return {
     getPendingProposals(exchange: string, symbol: string): ResultAsync<LlmProposal[], ProposalRepositoryError> {
       return ResultAsync.fromPromise(

@@ -6,18 +6,18 @@
       "name": "agentic-mm-bot",
       "devDependencies": {
         "@agentic-mm-bot/prettier-config": "workspace:*",
-        "@prettier/plugin-oxc": "catalog:tooling",
-        "@types/bun": "catalog:tooling",
-        "@types/dotenv": "catalog:tooling",
-        "@types/node": "catalog:tooling",
-        "@typescript/native-preview": "catalog:tooling",
+        "@prettier/plugin-oxc": "^0.1.3",
+        "@types/bun": "^1.3.5",
+        "@types/dotenv": "^8.2.3",
+        "@types/node": "^25.0.3",
+        "@typescript/native-preview": "^7.0.0-dev.20260105.1",
         "dotenv": "^17.2.3",
         "jiti": "^2.6.1",
-        "prettier": "catalog:tooling",
-        "prettier-plugin-organize-imports": "catalog:tooling",
-        "prettier-plugin-tailwindcss": "catalog:tooling",
+        "prettier": "^3.7.4",
+        "prettier-plugin-organize-imports": "^4.3.0",
+        "prettier-plugin-tailwindcss": "^0.7.2",
         "turbo": "^2.7.2",
-        "typescript": "catalog:tooling",
+        "typescript": "^5.9.3",
       },
       "peerDependencies": {
         "typescript": "catalog:tooling",
@@ -30,7 +30,7 @@
         "@agentic-mm-bot/core": "workspace:*",
         "@agentic-mm-bot/db": "workspace:*",
         "@agentic-mm-bot/utils": "workspace:*",
-        "@t3-oss/env-core": "latest",
+        "@t3-oss/env-core": "catalog:tooling",
         "drizzle-orm": "catalog:",
         "neverthrow": "^8.2.0",
         "pg": "^8.16.3",
@@ -38,6 +38,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@types/pg": "^8.16.0",
@@ -54,7 +55,7 @@
         "@agentic-mm-bot/core": "workspace:*",
         "@agentic-mm-bot/db": "workspace:*",
         "@agentic-mm-bot/utils": "workspace:*",
-        "@t3-oss/env-core": "latest",
+        "@t3-oss/env-core": "catalog:tooling",
         "drizzle-orm": "catalog:",
         "neverthrow": "^8.2.0",
         "pg": "^8.16.3",
@@ -62,6 +63,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@types/pg": "^8.16.0",
@@ -77,7 +79,7 @@
         "@agentic-mm-bot/adapters": "workspace:*",
         "@agentic-mm-bot/db": "workspace:*",
         "@agentic-mm-bot/utils": "workspace:*",
-        "@t3-oss/env-core": "latest",
+        "@t3-oss/env-core": "catalog:tooling",
         "drizzle-orm": "catalog:",
         "neverthrow": "^8.2.0",
         "pg": "^8.16.3",
@@ -85,6 +87,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@types/pg": "^8.16.0",
@@ -101,6 +104,7 @@
         "@agentic-mm-bot/db": "workspace:*",
         "@agentic-mm-bot/utils": "workspace:*",
         "@ai-sdk/openai": "^1.3.22",
+        "@t3-oss/env-core": "catalog:tooling",
         "ai": "^4.3.16",
         "drizzle-orm": "catalog:",
         "neverthrow": "^8.2.0",
@@ -110,6 +114,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@types/pg": "^8.16.0",
@@ -124,7 +129,7 @@
       "dependencies": {
         "@agentic-mm-bot/db": "workspace:*",
         "@agentic-mm-bot/utils": "workspace:*",
-        "@t3-oss/env-core": "latest",
+        "@t3-oss/env-core": "catalog:tooling",
         "drizzle-orm": "catalog:",
         "neverthrow": "^8.2.0",
         "pg": "^8.16.3",
@@ -132,6 +137,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@types/pg": "^8.16.0",
@@ -144,6 +150,7 @@
       "name": "@agentic-mm-bot/adapters",
       "version": "0.0.0",
       "dependencies": {
+        "@agentic-mm-bot/utils": "workspace:*",
         "decimal.js": "^10.5.0",
         "extended-typescript-sdk": "^0.0.1",
         "neverthrow": "^8.2.0",
@@ -151,6 +158,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@typescript/native-preview": "catalog:tooling",
@@ -166,6 +174,7 @@
       },
       "devDependencies": {
         "@agentic-mm-bot/eslint-config": "workspace:*",
+        "@agentic-mm-bot/prettier-config": "workspace:*",
         "@agentic-mm-bot/typescript-config": "workspace:*",
         "@types/bun": "catalog:tooling",
         "@typescript/native-preview": "catalog:tooling",
@@ -256,6 +265,7 @@
   "catalogs": {
     "tooling": {
       "@prettier/plugin-oxc": "latest",
+      "@t3-oss/env-core": "latest",
       "@types/bun": "latest",
       "@types/dotenv": "latest",
       "@types/node": "latest",
@@ -526,21 +536,21 @@
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.51.0", "", { "dependencies": { "@typescript-eslint/types": "8.51.0", "eslint-visitor-keys": "^4.2.1" } }, "sha512-mM/JRQOzhVN1ykejrvwnBRV3+7yTKK8tVANVN3o1O0t0v7o+jqdVu9crPy5Y9dov15TJk/FTIgoUGHrTOVL3Zg=="],
 
-    "@typescript/native-preview": ["@typescript/native-preview@7.0.0-dev.20260104.1", "", { "optionalDependencies": { "@typescript/native-preview-darwin-arm64": "7.0.0-dev.20260104.1", "@typescript/native-preview-darwin-x64": "7.0.0-dev.20260104.1", "@typescript/native-preview-linux-arm": "7.0.0-dev.20260104.1", "@typescript/native-preview-linux-arm64": "7.0.0-dev.20260104.1", "@typescript/native-preview-linux-x64": "7.0.0-dev.20260104.1", "@typescript/native-preview-win32-arm64": "7.0.0-dev.20260104.1", "@typescript/native-preview-win32-x64": "7.0.0-dev.20260104.1" }, "bin": { "tsgo": "bin/tsgo.js" } }, "sha512-uUf3nybwgHpDpzPFjreMb6aDnyp1vcVdWqp7Ac4bmiOAtE0TlmvoSI7KTJeTZ8xozFVyHyCoFch5bNyDQr3uHQ=="],
+    "@typescript/native-preview": ["@typescript/native-preview@7.0.0-dev.20260105.1", "", { "optionalDependencies": { "@typescript/native-preview-darwin-arm64": "7.0.0-dev.20260105.1", "@typescript/native-preview-darwin-x64": "7.0.0-dev.20260105.1", "@typescript/native-preview-linux-arm": "7.0.0-dev.20260105.1", "@typescript/native-preview-linux-arm64": "7.0.0-dev.20260105.1", "@typescript/native-preview-linux-x64": "7.0.0-dev.20260105.1", "@typescript/native-preview-win32-arm64": "7.0.0-dev.20260105.1", "@typescript/native-preview-win32-x64": "7.0.0-dev.20260105.1" }, "bin": { "tsgo": "bin/tsgo.js" } }, "sha512-PjmhqnN/jRDLxG/5EuCe8AlW1QUEOjcDJQsxarQmMbrdW5DbSDnYUvWbYbJescXefeK0v3FUQmp7HAOCFQ7I/w=="],
 
-    "@typescript/native-preview-darwin-arm64": ["@typescript/native-preview-darwin-arm64@7.0.0-dev.20260104.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-tVPVpozQmSVTpn97Uu+ZDdC5G9YkHt6YPgv/wtzDVLc8CRCpCwIZZF8MvWMar8f4WiA+3uJIMeX+RAsSQknu5w=="],
+    "@typescript/native-preview-darwin-arm64": ["@typescript/native-preview-darwin-arm64@7.0.0-dev.20260105.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-d+CJrdiElzHuckgsXLHlBRLbHsgzWqQuSVOZ/raF6cvBKjylnphNPx+CdtOpZrBCic0M30Q/UfTV6StMDhjIrQ=="],
 
-    "@typescript/native-preview-darwin-x64": ["@typescript/native-preview-darwin-x64@7.0.0-dev.20260104.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-6fdywq9zx2QJtDpZKt59e+y8P/WDd10KsX6MReDpaKXTtGpqkVq9+Zb7LbNqRlLJU4gpwURepCTqX/AsZjzUwg=="],
+    "@typescript/native-preview-darwin-x64": ["@typescript/native-preview-darwin-x64@7.0.0-dev.20260105.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-ntgJZDSNh7tqw2bfBuEEqhwUbuALLTLY4E/pLdCC8vaL/2QrNcTuDZX23hcLa7pQL6ML2OVvEH1MC7A1BUO/WA=="],
 
-    "@typescript/native-preview-linux-arm": ["@typescript/native-preview-linux-arm@7.0.0-dev.20260104.1", "", { "os": "linux", "cpu": "arm" }, "sha512-mi/NiyKyH/CpNrL3FNCL7Vp9Q/c7MW+7La6xNgpG29M7SK4U9LnBnJLSHS0ahpnt2QsZBlCY6NaRZpbKT2pYNw=="],
+    "@typescript/native-preview-linux-arm": ["@typescript/native-preview-linux-arm@7.0.0-dev.20260105.1", "", { "os": "linux", "cpu": "arm" }, "sha512-Pv8aEc9OKG++9dPzyWwZRXt1WEHH7saAYpGrYWKnR0mMDt8yRRPX2g9ReCSFLJ/9ji3nvBg3n/wUXDXOdMQDDg=="],
 
-    "@typescript/native-preview-linux-arm64": ["@typescript/native-preview-linux-arm64@7.0.0-dev.20260104.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-M7vUDJGXDUfIKO7X+DlBIoKaE3uA6dKx8wVky39FHcvjiTJIR+tphPU3uLY7xLpuj3y9PtGQQ2WoGY2wcft4Ug=="],
+    "@typescript/native-preview-linux-arm64": ["@typescript/native-preview-linux-arm64@7.0.0-dev.20260105.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-uBj+8EPCZ8bFSosovwmgF16r4NXHgq0Wc3Ddg48KDqUl9njsVjWbg6jv3H5OXm7nnLKgRzmq9B30cHuWhlKsMg=="],
 
-    "@typescript/native-preview-linux-x64": ["@typescript/native-preview-linux-x64@7.0.0-dev.20260104.1", "", { "os": "linux", "cpu": "x64" }, "sha512-58eQFmQLCFHmPxyaLT7p3lJNHjcxqLwxO5IFAujrMp+VPHCUuL9QfxcKWnCJlkjgoKd8c95pT0ZNzBhsq00Hyg=="],
+    "@typescript/native-preview-linux-x64": ["@typescript/native-preview-linux-x64@7.0.0-dev.20260105.1", "", { "os": "linux", "cpu": "x64" }, "sha512-vy1IpYseSpIP6X0TKnejwKH75LO06VfI7DRV9ShqgHC6Ybd7AdrTrXlna13sFF6FuD8vd3ZefesbS4n4d0Ywzw=="],
 
-    "@typescript/native-preview-win32-arm64": ["@typescript/native-preview-win32-arm64@7.0.0-dev.20260104.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-g5pE6oveg7lDsBP8nYnjhikMzoZbMWEVYG1JkVZcNUG9equw1Fg4cZdBa/HbZENj1Afy9xrzrRywpvhAYF0lDw=="],
+    "@typescript/native-preview-win32-arm64": ["@typescript/native-preview-win32-arm64@7.0.0-dev.20260105.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-EFSpj3zgVsYTztgeuxhOlOpx0hr2vTVxPyccEHfiseMcAjkAsbdoSeYSLZFZyW2JXqJtq6N3YWsGGKzoyP0f+Q=="],
 
-    "@typescript/native-preview-win32-x64": ["@typescript/native-preview-win32-x64@7.0.0-dev.20260104.1", "", { "os": "win32", "cpu": "x64" }, "sha512-kdufkNpH5DNIeJ5ZHsfcxTC30IfTkvW+ITc0IHHv4plgKiTJ71i/BZDavkTNmpd1zODe4P8PVGrRrGYpdVF06A=="],
+    "@typescript/native-preview-win32-x64": ["@typescript/native-preview-win32-x64@7.0.0-dev.20260105.1", "", { "os": "win32", "cpu": "x64" }, "sha512-UK0+xTxu6UZA8isOThWT9LOAl6LB1WyYFLC0ijno4SWwQCIbnJi3wjnAkBxRyM8h46DUaDYpXfHVkpYwhdExhg=="],
 
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 

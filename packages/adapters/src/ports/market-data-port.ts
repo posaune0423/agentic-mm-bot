@@ -45,11 +45,29 @@ export interface TradeEvent {
  */
 export interface PriceEvent {
   type: "price";
+  priceType: "mark" | "index";
   ts: Date;
   exchange: string;
   symbol: string;
   markPx?: string;
   indexPx?: string;
+  seq?: number;
+  raw?: unknown;
+}
+
+/**
+ * Funding rate event
+ *
+ * Note: MVP does not persist funding rates to DB,
+ * but the event is converted and logged for observability.
+ */
+export interface FundingRateEvent {
+  type: "funding";
+  ts: Date;
+  exchange: string;
+  symbol: string;
+  fundingRate: string;
+  seq?: number;
   raw?: unknown;
 }
 
@@ -63,7 +81,7 @@ export interface ConnectionEvent {
   reason?: string;
 }
 
-export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | ConnectionEvent;
+export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent | ConnectionEvent;
 
 /**
  * Market data subscription options
@@ -71,7 +89,7 @@ export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | ConnectionEve
 export interface MarketDataSubscription {
   exchange: string;
   symbol: string;
-  channels: ("bbo" | "trades" | "prices")[];
+  channels: ("bbo" | "trades" | "prices" | "funding")[];
 }
 
 /**
