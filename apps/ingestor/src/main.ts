@@ -8,6 +8,12 @@
  * - Throttle BBO writes by time and mid change
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/ingestor)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import {
   ExtendedMarketDataAdapter,
   type BboEvent,

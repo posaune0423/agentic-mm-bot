@@ -98,7 +98,9 @@ export function runHourlyReflection(deps: RunHourlyReflectionDeps): ResultAsync<
     .orElse((error): ResultAsync<RunResult, never> => {
       if (error.type === "ALREADY_EXISTS") {
         markHourAsProcessed();
-        logger.info("Reflection skipped - already exists", { message: error.message });
+        logger.info("Reflection skipped - already exists", {
+          message: error.message,
+        });
         return okAsync({ type: "SKIPPED", reason: error.message });
       }
 

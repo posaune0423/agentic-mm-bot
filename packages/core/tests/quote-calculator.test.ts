@@ -18,7 +18,7 @@ const createDefaultParams = (): StrategyParams => ({
   baseHalfSpreadBps: "10",
   volSpreadGain: "1",
   toxSpreadGain: "2",
-  quoteSizeBase: "0.1",
+  quoteSizeUsd: "100",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "1.0",
@@ -162,7 +162,8 @@ describe("generateQuoteIntent", () => {
 
     expect(result.type).toBe("QUOTE");
     expect(result.postOnly).toBe(true);
-    expect(result.size).toBe(params.quoteSizeBase);
+    const expectedSize = (parseFloat(params.quoteSizeUsd) / parseFloat(features.midPx)).toFixed(6);
+    expect(result.size).toBe(expectedSize);
     expect(result.reasonCodes).toContain("NORMAL_CONDITIONS");
     expect(parseFloat(result.bidPx)).toBeLessThan(parseFloat(features.midPx));
     expect(parseFloat(result.askPx)).toBeGreaterThan(parseFloat(features.midPx));

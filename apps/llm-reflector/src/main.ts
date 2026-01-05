@@ -7,6 +7,12 @@
  * - Graceful shutdown
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/llm-reflector)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import { getDb } from "@agentic-mm-bot/db";
 import { createPostgresMetricsRepository, createPostgresProposalRepository } from "@agentic-mm-bot/repositories";
 import { createIntervalWorker, logger } from "@agentic-mm-bot/utils";

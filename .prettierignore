@@ -1,2 +1,9 @@
 .env.example
 **/.env.example
+apps/executor/wasm/
+**/*.d.ts
+dist/
+coverage/
+node_modules/
+.turbo/
+.next/

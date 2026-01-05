@@ -6,7 +6,7 @@
  */
 
 import { eq, and, gte, lte, asc, count, sql } from "drizzle-orm";
-import { err, ResultAsync } from "neverthrow";
+import { ResultAsync } from "neverthrow";
 
 import { fillsEnriched, exOrderEvent, strategyState, strategyParams, type Db } from "@agentic-mm-bot/db";
 
@@ -159,14 +159,22 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
         }),
       ).andThen(rows => {
         if (rows.length === 0) {
+          // Fallback to default params if not found (Requirement: Work with empty DB)
           return ResultAsync.fromSafePromise(
-            Promise.resolve(
-              err({
-                type: "NOT_FOUND" as const,
-                message: "Current params not found",
-              }),
-            ),
-          ).andThen(result => result);
+            Promise.resolve({
+              paramsSetId: "00000000-0000-0000-0000-000000000000",
+              baseHalfSpreadBps: "10",
+              volSpreadGain: "1",
+              toxSpreadGain: "1",
+              quoteSizeUsd: "100",
+              refreshIntervalMs: 1000,
+              staleCancelMs: 5000,
+              maxInventory: "1",
+              inventorySkewGain: "5",
+              pauseMarkIndexBps: "50",
+              pauseLiqCount10s: 3,
+            }),
+          );
         }
 
         const row = rows[0];
@@ -176,7 +184,7 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             baseHalfSpreadBps: row.baseHalfSpreadBps,
             volSpreadGain: row.volSpreadGain,
             toxSpreadGain: row.toxSpreadGain,
-            quoteSizeBase: row.quoteSizeBase,
+            quoteSizeUsd: row.quoteSizeUsd,
             refreshIntervalMs: row.refreshIntervalMs,
             staleCancelMs: row.staleCancelMs,
             maxInventory: row.maxInventory,

@@ -178,7 +178,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   constructor(config: ExtendedConfig, reconnectConfig: ReconnectConfig = DEFAULT_RECONNECT_CONFIG) {
     this.config = config;
     this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
-    this.streamClient = new PerpetualStreamClient({ apiUrl: this.endpointConfig.streamUrl });
+    this.streamClient = new PerpetualStreamClient({
+      apiUrl: this.endpointConfig.streamUrl,
+    });
     this.reconnectConfig = reconnectConfig;
   }
 
@@ -276,7 +278,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         try {
           await this.startStream(symbol, streamType);
         } catch (error) {
-          log.warn(`Failed to start ${streamType} stream for ${symbol}`, { error });
+          log.warn(`Failed to start ${streamType} stream for ${symbol}`, {
+            error,
+          });
           this.scheduleReconnect();
         }
       }
@@ -330,7 +334,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   private createStreamConnection(symbol: string, streamType: StreamType): PerpetualStreamConnection<unknown> | null {
     switch (streamType) {
       case "orderbook":
-        return this.streamClient.subscribeToOrderbooks({ marketName: symbol, depth: 1 });
+        return this.streamClient.subscribeToOrderbooks({
+          marketName: symbol,
+          depth: 1,
+        });
       case "trades":
         return this.streamClient.subscribeToPublicTrades(symbol);
       case "fundingRate":
@@ -350,7 +357,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       for await (const message of state.connection) {
         if (!state.isRunning) break;
 
-        const events = this.normalizeMessage(message.data, streamType, symbol);
+        const events = this.normalizeMessage(message, streamType, symbol);
 
         for (const event of events) {
           const seqBreak = this.checkSequence(event, streamType);

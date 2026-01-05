@@ -1,6 +1,8 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
+  "globalDependencies": [".env*"],
+  "globalEnv": ["DATABASE_URL"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -41,6 +43,26 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "db:generate": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"],
+      "env": ["DATABASE_URL"]
+    },
+    "db:migrate": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"],
+      "env": ["DATABASE_URL"]
+    },
+    "db:push": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"],
+      "env": ["DATABASE_URL"]
+    },
+    "db:studio": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"],
+      "env": ["DATABASE_URL"]
     }
   }
 }

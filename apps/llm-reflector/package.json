@@ -19,6 +19,7 @@
     "@agentic-mm-bot/repositories": "workspace:*",
     "@agentic-mm-bot/utils": "workspace:*",
     "@mastra/core": "^0.10.5",
+    "dotenv": "^17.2.3",
     "drizzle-orm": "catalog:",
     "neverthrow": "^8.2.0",
     "pg": "^8.16.3",

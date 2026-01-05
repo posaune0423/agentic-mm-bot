@@ -57,7 +57,7 @@
 - **`baseHalfSpreadBps`**: 基本のハーフスプレッド（bps）。
 - **`volSpreadGain`**: ボラに応じてスプレッドを広げる係数。
 - **`toxSpreadGain`**: 毒性（imbalance）に応じてスプレッドを広げる係数。
-- **`quoteSizeBase`**: 片側1レベルで出す注文サイズ（base数量）。
+- **`quoteSizeUsd`**: 片側1レベルで出す注文サイズ（USD換算額）。
 - **`refreshIntervalMs`**: quote 更新（差し替え）してよい最小間隔。参照: `apps/executor/src/services/execution-planner.ts`
 - **`staleCancelMs`**: 注文が古いと見なしてキャンセル→再発注するまでの時間。参照: `apps/executor/src/services/execution-planner.ts`
 - **`maxInventory`**: 在庫上限。超えると PAUSE トリガー。参照: `packages/core/src/risk-policy.ts`

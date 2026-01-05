@@ -348,10 +348,38 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
     // Create trades in the 1s window before t0
     // 3 buys (total 1.5) vs 1 sell (0.5) = imbalance = (1.5-0.5)/2.0 = 0.5
     const trades: NewMdTrade[] = [
-      { ts: new Date(baseTs.getTime() - 800), exchange: "extended", symbol, px: "100.06", sz: "0.5", side: "buy" },
-      { ts: new Date(baseTs.getTime() - 600), exchange: "extended", symbol, px: "100.07", sz: "0.5", side: "buy" },
-      { ts: new Date(baseTs.getTime() - 400), exchange: "extended", symbol, px: "100.04", sz: "0.5", side: "sell" },
-      { ts: new Date(baseTs.getTime() - 200), exchange: "extended", symbol, px: "100.08", sz: "0.5", side: "buy" },
+      {
+        ts: new Date(baseTs.getTime() - 800),
+        exchange: "extended",
+        symbol,
+        px: "100.06",
+        sz: "0.5",
+        side: "buy",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 600),
+        exchange: "extended",
+        symbol,
+        px: "100.07",
+        sz: "0.5",
+        side: "buy",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 400),
+        exchange: "extended",
+        symbol,
+        px: "100.04",
+        sz: "0.5",
+        side: "sell",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 200),
+        exchange: "extended",
+        symbol,
+        px: "100.08",
+        sz: "0.5",
+        side: "buy",
+      },
     ];
 
     for (const trade of trades) {
@@ -412,10 +440,38 @@ describeDb("Summarizer fills_enriched Features (9.5)", () => {
 
     // Create trades with liq/delev types in 10s window
     const trades: NewMdTrade[] = [
-      { ts: new Date(baseTs.getTime() - 8000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "liq" },
-      { ts: new Date(baseTs.getTime() - 6000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "delev" },
-      { ts: new Date(baseTs.getTime() - 4000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "normal" },
-      { ts: new Date(baseTs.getTime() - 2000), exchange: "extended", symbol, px: "100.00", sz: "1.0", type: "LIQ" }, // uppercase
+      {
+        ts: new Date(baseTs.getTime() - 8000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "liq",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 6000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "delev",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 4000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "normal",
+      },
+      {
+        ts: new Date(baseTs.getTime() - 2000),
+        exchange: "extended",
+        symbol,
+        px: "100.00",
+        sz: "1.0",
+        type: "LIQ",
+      }, // uppercase
     ];
 
     for (const trade of trades) {

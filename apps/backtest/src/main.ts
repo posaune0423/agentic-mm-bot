@@ -8,6 +8,12 @@
  * - Output metrics and CSV
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/backtest)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import type { StrategyParams } from "@agentic-mm-bot/core";
 import { getDb } from "@agentic-mm-bot/db";
 import { createPostgresMarketDataRepository } from "@agentic-mm-bot/repositories";
@@ -24,7 +30,7 @@ const DEFAULT_PARAMS: StrategyParams = {
   baseHalfSpreadBps: "10",
   volSpreadGain: "1",
   toxSpreadGain: "1",
-  quoteSizeBase: "0.01",
+  quoteSizeUsd: "100",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "1",

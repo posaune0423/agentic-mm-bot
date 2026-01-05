@@ -33,7 +33,7 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 - baseHalfSpreadBps: Base half-spread in basis points (higher = wider spread)
 - volSpreadGain: How much spread widens with volatility
 - toxSpreadGain: How much spread widens with toxic flow
-- quoteSizeBase: Base quote size
+- quoteSizeUsd: Quote size in USD (e.g. 100 for $100)
 - refreshIntervalMs: How often quotes refresh (ms)
 - staleCancelMs: When to cancel stale orders (ms)
 - maxInventory: Maximum allowed inventory
@@ -52,7 +52,10 @@ Respond with a JSON object containing your proposed changes, rollback conditions
 /**
  * Parse model string (e.g., "openai/gpt-4o") into provider and model name
  */
-function parseModelString(modelString: string): { provider: string; modelName: string } {
+function parseModelString(modelString: string): {
+  provider: string;
+  modelName: string;
+} {
   const parts = modelString.split("/");
   if (parts.length < 2) {
     throw new Error(`Invalid model string: ${modelString}. Expected format: provider/model-name`);

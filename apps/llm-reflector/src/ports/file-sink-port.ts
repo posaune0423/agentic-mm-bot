@@ -59,7 +59,9 @@ export function createFileSinkPort(): FileSinkPort {
       const filePath = join(llmDir, filename);
 
       // Serialize content without integrity field first
-      const contentWithoutIntegrity = { ...(content as Record<string, unknown>) };
+      const contentWithoutIntegrity = {
+        ...(content as Record<string, unknown>),
+      };
       delete contentWithoutIntegrity.integrity;
       const jsonWithoutIntegrity = JSON.stringify(contentWithoutIntegrity, null, 2);
       const sha256 = calculateSha256(jsonWithoutIntegrity);

@@ -69,7 +69,12 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
     endTime: endTime.toISOString(),
   });
 
-  const marketData = await loadMarketData(repo, { exchange, symbol, startTime, endTime });
+  const marketData = await loadMarketData(repo, {
+    exchange,
+    symbol,
+    startTime,
+    endTime,
+  });
 
   logger.info("Data loaded", {
     bboCount: marketData.bboData.length,
@@ -78,7 +83,9 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   });
 
   if (marketData.bboData.length === 0) {
-    throw new Error("No BBO data found for the specified period");
+    throw new Error(
+      `No BBO data found for the specified period: exchange=${exchange}, symbol=${symbol}, startTime=${startTime.toISOString()}, endTime=${endTime.toISOString()}`,
+    );
   }
 
   // Step 2: Merge into event stream

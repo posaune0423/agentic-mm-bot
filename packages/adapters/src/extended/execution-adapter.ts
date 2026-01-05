@@ -71,7 +71,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     );
 
     this.tradingClient = new PerpetualTradingClient(this.endpointConfig, this.starkAccount);
-    this.streamClient = new PerpetualStreamClient({ apiUrl: this.endpointConfig.streamUrl });
+    this.streamClient = new PerpetualStreamClient({
+      apiUrl: this.endpointConfig.streamUrl,
+    });
   }
 
   /**

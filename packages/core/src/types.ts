@@ -174,8 +174,8 @@ export interface StrategyParams {
   /** Toxicity spread gain multiplier */
   toxSpreadGain: BpsStr;
 
-  /** Quote size in base currency */
-  quoteSizeBase: SizeStr;
+  /** Quote size in USD (e.g. "10" for $10) */
+  quoteSizeUsd: SizeStr;
 
   /** Minimum interval between quote updates (ms) */
   refreshIntervalMs: Ms;

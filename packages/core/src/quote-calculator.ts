@@ -160,11 +160,16 @@ export function generateQuoteIntent(
 ): QuoteIntent {
   const { bidPx, askPx } = calculateQuotePrices(params, features, position);
 
+  // Calculate size from USD amount: size = usd / mid
+  const quoteUsd = parseFloat(params.quoteSizeUsd);
+  const mid = parseFloat(features.midPx);
+  const size = mid > 0 ? (quoteUsd / mid).toFixed(6) : "0";
+
   return {
     type: "QUOTE",
     bidPx,
     askPx,
-    size: params.quoteSizeBase,
+    size, // Computed size in base currency
     postOnly: true,
     reasonCodes,
   };

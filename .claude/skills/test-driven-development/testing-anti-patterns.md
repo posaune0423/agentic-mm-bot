@@ -128,15 +128,15 @@ BEFORE adding any method to production class:
 
 ```typescript
 // ❌ BAD: Mock breaks test logic
-test('detects duplicate server', () => {
+test("detects duplicate server", () => {
   // Mock prevents config write that test depends on!
-  vi.mock('ToolCatalog', () => ({
+  vi.mock("ToolCatalog", () => ({
     discoverAndCacheTools: vi.fn().mockResolvedValue(undefined),
-  }))
+  }));
 
-  await addServer(config)
-  await addServer(config) // Should throw - but won't!
-})
+  await addServer(config);
+  await addServer(config); // Should throw - but won't!
+});
 ```
 
 **Why this is wrong:**
@@ -149,13 +149,13 @@ test('detects duplicate server', () => {
 
 ```typescript
 // ✅ GOOD: Mock at correct level
-test('detects duplicate server', () => {
+test("detects duplicate server", () => {
   // Mock the slow part, preserve behavior test needs
-  vi.mock('MCPServerManager') // Just mock slow server startup
+  vi.mock("MCPServerManager"); // Just mock slow server startup
 
-  await addServer(config) // Config written
-  await addServer(config) // Duplicate detected ✓
-})
+  await addServer(config); // Config written
+  await addServer(config); // Duplicate detected ✓
+});
 ```
 
 ### Gate Function

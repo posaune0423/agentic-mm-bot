@@ -11,6 +11,12 @@
  * This file is the composition root - orchestration only, no business logic.
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/summarizer)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import { getDb } from "@agentic-mm-bot/db";
 import { createIntervalWorker, logger } from "@agentic-mm-bot/utils";
 

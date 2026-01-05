@@ -85,7 +85,7 @@ ${worstFillsSummary || "No fills in this period"}
 - baseHalfSpreadBps: ${input.currentParams.baseHalfSpreadBps}
 - volSpreadGain: ${input.currentParams.volSpreadGain}
 - toxSpreadGain: ${input.currentParams.toxSpreadGain}
-- quoteSizeBase: ${input.currentParams.quoteSizeBase}
+- quoteSizeUsd: ${input.currentParams.quoteSizeUsd}
 - refreshIntervalMs: ${input.currentParams.refreshIntervalMs}
 - staleCancelMs: ${input.currentParams.staleCancelMs}
 - maxInventory: ${input.currentParams.maxInventory}
@@ -134,7 +134,12 @@ function fetchInput(
     repo.getHourlyAggregation(exchange, symbol, windowStart, windowEnd),
     repo.getCurrentParams(exchange, symbol),
   ])
-    .mapErr((e): WorkflowError => ({ type: "FETCH_INPUT_FAILED", message: e.message }))
+    .mapErr(
+      (e): WorkflowError => ({
+        type: "FETCH_INPUT_FAILED",
+        message: e.message,
+      }),
+    )
     .map(([aggregation, currentParams]) => ({
       exchange,
       symbol,
@@ -181,7 +186,9 @@ function validateAndPersist(
   const validationResult = validateProposal(proposal, input.currentParams);
 
   if (validationResult.isErr()) {
-    logger.warn("Proposal rejected by ParamGate", { error: validationResult.error });
+    logger.warn("Proposal rejected by ParamGate", {
+      error: validationResult.error,
+    });
     return errAsync({
       type: "GATE_REJECTED",
       error: validationResult.error,
@@ -229,7 +236,12 @@ function validateAndPersist(
           reasoningLogSha256: sha256,
           status: "pending",
         })
-        .mapErr((e): WorkflowError => ({ type: "DB_INSERT_FAILED", message: e.message }))
+        .mapErr(
+          (e): WorkflowError => ({
+            type: "DB_INSERT_FAILED",
+            message: e.message,
+          }),
+        )
         .map(() => ({
           proposalId,
           logPath: path,

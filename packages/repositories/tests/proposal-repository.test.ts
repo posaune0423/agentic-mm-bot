@@ -94,7 +94,7 @@ describe("ProposalRepository.saveProposal", () => {
       baseHalfSpreadBps: "15",
       volSpreadGain: "1.2",
       toxSpreadGain: "1.1",
-      quoteSizeBase: "0.01",
+      quoteSizeUsd: "100",
       refreshIntervalMs: 1000,
       staleCancelMs: 5000,
       maxInventory: "1.0",
@@ -262,7 +262,7 @@ describe("ProposalRepository.updateProposalStatus", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("ProposalRepository.getCurrentParams", () => {
-  it("should return Err with NOT_FOUND when no current params", async () => {
+  it("should return Ok with default params when no current params", async () => {
     const db = createMockDb();
     // getCurrentParams uses .limit(1), so mock needs to include it
     db.select = mock(() => ({
@@ -276,9 +276,10 @@ describe("ProposalRepository.getCurrentParams", () => {
 
     const result = await repo.getCurrentParams("extended", "BTC-USD");
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.type).toBe("NOT_FOUND");
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value.id).toBe("00000000-0000-0000-0000-000000000000");
+      expect(result.value.quoteSizeUsd).toBe("100");
     }
   });
 
@@ -290,7 +291,7 @@ describe("ProposalRepository.getCurrentParams", () => {
       baseHalfSpreadBps: "10",
       volSpreadGain: "1.0",
       toxSpreadGain: "1.0",
-      quoteSizeBase: "0.01",
+      quoteSizeUsd: "100",
       refreshIntervalMs: 1000,
       staleCancelMs: 5000,
       maxInventory: "1.0",
