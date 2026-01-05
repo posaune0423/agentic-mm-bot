@@ -7,12 +7,13 @@ const config: Linter.Config[] = [
     languageOptions: {
       parserOptions: {
         tsconfigRootDir: import.meta.dirname,
+        project: true,
       },
     },
   },
   // Package-specific ignores
   {
-    ignores: ["dist/**"],
+    ignores: ["dist/**", "eslint.config.ts", "tsdown.config.ts", "drizzle.config.ts", "tests/**"],
   },
 ];
 

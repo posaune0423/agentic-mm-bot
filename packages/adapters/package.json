@@ -1,0 +1,27 @@
+{
+  "name": "@agentic-mm-bot/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "decimal.js": "^10.5.0",
+    "extended-typescript-sdk": "^0.0.1",
+    "neverthrow": "^8.2.0",
+    "zod": "^3.25.51"
+  },
+  "devDependencies": {
+    "@agentic-mm-bot/eslint-config": "workspace:*",
+    "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@types/bun": "catalog:tooling",
+    "@typescript/native-preview": "catalog:tooling",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling"
+  }
+}
