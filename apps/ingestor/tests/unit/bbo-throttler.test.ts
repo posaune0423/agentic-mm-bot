@@ -85,7 +85,7 @@ describe("BboThrottler", () => {
       const throttler = new BboThrottler(100, 10); // 10 bps
 
       throttler.shouldWrite(1000, 50000); // First write
-      // 50000 - 50050 = -50, which is 10 bps downward
+      // 50000 - 49950 = 50, which is 10 bps downward
       const result = throttler.shouldWrite(1050, 49950); // Price decreased by 10 bps
 
       expect(result).toBe(true);
