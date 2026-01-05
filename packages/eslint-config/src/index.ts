@@ -1,11 +1,5 @@
 // Base configurations
-export {
-  baseConfig,
-  baseTypeCheckedConfig,
-  ignorePatterns,
-  strictTypeScriptRules,
-  testFileRules,
-} from "./base";
+export { baseConfig, baseTypeCheckedConfig, ignorePatterns, strictTypeScriptRules, testFileRules } from "./base";
 
 // Node.js configurations
 export { nodeConfig, nodeTypeCheckedConfig } from "./node";

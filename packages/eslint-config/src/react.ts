@@ -68,10 +68,7 @@ export const reactTypeCheckedConfig: Linter.Config[] = [
   ...tseslint.configs.recommended,
   // Source files config (with type checking)
   {
-    files: [
-      "src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
-      "docs/**/*.{ts,tsx,mdx}",
-    ],
+    files: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}", "docs/**/*.{ts,tsx,mdx}"],
     ...tseslint.configs.recommendedTypeChecked[0],
     languageOptions: {
       ecmaVersion: 2022,
@@ -120,11 +117,7 @@ export const reactTypeCheckedConfig: Linter.Config[] = [
   },
   // Test files config (without type checking)
   {
-    files: [
-      "tests/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
-      "**/*.test.{ts,tsx}",
-      "**/*.spec.{ts,tsx}",
-    ],
+    files: ["tests/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
