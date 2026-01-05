@@ -1,5 +1,5 @@
 {
-  "name": "@bun-hono-ddd-template/db",
+  "name": "@agentic-mm-bot/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -26,9 +26,9 @@
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "@bun-hono-ddd-template/eslint-config": "workspace:*",
-    "@bun-hono-ddd-template/prettier-config": "workspace:*",
-    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@agentic-mm-bot/eslint-config": "workspace:*",
+    "@agentic-mm-bot/prettier-config": "workspace:*",
+    "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/node": "catalog:tooling",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.24.0",

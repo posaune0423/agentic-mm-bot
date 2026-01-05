@@ -105,7 +105,7 @@ src/
 ### Import Order
 
 1. External dependencies (hono, neverthrow, zod, etc.)
-2. Workspace packages (`@bun-hono-ddd-template/*`)
+2. Workspace packages (`@agentic-mm-bot/*`)
 3. Relative imports (same layer or parent layers)
 
 ### Import Style
@@ -157,7 +157,7 @@ Each usecase follows this structure:
 
 ### Workspace Packages
 
-- Shared packages prefixed with `@bun-hono-ddd-template/`
+- Shared packages prefixed with `@agentic-mm-bot/`
 - Use `workspace:*` protocol for internal dependencies
 - Catalog pattern for version management
 

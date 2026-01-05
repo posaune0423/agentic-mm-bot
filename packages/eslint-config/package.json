@@ -1,5 +1,5 @@
 {
-  "name": "@bun-hono-ddd-template/eslint-config",
+  "name": "@agentic-mm-bot/eslint-config",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -30,11 +30,11 @@
     "typescript-eslint": "^8.18.2"
   },
   "devDependencies": {
-    "@bun-hono-ddd-template/prettier-config": "workspace:*",
-    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@agentic-mm-bot/prettier-config": "workspace:*",
+    "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/eslint__js": "^8.42.3",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"
   },
-  "prettier": "@bun-hono-ddd-template/prettier-config"
+  "prettier": "@agentic-mm-bot/prettier-config"
 }

@@ -1,5 +1,5 @@
 {
-  "extends": "@bun-hono-ddd-template/typescript-config/base.json",
+  "extends": "@agentic-mm-bot/typescript-config/base.json",
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

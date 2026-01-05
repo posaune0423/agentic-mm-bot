@@ -1,4 +1,4 @@
-import { nodeConfig } from "@bun-hono-ddd-template/eslint-config/node";
+import { nodeConfig } from "@agentic-mm-bot/eslint-config/node";
 import type { Linter } from "eslint";
 
 const config: Linter.Config[] = [

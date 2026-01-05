@@ -1,5 +1,5 @@
 {
-  "name": "@bun-hono-ddd-template/prettier-config",
+  "name": "@agentic-mm-bot/prettier-config",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "prettier-plugin-organize-imports": "^4.1.0"
   },
   "devDependencies": {
-    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@agentic-mm-bot/typescript-config": "workspace:*",
     "prettier-plugin-tailwindcss": "catalog:tooling",
     "typescript": "catalog:tooling"
   },
