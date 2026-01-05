@@ -1,0 +1,7 @@
+{
+  "extends": "@bun-hono-ddd-template/typescript-config/node.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": ["src/**/*"]
+}

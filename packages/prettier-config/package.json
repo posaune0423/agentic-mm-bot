@@ -1,0 +1,28 @@
+{
+  "name": "@bun-hono-ddd-template/prettier-config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node --format esm"
+  },
+  "dependencies": {
+    "@prettier/plugin-oxc": "^0.1.0",
+    "prettier-plugin-organize-imports": "^4.1.0"
+  },
+  "devDependencies": {
+    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "prettier-plugin-tailwindcss": "catalog:tooling",
+    "typescript": "catalog:tooling"
+  },
+  "peerDependencies": {
+    "prettier": "^3.0.0"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "lint:fix": {
+      "dependsOn": ["^lint:fix"]
+    },
+    "format": {
+      "dependsOn": ["^format"]
+    },
+    "format:fix": {
+      "dependsOn": ["^format:fix"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "src/**", "tests/**"],
+      "cache": false
+    },
+    "test:unit": {
+      "inputs": ["$TURBO_DEFAULT$", "src/**", "tests/unit/**"],
+      "outputs": []
+    },
+    "test:integration": {
+      "inputs": ["$TURBO_DEFAULT$", "src/**", "tests/integration/**"],
+      "cache": false
+    },
+    "test:e2e": {
+      "inputs": ["$TURBO_DEFAULT$", "src/**", "tests/e2e/**"],
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

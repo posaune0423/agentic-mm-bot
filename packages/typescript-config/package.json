@@ -1,0 +1,14 @@
+{
+  "name": "@bun-hono-ddd-template/typescript-config",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./node.json": "./node.json",
+    "./react.json": "./react.json",
+    "./next.json": "./next.json"
+  },
+  "devDependencies": {
+    "typescript": "catalog:tooling"
+  }
+}

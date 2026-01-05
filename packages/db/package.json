@@ -1,0 +1,39 @@
+{
+  "name": "@bun-hono-ddd-template/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsgo --noEmit",
+    "clean": "rm -rf dist",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^3.0.4",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@bun-hono-ddd-template/eslint-config": "workspace:*",
+    "@bun-hono-ddd-template/prettier-config": "workspace:*",
+    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@types/node": "catalog:tooling",
+    "@types/pg": "^8.16.0",
+    "drizzle-kit": "^0.24.0",
+    "eslint": "catalog:tooling",
+    "tsdown": "^0.16.0",
+    "typescript": "catalog:tooling"
+  }
+}

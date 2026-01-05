@@ -1,0 +1,38 @@
+{
+  "name": "server",
+  "scripts": {
+    "dev": "bun run --hot src/server.ts",
+    "build": "echo 'No build step needed for Bun'",
+    "lint": "eslint . --config eslint.config.ts",
+    "lint:fix": "eslint . --config eslint.config.ts --fix",
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit/**/*.test.ts",
+    "test:integration": "bun test tests/integration/**/*.test.ts",
+    "test:e2e": "bun test tests/e2e/**/*.test.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@bun-hono-ddd-template/db": "workspace:*",
+    "@t3-oss/env-core": "^0.13.10",
+    "drizzle-orm": "catalog:",
+    "hono": "^4.6.14",
+    "neverthrow": "^8.1.1",
+    "pg": "^8.16.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.16.0",
+    "bun-types": "latest",
+    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@bun-hono-ddd-template/prettier-config": "workspace:*",
+    "@bun-hono-ddd-template/eslint-config": "workspace:*",
+    "eslint": "catalog:tooling",
+    "@typescript/native-preview": "catalog:tooling"
+  },
+  "prettier": "@bun-hono-ddd-template/prettier-config",
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

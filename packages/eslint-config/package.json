@@ -1,0 +1,40 @@
+{
+  "name": "@bun-hono-ddd-template/eslint-config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./base": {
+      "import": "./src/base.ts",
+      "types": "./src/base.ts"
+    },
+    "./node": {
+      "import": "./src/node.ts",
+      "types": "./src/node.ts"
+    },
+    "./react": {
+      "import": "./src/react.ts",
+      "types": "./src/react.ts"
+    }
+  },
+  "scripts": {
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.3",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "typescript-eslint": "^8.18.2"
+  },
+  "devDependencies": {
+    "@bun-hono-ddd-template/prettier-config": "workspace:*",
+    "@bun-hono-ddd-template/typescript-config": "workspace:*",
+    "@types/eslint__js": "^8.42.3",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling"
+  },
+  "prettier": "@bun-hono-ddd-template/prettier-config"
+}

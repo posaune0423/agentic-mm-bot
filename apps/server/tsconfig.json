@@ -1,0 +1,10 @@
+{
+  "extends": "@bun-hono-ddd-template/typescript-config/base.json",
+  "compilerOptions": {
+    "types": ["bun-types"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["src", "tests"]
+}
