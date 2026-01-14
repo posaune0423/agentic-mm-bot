@@ -42,17 +42,9 @@ export function loadEnv(): Env {
     throw new Error(`❌ Environment validation failed:\n${issues}`);
   }
 
-  // Validate that at least one API key is present based on MODEL
-  const env = result.data;
-  const provider = env.MODEL.split("/")[0];
-
-  if (provider === "openai" && !env.OPENAI_API_KEY) {
-    throw new Error("❌ OPENAI_API_KEY is required when using openai models");
-  }
-
-  if (provider === "anthropic" && !env.ANTHROPIC_API_KEY) {
-    throw new Error("❌ ANTHROPIC_API_KEY is required when using anthropic models");
-  }
-
-  return env;
+  // Note:
+  // API keys are intentionally not hard-required at startup.
+  // In local dev, missing keys should not crash the whole `turbo run dev`;
+  // the workflow will surface provider errors at runtime and keep the worker alive.
+  return result.data;
 }

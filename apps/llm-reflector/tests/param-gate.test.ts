@@ -19,7 +19,7 @@ const createMockParams = (): CurrentParamsSummary => ({
   baseHalfSpreadBps: "1.5",
   volSpreadGain: "0.5",
   toxSpreadGain: "0.3",
-  quoteSizeBase: "0.1",
+  quoteSizeUsd: "10",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "10.0",

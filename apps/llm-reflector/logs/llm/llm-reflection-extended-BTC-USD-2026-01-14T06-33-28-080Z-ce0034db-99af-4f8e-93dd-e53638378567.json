@@ -1,0 +1,55 @@
+{
+  "proposalId": "ce0034db-99af-4f8e-93dd-e53638378567",
+  "timestamp": "2026-01-14T06:33:28.080Z",
+  "exchange": "extended",
+  "symbol": "BTC-USD",
+  "inputSummary": {
+    "windowStart": "2026-01-14T05:00:00.000Z",
+    "windowEnd": "2026-01-14T06:00:00.000Z",
+    "fillsCount": 0,
+    "cancelCount": 0,
+    "pauseCount": 0,
+    "markout10sP50": null,
+    "worstFillsCount": 0
+  },
+  "currentParams": {
+    "paramsSetId": "00000000-0000-0000-0000-000000000000",
+    "baseHalfSpreadBps": "10",
+    "volSpreadGain": "1",
+    "toxSpreadGain": "1",
+    "quoteSizeUsd": "100",
+    "refreshIntervalMs": 1000,
+    "staleCancelMs": 5000,
+    "maxInventory": "1",
+    "inventorySkewGain": "5",
+    "pauseMarkIndexBps": "50",
+    "pauseLiqCount10s": 3
+  },
+  "proposal": {
+    "changes": [
+      {
+        "param": "baseHalfSpreadBps",
+        "fromValue": "10",
+        "toValue": "9"
+      },
+      {
+        "param": "refreshIntervalMs",
+        "fromValue": "1000",
+        "toValue": "900"
+      }
+    ],
+    "rollbackConditions": [
+      "Revert changes if fill count does not increase after 2 hours of operation with new settings.",
+      "Revert changes if markout becomes significantly negative upon receiving fills."
+    ],
+    "reasoningTrace": [
+      "Observed no activity: No fills or cancels indicate a potentially too wide spread or slow response rate.",
+      "Base spread adjustment: Reduce baseHalfSpreadBps by 10% (from 10 to 9) to tighten quotation spread and may entice more trading activity.",
+      "Quoting speed adjustment: Reduce refreshIntervalMs by 10% (from 1000 to 900 ms) to increase the frequency of quote updates, potentially capturing more trading opportunities.",
+      "Rollback criteria: The changes will be monitored, and if no increase in fills or negative outcomes occur, settings will revert."
+    ]
+  },
+  "integrity": {
+    "sha256": "d72f76afe5d326f6669d03167956e8399f58882b3aaf746b57004db2048cab25"
+  }
+}

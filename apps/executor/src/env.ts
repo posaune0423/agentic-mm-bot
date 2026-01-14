@@ -40,6 +40,9 @@ export const env = createEnv({
     TICK_INTERVAL_MS: z.coerce.number().default(200),
     STATE_PERSIST_INTERVAL_MS: z.coerce.number().default(10_000),
     EVENT_FLUSH_INTERVAL_MS: z.coerce.number().default(1_000),
+
+    // CLI dashboard (TTY UI)
+    EXECUTOR_DASHBOARD: z.coerce.boolean().default(true),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

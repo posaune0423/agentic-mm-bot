@@ -8,11 +8,10 @@
 
 import { Agent } from "@mastra/core/agent";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModelV1 } from "ai";
 
 import { ProposalOutputSchema } from "../../types/schemas";
 
-const REFLECTOR_INSTRUCTIONS = `You are a market making strategy optimization assistant. Your role is to analyze trading performance data and suggest parameter adjustments to improve profitability while managing risk.
+export const REFLECTOR_INSTRUCTIONS = `You are a market making strategy optimization assistant. Your role is to analyze trading performance data and suggest parameter adjustments to improve profitability while managing risk.
 
 ## Context
 You are optimizing parameters for a market making bot that:
@@ -33,7 +32,7 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 - baseHalfSpreadBps: Base half-spread in basis points (higher = wider spread)
 - volSpreadGain: How much spread widens with volatility
 - toxSpreadGain: How much spread widens with toxic flow
-- quoteSizeBase: Base quote size
+- quoteSizeUsd: Quote size in USD (e.g. 100 for $100)
 - refreshIntervalMs: How often quotes refresh (ms)
 - staleCancelMs: When to cancel stale orders (ms)
 - maxInventory: Maximum allowed inventory
@@ -66,7 +65,7 @@ function parseModelString(modelString: string): { provider: string; modelName: s
 /**
  * Create a LanguageModelV1 from a model string
  */
-function createModel(modelString: string): LanguageModelV1 {
+function createModel(modelString: string): unknown {
   const { provider, modelName } = parseModelString(modelString);
 
   switch (provider) {
@@ -85,7 +84,11 @@ function createModel(modelString: string): LanguageModelV1 {
  * Create the reflector agent with the specified model
  */
 export function createReflectorAgent(modelString: string): Agent {
-  const model = createModel(modelString);
+  // NOTE: Mastra's Agent typing expects a specific AI SDK model type which can
+  // drift across versions. The runtime model object is correct; we keep the
+  // typing loose (via `unknown`) to avoid false-negative typecheck failures.
+  type AgentModel = ConstructorParameters<typeof Agent>[0]["model"];
+  const model = createModel(modelString) as AgentModel;
 
   return new Agent({
     name: "reflector-agent",

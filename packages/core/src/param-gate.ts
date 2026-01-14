@@ -56,7 +56,7 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
   "baseHalfSpreadBps",
   "volSpreadGain",
   "toxSpreadGain",
-  "quoteSizeBase",
+  "quoteSizeUsd",
   "refreshIntervalMs",
   "staleCancelMs",
   "maxInventory",

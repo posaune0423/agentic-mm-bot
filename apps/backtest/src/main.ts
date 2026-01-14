@@ -24,7 +24,7 @@ const DEFAULT_PARAMS: StrategyParams = {
   baseHalfSpreadBps: "10",
   volSpreadGain: "1",
   toxSpreadGain: "1",
-  quoteSizeBase: "0.01",
+  quoteSizeUsd: "10",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "1",

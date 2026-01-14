@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/main.ts",
+    "dev": "bun -e \"console.log('Backtest dev: skipped (use: bun run start).'); setInterval(() => {}, 1 << 30)\"",
     "start": "bun run src/main.ts",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",
     "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",

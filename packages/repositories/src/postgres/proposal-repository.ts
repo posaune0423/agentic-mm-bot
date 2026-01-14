@@ -7,7 +7,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { err, ResultAsync } from "neverthrow";
+import { ResultAsync } from "neverthrow";
 
 import {
   llmProposal,
@@ -161,14 +161,29 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
         }),
       ).andThen(rows => {
         if (rows.length === 0) {
+          // Fallback to default params if not found (Requirement: Work with empty DB)
+          console.warn(`No current params found for ${exchange}:${symbol}, using defaults`);
           return ResultAsync.fromSafePromise(
-            Promise.resolve(
-              err({
-                type: "NOT_FOUND" as const,
-                message: "Current params not found",
-              }),
-            ),
-          ).andThen(result => result);
+            Promise.resolve({
+              id: "00000000-0000-0000-0000-000000000000",
+              exchange,
+              symbol,
+              baseHalfSpreadBps: "10",
+              volSpreadGain: "1",
+              toxSpreadGain: "1",
+              quoteSizeUsd: "100",
+              refreshIntervalMs: 1000,
+              staleCancelMs: 5000,
+              maxInventory: "1",
+              inventorySkewGain: "5",
+              pauseMarkIndexBps: "50",
+              pauseLiqCount10s: 3,
+              isCurrent: true,
+              createdAt: new Date(),
+              createdBy: "system",
+              comment: "Default parameters",
+            }),
+          );
         }
         return ResultAsync.fromSafePromise(Promise.resolve(rows[0]));
       });

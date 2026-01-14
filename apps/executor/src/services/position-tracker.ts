@@ -69,4 +69,15 @@ export class PositionTracker {
   getLastUpdateMs(): number {
     return this.lastUpdateMs;
   }
+
+  /**
+   * Debug/observability helpers (for CLI UI)
+   */
+  getEntryPrice(): PriceStr | undefined {
+    return this.entryPrice;
+  }
+
+  getUnrealizedPnl(): PriceStr | undefined {
+    return this.unrealizedPnl;
+  }
 }

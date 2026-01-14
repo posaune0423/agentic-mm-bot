@@ -20,7 +20,7 @@ export const strategyParams = pgTable("strategy_params", {
   baseHalfSpreadBps: numeric("base_half_spread_bps").notNull(),
   volSpreadGain: numeric("vol_spread_gain").notNull(),
   toxSpreadGain: numeric("tox_spread_gain").notNull(),
-  quoteSizeBase: numeric("quote_size_base").notNull(),
+  quoteSizeUsd: numeric("quote_size_base").notNull(),
   refreshIntervalMs: integer("refresh_interval_ms").notNull(),
   staleCancelMs: integer("stale_cancel_ms").notNull(),
   maxInventory: numeric("max_inventory").notNull(),

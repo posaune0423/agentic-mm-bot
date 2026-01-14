@@ -8,6 +8,14 @@
  * - Throttle BBO writes by time and mid change
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+console.log("Ingestor starting...");
+
+// Load .env from project root (three levels up from apps/ingestor)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import {
   ExtendedMarketDataAdapter,
   type BboEvent,
@@ -19,7 +27,7 @@ import { getDb } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
-import { BboThrottler, EventWriter, LatestStateManager } from "./services";
+import { BboThrottler, EventWriter, IngestorCliDashboard, LatestStateManager } from "./services";
 import type { IngestorMetrics } from "./types";
 
 // ============================================================================
@@ -27,13 +35,30 @@ import type { IngestorMetrics } from "./types";
 // ============================================================================
 
 async function main(): Promise<void> {
-  logger.info("Starting ingestor", {
-    exchange: env.EXCHANGE,
-    symbol: env.SYMBOL,
-    bboThrottleMs: env.BBO_THROTTLE_MS,
-    bboMinChangeBps: env.BBO_MIN_CHANGE_BPS,
-    latestTopUpsertIntervalMs: env.LATEST_TOP_UPSERT_INTERVAL_MS,
-  });
+  // If TTY dashboard is enabled, suppress normal logs to avoid flicker.
+  // (Dashboard shows the latest data + buffers; keep ERROR logs for debugging.)
+  const dashboardEnabled = env.INGESTOR_DASHBOARD && Boolean(process.stdout.isTTY);
+  if (dashboardEnabled) {
+    process.env.LOG_LEVEL = "ERROR";
+  }
+
+  // Market-data streaming does not require signing, so we intentionally skip signer WASM init.
+  try {
+    await ExtendedMarketDataAdapter.initialize();
+    if (!dashboardEnabled) logger.info("WASM init skipped (market data only)");
+  } catch (error) {
+    logger.error("Failed to initialize WASM", error);
+    process.exit(1);
+  }
+
+  if (!dashboardEnabled)
+    logger.info("Starting ingestor", {
+      exchange: env.EXCHANGE,
+      symbol: env.SYMBOL,
+      bboThrottleMs: env.BBO_THROTTLE_MS,
+      bboMinChangeBps: env.BBO_MIN_CHANGE_BPS,
+      latestTopUpsertIntervalMs: env.LATEST_TOP_UPSERT_INTERVAL_MS,
+    });
 
   // Initialize database
   const db = getDb(env.DATABASE_URL);
@@ -64,6 +89,16 @@ async function main(): Promise<void> {
     priceBufferSize: 0,
   };
 
+  // CLI dashboard (TTY UI)
+  const dashboard = new IngestorCliDashboard({
+    enabled: env.INGESTOR_DASHBOARD,
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+    initialMetrics: metrics,
+  });
+  dashboard.start();
+  dashboard.pushEvent("INFO", "ingestor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+
   // ============================================================================
   // Event Handlers
   // ============================================================================
@@ -87,7 +122,10 @@ async function main(): Promise<void> {
     );
 
     // Throttled md_bbo write
-    if (bboThrottler.shouldWrite(event.ts.getTime(), mid)) {
+    const decision = bboThrottler.decide(event.ts.getTime(), mid);
+    dashboard.onBbo(event, decision);
+
+    if (decision.shouldWrite) {
       metrics.bboWritten++;
       eventWriter.addBbo({
         ts: event.ts,
@@ -106,6 +144,7 @@ async function main(): Promise<void> {
 
   const handleTrade = (event: TradeEvent): void => {
     metrics.tradeReceived++;
+    dashboard.onTrade(event);
 
     eventWriter.addTrade({
       ts: event.ts,
@@ -123,6 +162,7 @@ async function main(): Promise<void> {
 
   const handlePrice = (event: PriceEvent): void => {
     metrics.priceReceived++;
+    dashboard.onPrice(event);
 
     // Add to price buffer
     eventWriter.addPrice({
@@ -145,14 +185,17 @@ async function main(): Promise<void> {
 
   const handleFunding = (event: FundingRateEvent): void => {
     metrics.fundingReceived++;
+    dashboard.onFunding(event);
 
     // MVP: Just log funding rate, don't persist to DB
     // Future: Add md_funding_rate table
-    logger.debug("Received funding rate", {
-      symbol: event.symbol,
-      fundingRate: event.fundingRate,
-      ts: event.ts.toISOString(),
-    });
+    if (!dashboardEnabled) {
+      logger.debug("Received funding rate", {
+        symbol: event.symbol,
+        fundingRate: event.fundingRate,
+        ts: event.ts.toISOString(),
+      });
+    }
   };
 
   // ============================================================================
@@ -174,13 +217,16 @@ async function main(): Promise<void> {
         handleFunding(event);
         break;
       case "connected":
-        logger.info("Market data connected");
+        dashboard.setConnectionStatus("connected");
+        if (!dashboardEnabled) logger.info("Market data connected");
         break;
       case "disconnected":
-        logger.warn("Market data disconnected");
+        dashboard.setConnectionStatus("disconnected");
+        if (!dashboardEnabled) logger.warn("Market data disconnected");
         break;
       case "reconnecting":
-        logger.info("Market data reconnecting", { reason: event.reason });
+        dashboard.setConnectionStatus("reconnecting", event.reason);
+        if (!dashboardEnabled) logger.info("Market data reconnecting", { reason: event.reason });
         break;
     }
   });
@@ -195,21 +241,21 @@ async function main(): Promise<void> {
   // Start periodic latest_top upsert
   latestStateManager.startUpsertInterval(env.LATEST_TOP_UPSERT_INTERVAL_MS);
 
-  // Metrics logging (every 30 seconds)
-  const metricsInterval = setInterval(() => {
+  // UI metrics + buffers refresh (every 1 second)
+  const uiInterval = setInterval(() => {
     const bufferSizes = eventWriter.getBufferSizes();
     metrics.bboBufferSize = bufferSizes.bbo;
     metrics.tradeBufferSize = bufferSizes.trade;
     metrics.priceBufferSize = bufferSizes.price;
-
-    logger.info("Ingestor metrics", metrics);
-  }, 30000);
+    dashboard.setMetrics(metrics);
+    dashboard.setBuffers({ bufferSizes, deadLetterSize: eventWriter.getDeadLetterSize() });
+  }, 1000);
 
   // ============================================================================
   // Connect and Subscribe
   // ============================================================================
 
-  logger.info("Connecting to market data...");
+  if (!dashboardEnabled) logger.info("Connecting to market data...");
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
     logger.error("Failed to connect to market data", connectResult.error);
@@ -223,20 +269,22 @@ async function main(): Promise<void> {
     channels: ["bbo", "trades", "prices", "funding"],
   });
 
-  logger.info("Subscribed to market data", {
-    exchange: env.EXCHANGE,
-    symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices", "funding"],
-  });
+  if (!dashboardEnabled) {
+    logger.info("Subscribed to market data", {
+      exchange: env.EXCHANGE,
+      symbol: env.SYMBOL,
+      channels: ["bbo", "trades", "prices", "funding"],
+    });
+  }
 
   // ============================================================================
   // Graceful Shutdown
   // ============================================================================
 
   const shutdown = async (): Promise<void> => {
-    logger.info("Shutting down...");
+    if (!dashboardEnabled) logger.info("Shutting down...");
 
-    clearInterval(metricsInterval);
+    clearInterval(uiInterval);
 
     // Stop services (includes final flush/upsert)
     await eventWriter.stop();
@@ -245,13 +293,16 @@ async function main(): Promise<void> {
     await marketDataAdapter.disconnect();
     await db.$client.end();
 
-    logger.info("Shutdown complete", {
-      bboReceived: metrics.bboReceived,
-      bboWritten: metrics.bboWritten,
-      tradeReceived: metrics.tradeReceived,
-      priceReceived: metrics.priceReceived,
-      fundingReceived: metrics.fundingReceived,
-    });
+    dashboard.stop();
+    if (!dashboardEnabled) {
+      logger.info("Shutdown complete", {
+        bboReceived: metrics.bboReceived,
+        bboWritten: metrics.bboWritten,
+        tradeReceived: metrics.tradeReceived,
+        priceReceived: metrics.priceReceived,
+        fundingReceived: metrics.fundingReceived,
+      });
+    }
     process.exit(0);
   };
 
@@ -262,7 +313,7 @@ async function main(): Promise<void> {
     void shutdown();
   });
 
-  logger.info("Ingestor running");
+  if (!dashboardEnabled) logger.info("Ingestor running");
 }
 
 main().catch(error => {

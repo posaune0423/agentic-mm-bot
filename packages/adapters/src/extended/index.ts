@@ -7,6 +7,7 @@
  * SDK: https://github.com/Bvvvp009/Extended-TS-SDK
  */
 
+export { initWasm } from "extended-typescript-sdk";
 export { ExtendedMarketDataAdapter } from "./market-data-adapter";
 export { ExtendedExecutionAdapter } from "./execution-adapter";
 export { ExtendedConfigSchema, type ExtendedConfig } from "./types";

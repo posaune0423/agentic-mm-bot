@@ -6,7 +6,14 @@
  * - Read → Decide → Execute → Persist
  */
 
-import type { DecideInput, DecideOutput, StrategyParams, StrategyState } from "@agentic-mm-bot/core";
+import type {
+  DecideInput,
+  DecideOutput,
+  Features,
+  Snapshot,
+  StrategyParams,
+  StrategyState,
+} from "@agentic-mm-bot/core";
 import { computeFeatures, decide } from "@agentic-mm-bot/core";
 import type { ExecutionPort } from "@agentic-mm-bot/adapters";
 import { logger } from "@agentic-mm-bot/utils";
@@ -14,7 +21,19 @@ import { logger } from "@agentic-mm-bot/utils";
 import type { MarketDataCache } from "../services/market-data-cache";
 import type { OrderTracker } from "../services/order-tracker";
 import type { PositionTracker } from "../services/position-tracker";
-import { generateClientOrderId, planExecution } from "../services/execution-planner";
+import { generateClientOrderId, planExecution, type ExecutionAction } from "../services/execution-planner";
+
+/**
+ * cancel_all throttling
+ *
+ * In PAUSE mode, core `decide()` can emit CANCEL_ALL every tick. Without throttling,
+ * this will hammer the exchange mass-cancel endpoint even when there are no orders.
+ */
+let lastCancelAllAttemptMs = 0;
+let lastOpenOrdersSyncMs = 0;
+const CANCEL_ALL_MIN_INTERVAL_WITH_ORDERS_MS = 1_000;
+const CANCEL_ALL_MIN_INTERVAL_WITHOUT_ORDERS_MS = 30_000;
+const OPEN_ORDERS_SYNC_INTERVAL_MS = 5_000;
 
 /**
  * Decision cycle dependencies
@@ -25,7 +44,40 @@ export interface DecisionCycleDeps {
   positionTracker: PositionTracker;
   executionPort: ExecutionPort;
   params: StrategyParams;
-  onStateChange?: (state: StrategyState) => void;
+  /**
+   * High-signal per-tick debug hook (for TTY dashboard / observability)
+   */
+  onTickDebug?: (args: {
+    nowMs: number;
+    snapshot: Snapshot;
+    features: Features;
+    stateBefore: StrategyState;
+    stateAfter: StrategyState;
+    output: DecideOutput;
+    plannedActions: ExecutionAction[];
+    targetQuote?: { bidPx: string; askPx: string; size: string };
+  }) => void;
+  /**
+   * Action lifecycle hook (start/ok/err) for UI.
+   */
+  onAction?: (args: { phase: "start" | "ok" | "err"; action: ExecutionAction; error?: unknown }) => void;
+  onStateChange?: (args: {
+    nextState: StrategyState;
+    reasonCodes: string[];
+    intents: DecideOutput["intents"];
+    debug: {
+      dataAgeMs: number;
+      lastUpdateMs: number;
+      midPx: string;
+      spreadBps: string;
+      realizedVol10s: string;
+      tradeImbalance1s: string;
+      markIndexDivBps: string;
+      liqCount10s: number;
+      positionSize: string;
+      activeOrders: number;
+    };
+  }) => void;
 }
 
 /**
@@ -67,6 +119,9 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   const output = decide(input);
 
   // Step 6: Plan and execute
+  const plannedActions: ExecutionAction[] = [];
+  let targetQuote: { bidPx: string; askPx: string; size: string } | undefined;
+
   for (const intent of output.intents) {
     const currentBid = orderTracker.getBidOrder();
     const currentAsk = orderTracker.getAskOrder();
@@ -81,14 +136,47 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
       features.midPx,
     );
 
+    plannedActions.push(...actions);
+    if (intent.type === "QUOTE") {
+      targetQuote = { bidPx: intent.bidPx, askPx: intent.askPx, size: intent.size };
+    }
+
     for (const action of actions) {
-      await executeAction(action, executionPort, orderTracker, snapshot.symbol);
+      await executeAction(action, executionPort, orderTracker, snapshot.symbol, deps.onAction);
     }
   }
 
+  // For dashboards: emit a concise per-tick snapshot after executing.
+  deps.onTickDebug?.({
+    nowMs,
+    snapshot,
+    features,
+    stateBefore: currentState,
+    stateAfter: output.nextState,
+    output,
+    plannedActions,
+    targetQuote,
+  });
+
   // Step 7: Notify state change
   if (deps.onStateChange && output.nextState.mode !== currentState.mode) {
-    deps.onStateChange(output.nextState);
+    deps.onStateChange({
+      nextState: output.nextState,
+      reasonCodes: output.reasonCodes,
+      intents: output.intents,
+      debug: {
+        dataAgeMs: nowMs - snapshot.lastUpdateMs,
+        lastUpdateMs: snapshot.lastUpdateMs,
+        midPx: features.midPx,
+        spreadBps: features.spreadBps,
+        realizedVol10s: features.realizedVol10s,
+        tradeImbalance1s: features.tradeImbalance1s,
+        markIndexDivBps: features.markIndexDivBps,
+        liqCount10s: features.liqCount10s,
+        positionSize: position.size,
+        activeOrders: orderTracker.getActiveOrders().length,
+      },
+    });
   }
 
   // Log decision
@@ -105,40 +193,78 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
  * Execute a single action
  */
 async function executeAction(
-  action:
-    | { type: "cancel_all" }
-    | { type: "cancel"; clientOrderId: string }
-    | { type: "place"; side: "buy" | "sell"; price: string; size: string },
+  action: ExecutionAction,
   executionPort: ExecutionPort,
   orderTracker: OrderTracker,
   symbol: string,
+  onAction?: (args: { phase: "start" | "ok" | "err"; action: ExecutionAction; error?: unknown }) => void,
 ): Promise<void> {
   switch (action.type) {
     case "cancel_all": {
+      onAction?.({ phase: "start", action });
+      const nowMs = Date.now();
+      let trackedCount = orderTracker.getActiveOrders().length;
+
+      // If we believe there are no orders, periodically verify via REST to avoid tracker drift.
+      // This is intentionally low-frequency to avoid hammering the exchange.
+      if (trackedCount === 0 && nowMs - lastOpenOrdersSyncMs >= OPEN_ORDERS_SYNC_INTERVAL_MS) {
+        lastOpenOrdersSyncMs = nowMs;
+        const openOrdersResult = await executionPort.getOpenOrders(symbol);
+        if (openOrdersResult.isOk()) {
+          if (openOrdersResult.value.length > 0) {
+            orderTracker.syncFromOpenOrders(openOrdersResult.value);
+            trackedCount = openOrdersResult.value.length;
+            logger.warn("Tracker drift detected: open orders exist while tracker empty", { openOrders: trackedCount });
+          }
+        } else {
+          logger.debug("Failed to sync open orders during cancel_all", openOrdersResult.error);
+        }
+      }
+
+      const minIntervalMs =
+        trackedCount > 0 ? CANCEL_ALL_MIN_INTERVAL_WITH_ORDERS_MS : CANCEL_ALL_MIN_INTERVAL_WITHOUT_ORDERS_MS;
+
+      if (nowMs - lastCancelAllAttemptMs < minIntervalMs) {
+        // Skip repeated cancel_all when we're already clean (or recently attempted).
+        break;
+      }
+
+      lastCancelAllAttemptMs = nowMs;
+
       const result = await executionPort.cancelAllOrders(symbol);
       if (result.isOk()) {
+        onAction?.({ phase: "ok", action });
         orderTracker.clear();
-        logger.info("Cancelled all orders");
+        if (trackedCount > 0) {
+          logger.info("Cancelled all orders", { trackedCount });
+        } else {
+          logger.debug("Issued cancel_all (no tracked orders)");
+        }
       } else {
+        onAction?.({ phase: "err", action, error: result.error });
         logger.error("Failed to cancel all orders", result.error);
       }
       break;
     }
 
     case "cancel": {
+      onAction?.({ phase: "start", action });
       const result = await executionPort.cancelOrder({
         clientOrderId: action.clientOrderId,
         symbol,
       });
       if (result.isOk()) {
+        onAction?.({ phase: "ok", action });
         logger.debug("Cancelled order", { clientOrderId: action.clientOrderId });
       } else {
+        onAction?.({ phase: "err", action, error: result.error });
         logger.error("Failed to cancel order", result.error);
       }
       break;
     }
 
     case "place": {
+      onAction?.({ phase: "start", action });
       const clientOrderId = generateClientOrderId();
       const result = await executionPort.placeOrder({
         clientOrderId,
@@ -150,6 +276,7 @@ async function executeAction(
       });
 
       if (result.isOk()) {
+        onAction?.({ phase: "ok", action });
         orderTracker.addOrder({
           clientOrderId,
           exchangeOrderId: result.value.exchangeOrderId,
@@ -160,6 +287,7 @@ async function executeAction(
         });
         logger.debug("Placed order", { clientOrderId, side: action.side, price: action.price });
       } else {
+        onAction?.({ phase: "err", action, error: result.error });
         // Check for post-only rejection
         if (result.error.type === "post_only_rejected") {
           logger.warn("Post-only rejected, will retry next tick");

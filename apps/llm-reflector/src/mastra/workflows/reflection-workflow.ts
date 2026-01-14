@@ -8,6 +8,8 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { ResultAsync, errAsync } from "neverthrow";
+import { openai } from "@ai-sdk/openai";
+import { generateText, Output } from "ai";
 
 import { logger } from "@agentic-mm-bot/utils";
 import type {
@@ -20,7 +22,7 @@ import type {
 import { ProposalOutputSchema, type ProposalOutput } from "../../types/schemas";
 import type { FileSinkPort } from "../../ports/file-sink-port";
 import { validateProposal, type ParamGateError } from "../../services/param-gate";
-import { createReflectorAgent } from "../agents/reflector-agent";
+import { REFLECTOR_INSTRUCTIONS } from "../agents/reflector-agent";
 
 export type WorkflowError =
   | { type: "FETCH_INPUT_FAILED"; message: string }
@@ -85,7 +87,7 @@ ${worstFillsSummary || "No fills in this period"}
 - baseHalfSpreadBps: ${input.currentParams.baseHalfSpreadBps}
 - volSpreadGain: ${input.currentParams.volSpreadGain}
 - toxSpreadGain: ${input.currentParams.toxSpreadGain}
-- quoteSizeBase: ${input.currentParams.quoteSizeBase}
+- quoteSizeUsd: ${input.currentParams.quoteSizeUsd}
 - refreshIntervalMs: ${input.currentParams.refreshIntervalMs}
 - staleCancelMs: ${input.currentParams.staleCancelMs}
 - maxInventory: ${input.currentParams.maxInventory}
@@ -98,6 +100,16 @@ Based on this data, suggest parameter changes to improve performance. Remember:
 2. Each change must be within ±10% of current value
 3. Include rollback conditions
 4. Explain your reasoning`;
+}
+
+function getOpenAiModelName(model: string): string {
+  // Accept "openai/gpt-4o" (preferred) and also allow bare "gpt-4o"
+  if (!model.includes("/")) return model;
+  const [provider, ...rest] = model.split("/");
+  if (provider !== "openai" || rest.length === 0) {
+    throw new Error(`Unsupported model string: ${model}. Expected "openai/<model>"`);
+  }
+  return rest.join("/");
 }
 
 /**
@@ -152,20 +164,24 @@ function generateProposal(
   input: ReflectionInput,
   model: string,
 ): ResultAsync<{ input: ReflectionInput; proposal: ProposalOutput }, WorkflowError> {
-  const agent = createReflectorAgent(model);
   const prompt = buildPrompt(input);
 
+  type GenerateTextOutputResult<T> = { output: T };
+
   return ResultAsync.fromPromise(
-    agent.generate([{ role: "user", content: prompt }], {
-      output: ProposalOutputSchema,
-    }),
+    generateText({
+      model: openai(getOpenAiModelName(model)),
+      output: Output.object({ schema: ProposalOutputSchema }),
+      system: REFLECTOR_INSTRUCTIONS,
+      prompt,
+    }) as Promise<GenerateTextOutputResult<ProposalOutput>>,
     (error): WorkflowError => ({
       type: "AGENT_FAILED",
       message: error instanceof Error ? error.message : "Unknown agent error",
     }),
-  ).map(response => ({
+  ).map(result => ({
     input,
-    proposal: response.object,
+    proposal: result.output,
   }));
 }
 

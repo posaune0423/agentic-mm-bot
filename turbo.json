@@ -7,6 +7,19 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"]
     },
+    "db:generate": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["drizzle/**"]
+    },
+    "db:push": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "cache": false
+    },
+    "db:studio": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "cache": false,
+      "persistent": true
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

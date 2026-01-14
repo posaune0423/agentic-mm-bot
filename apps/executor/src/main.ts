@@ -8,8 +8,14 @@
  * - Non-blocking event logging (4.10)
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env from project root (three levels up from apps/executor)
+config({ path: resolve(process.cwd(), "../../.env") });
+
 import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
-import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
+import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter, initWasm } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
@@ -17,6 +23,7 @@ import { env } from "./env";
 import { MarketDataCache } from "./services/market-data-cache";
 import { OrderTracker } from "./services/order-tracker";
 import { PositionTracker } from "./services/position-tracker";
+import { ExecutorCliDashboard } from "./services/cli-dashboard";
 import { executeTick } from "./usecases/decision-cycle";
 import { createPostgresStrategyStateRepository, createPostgresEventRepository } from "@agentic-mm-bot/repositories";
 
@@ -24,7 +31,23 @@ import { createPostgresStrategyStateRepository, createPostgresEventRepository } 
  * Main executor function
  */
 async function main(): Promise<void> {
-  logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  // If TTY dashboard is enabled, suppress normal logs to avoid flicker.
+  // (Dashboard shows state/orders/actions; keep ERROR logs for debugging.)
+  const dashboardEnabled = env.EXECUTOR_DASHBOARD && Boolean(process.stdout.isTTY);
+  if (dashboardEnabled) {
+    process.env.LOG_LEVEL = "ERROR";
+  }
+
+  // Initialize WASM first
+  try {
+    await initWasm();
+    if (!dashboardEnabled) logger.info("WASM initialized successfully (signer)");
+  } catch (error) {
+    logger.error("Failed to initialize WASM", error);
+    process.exit(1);
+  }
+
+  if (!dashboardEnabled) logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Initialize database connection
   const db = getDb(env.DATABASE_URL);
@@ -58,12 +81,34 @@ async function main(): Promise<void> {
   const orderTracker = new OrderTracker();
   const positionTracker = new PositionTracker();
 
+  // CLI dashboard (TTY UI)
+  const dashboard = new ExecutorCliDashboard({
+    enabled: env.EXECUTOR_DASHBOARD,
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+  });
+  dashboard.start();
+  dashboard.pushEvent("INFO", "executor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+
+  // Sync open orders on startup
+  if (!dashboardEnabled) logger.info("Syncing open orders...");
+  const openOrdersResult = await executionAdapter.getOpenOrders(env.SYMBOL);
+  if (openOrdersResult.isOk()) {
+    orderTracker.syncFromOpenOrders(openOrdersResult.value);
+    dashboard.pushEvent("INFO", `synced open orders: ${openOrdersResult.value.length}`);
+    if (!dashboardEnabled) logger.info("Synced open orders", { count: openOrdersResult.value.length });
+  } else {
+    dashboard.pushEvent("WARN", "failed to sync open orders; proceeding with empty tracker", openOrdersResult.error);
+    if (!dashboardEnabled)
+      logger.warn("Failed to sync open orders, proceeding with empty tracker", openOrdersResult.error);
+  }
+
   // TODO: Load from DB or use defaults
   const params: StrategyParams = {
     baseHalfSpreadBps: "10",
     volSpreadGain: "1",
     toxSpreadGain: "1",
-    quoteSizeBase: "0.01",
+    quoteSizeUsd: "10", // $10 per order
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
     maxInventory: "1",
@@ -105,13 +150,16 @@ async function main(): Promise<void> {
         marketDataCache.updatePrice(event);
         break;
       case "connected":
-        logger.info("Market data connected");
+        dashboard.setConnectionStatus("connected");
+        if (!dashboardEnabled) logger.info("Market data connected");
         break;
       case "disconnected":
-        logger.warn("Market data disconnected");
+        dashboard.setConnectionStatus("disconnected");
+        if (!dashboardEnabled) logger.warn("Market data disconnected");
         break;
       case "reconnecting":
-        logger.info("Market data reconnecting", { reason: event.reason });
+        dashboard.setConnectionStatus("reconnecting", event.reason);
+        if (!dashboardEnabled) logger.info("Market data reconnecting", { reason: event.reason });
         break;
     }
   });
@@ -122,6 +170,7 @@ async function main(): Promise<void> {
       case "fill":
         orderTracker.updateFromFill(event);
         positionTracker.updateFromFill(event);
+        dashboard.onExecutionEvent(event);
 
         // Queue fill for async persistence (Requirement 4.10)
         eventRepo.queueFill({
@@ -149,6 +198,7 @@ async function main(): Promise<void> {
 
       case "order_update":
         orderTracker.updateFromOrderEvent(event);
+        dashboard.onExecutionEvent(event);
 
         // Queue order event for async persistence
         eventRepo.queueOrderEvent({
@@ -172,12 +222,13 @@ async function main(): Promise<void> {
   });
 
   // Connect to market data
-  logger.info("Connecting to market data...");
+  if (!dashboardEnabled) logger.info("Connecting to market data...");
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
     logger.error("Failed to connect to market data", connectResult.error);
     process.exit(1);
   }
+  dashboard.pushEvent("INFO", "market data connected");
 
   // Subscribe to market data
   marketDataAdapter.subscribe({
@@ -187,14 +238,16 @@ async function main(): Promise<void> {
   });
 
   // Connect to private stream
-  logger.info("Connecting to private stream...");
+  if (!dashboardEnabled) logger.info("Connecting to private stream...");
   const privateResult = await executionAdapter.connectPrivateStream();
   if (privateResult.isErr()) {
-    logger.warn("Failed to connect to private stream, using REST fallback", privateResult.error);
+    dashboard.pushEvent("WARN", "private stream connect failed; using REST fallback", privateResult.error);
+    if (!dashboardEnabled) logger.warn("Failed to connect to private stream, using REST fallback", privateResult.error);
   }
 
   // Tick loop
   let lastTickMs = 0;
+  let lastHeartbeatMs = 0;
 
   const tickLoop = async (): Promise<void> => {
     const nowMs = Date.now();
@@ -219,17 +272,100 @@ async function main(): Promise<void> {
           positionTracker,
           executionPort: executionAdapter,
           params,
-          onStateChange: newState => {
-            logger.info("State changed", {
-              from: state.mode,
-              to: newState.mode,
+          onTickDebug: ({
+            nowMs,
+            snapshot,
+            features,
+            output,
+            stateBefore,
+            stateAfter,
+            plannedActions,
+            targetQuote,
+          }) => {
+            dashboard.setTick({
+              nowMs,
+              snapshot,
+              features,
+              output,
+              stateBefore,
+              stateAfter,
+              plannedActions,
+              targetQuote,
+              orders: orderTracker.getActiveOrders(),
+              position: {
+                size: positionTracker.getPosition().size,
+                entryPrice: positionTracker.getEntryPrice(),
+                unrealizedPnl: positionTracker.getUnrealizedPnl(),
+                lastUpdateMs: positionTracker.getLastUpdateMs(),
+              },
             });
+          },
+          onAction: ({ phase, action, error }) => {
+            dashboard.onAction(phase, action, { error });
+          },
+          onStateChange: ({ nextState, reasonCodes, intents, debug }) => {
+            dashboard.pushEvent(
+              "INFO",
+              `STATE ${state.mode} -> ${nextState.mode} reasons=[${reasonCodes.join(",")}] intents=[${intents
+                .map(i => i.type)
+                .join(",")}]`,
+              {
+                dataAgeMs: debug.dataAgeMs,
+                midPx: debug.midPx,
+                spreadBps: debug.spreadBps,
+                realizedVol10s: debug.realizedVol10s,
+                tradeImbalance1s: debug.tradeImbalance1s,
+                markIndexDivBps: debug.markIndexDivBps,
+                liqCount10s: debug.liqCount10s,
+                positionSize: debug.positionSize,
+                activeOrders: debug.activeOrders,
+                pauseRemainingMs: nextState.pauseUntilMs ? Math.max(0, nextState.pauseUntilMs - nowMs) : null,
+                modeForMs: nowMs - state.modeSinceMs,
+              },
+            );
+
+            if (!dashboardEnabled) {
+              logger.info("State changed", {
+                from: state.mode,
+                to: nextState.mode,
+                reasonCodes,
+                intents: intents.map(i => i.type),
+                dataAgeMs: debug.dataAgeMs,
+                midPx: debug.midPx,
+                spreadBps: debug.spreadBps,
+                realizedVol10s: debug.realizedVol10s,
+                tradeImbalance1s: debug.tradeImbalance1s,
+                markIndexDivBps: debug.markIndexDivBps,
+                liqCount10s: debug.liqCount10s,
+                positionSize: debug.positionSize,
+                activeOrders: debug.activeOrders,
+                pauseRemainingMs: nextState.pauseUntilMs ? Math.max(0, nextState.pauseUntilMs - nowMs) : null,
+                modeForMs: nowMs - state.modeSinceMs,
+              });
+            }
           },
         },
         state,
       );
 
       state = output.nextState;
+
+      // Heartbeat (helps distinguish "quiet" vs "stuck")
+      if (nowMs - lastHeartbeatMs >= 30_000) {
+        lastHeartbeatMs = nowMs;
+        if (!dashboardEnabled) {
+          const snapshot = marketDataCache.getSnapshot(nowMs);
+          logger.info("Executor heartbeat", {
+            mode: state.mode,
+            positionSize: positionTracker.getPosition().size,
+            activeOrders: orderTracker.getActiveOrders().length,
+            lastQuoteAgeMs: state.lastQuoteMs ? nowMs - state.lastQuoteMs : null,
+            dataAgeMs: snapshot.lastUpdateMs ? nowMs - snapshot.lastUpdateMs : null,
+            pauseRemainingMs: state.pauseUntilMs ? Math.max(0, state.pauseUntilMs - nowMs) : null,
+            modeForMs: nowMs - state.modeSinceMs,
+          });
+        }
+      }
     } catch (error) {
       logger.error("Tick error", error);
     }
@@ -263,7 +399,7 @@ async function main(): Promise<void> {
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
-    logger.info("Shutting down...");
+    if (!dashboardEnabled) logger.info("Shutting down...");
 
     clearInterval(tickInterval);
     clearInterval(persistInterval);
@@ -278,7 +414,8 @@ async function main(): Promise<void> {
     await executionAdapter.disconnectPrivateStream();
     await db.$client.end();
 
-    logger.info("Shutdown complete");
+    dashboard.stop();
+    if (!dashboardEnabled) logger.info("Shutdown complete");
     process.exit(0);
   };
 
@@ -289,7 +426,7 @@ async function main(): Promise<void> {
     void shutdown();
   });
 
-  logger.info("Executor running");
+  if (!dashboardEnabled) logger.info("Executor running");
 }
 
 // Run

@@ -77,6 +77,19 @@ function formatPrice(price: number, precision = 8): PriceStr {
 }
 
 /**
+ * Convert USD notional to base size using mid price
+ */
+function usdToBaseSize(quoteSizeUsd: string, midPx: PriceStr, precision = 6): string {
+  const usd = parseFloat(quoteSizeUsd);
+  const mid = parseFloat(midPx);
+
+  if (!Number.isFinite(usd) || usd <= 0) return "0";
+  if (!Number.isFinite(mid) || mid <= 0) return "0";
+
+  return (usd / mid).toFixed(precision);
+}
+
+/**
  * Check if price difference exceeds threshold
  *
  * Used by execution planners to determine if an order update is needed.
@@ -164,7 +177,7 @@ export function generateQuoteIntent(
     type: "QUOTE",
     bidPx,
     askPx,
-    size: params.quoteSizeBase,
+    size: usdToBaseSize(params.quoteSizeUsd, features.midPx),
     postOnly: true,
     reasonCodes,
   };

@@ -175,6 +175,16 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   private isConnected_ = false;
   private isReconnecting_ = false;
 
+  static initialize(): Promise<void> {
+    // NOTE:
+    // The Extended SDK ships a WASM bundle for signing. However, market-data streaming
+    // does not require signing. Some published SDK builds have been missing the WASM
+    // artifacts, causing local dev to crash on init.
+    //
+    // We keep this method for call-site compatibility, but it's intentionally a no-op.
+    return Promise.resolve();
+  }
+
   constructor(config: ExtendedConfig, reconnectConfig: ReconnectConfig = DEFAULT_RECONNECT_CONFIG) {
     this.config = config;
     this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
@@ -350,7 +360,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       for await (const message of state.connection) {
         if (!state.isRunning) break;
 
-        const events = this.normalizeMessage(message.data, streamType, symbol);
+        const events = this.normalizeMessage(message, streamType, symbol);
 
         for (const event of events) {
           const seqBreak = this.checkSequence(event, streamType);

@@ -8,7 +8,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
@@ -36,7 +36,7 @@ const ParamChangeSchema = z.object({
   baseHalfSpreadBps: z.string().optional(),
   volSpreadGain: z.string().optional(),
   toxSpreadGain: z.string().optional(),
-  quoteSizeBase: z.string().optional(),
+  quoteSizeUsd: z.string().optional(),
   refreshIntervalMs: z.number().optional(),
   staleCancelMs: z.number().optional(),
   maxInventory: z.string().optional(),
@@ -69,7 +69,7 @@ PARAMETERS YOU CAN ADJUST:
 - baseHalfSpreadBps: Base half spread in basis points (higher = wider spread)
 - volSpreadGain: Multiplier for volatility-based spread adjustment
 - toxSpreadGain: Multiplier for toxicity-based spread adjustment
-- quoteSizeBase: Size of each quote in base currency
+- quoteSizeUsd: Quote size in USD notional
 - refreshIntervalMs: Minimum interval between quote updates
 - staleCancelMs: Cancel orders older than this duration
 - maxInventory: Maximum allowed inventory before pausing
@@ -120,7 +120,7 @@ ${worstFillsText || "  No fills in this period"}
 - baseHalfSpreadBps: ${currentParams.baseHalfSpreadBps}
 - volSpreadGain: ${currentParams.volSpreadGain}
 - toxSpreadGain: ${currentParams.toxSpreadGain}
-- quoteSizeBase: ${currentParams.quoteSizeBase}
+- quoteSizeUsd: ${currentParams.quoteSizeUsd}
 - refreshIntervalMs: ${currentParams.refreshIntervalMs}
 - staleCancelMs: ${currentParams.staleCancelMs}
 - maxInventory: ${currentParams.maxInventory}
@@ -149,19 +149,22 @@ export function generateProposal(
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(input);
 
+  type LlmResponse = z.infer<typeof LlmResponseSchema>;
+  type GenerateTextOutputResult<T> = { output: T };
+
   return ResultAsync.fromPromise(
-    generateObject({
+    generateText({
       model: openai(options.model),
-      schema: LlmResponseSchema,
+      output: Output.object({ schema: LlmResponseSchema }),
       system: systemPrompt,
       prompt: userPrompt,
-    }),
+    }) as Promise<GenerateTextOutputResult<LlmResponse>>,
     e => ({
       type: "LLM_API_ERROR" as const,
       message: e instanceof Error ? e.message : "Unknown error",
     }),
   ).map(result => {
-    const obj = result.object as z.infer<typeof LlmResponseSchema>;
+    const obj = result.output;
 
     // Filter out undefined values from changes
     const filteredChanges: Record<string, string | number> = {};

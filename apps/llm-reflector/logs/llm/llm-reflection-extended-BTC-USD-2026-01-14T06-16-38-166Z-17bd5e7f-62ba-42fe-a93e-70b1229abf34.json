@@ -1,0 +1,55 @@
+{
+  "proposalId": "17bd5e7f-62ba-42fe-a93e-70b1229abf34",
+  "timestamp": "2026-01-14T06:16:38.166Z",
+  "exchange": "extended",
+  "symbol": "BTC-USD",
+  "inputSummary": {
+    "windowStart": "2026-01-14T05:00:00.000Z",
+    "windowEnd": "2026-01-14T06:00:00.000Z",
+    "fillsCount": 0,
+    "cancelCount": 0,
+    "pauseCount": 0,
+    "markout10sP50": null,
+    "worstFillsCount": 0
+  },
+  "currentParams": {
+    "paramsSetId": "00000000-0000-0000-0000-000000000000",
+    "baseHalfSpreadBps": "10",
+    "volSpreadGain": "1",
+    "toxSpreadGain": "1",
+    "quoteSizeUsd": "100",
+    "refreshIntervalMs": 1000,
+    "staleCancelMs": 5000,
+    "maxInventory": "1",
+    "inventorySkewGain": "5",
+    "pauseMarkIndexBps": "50",
+    "pauseLiqCount10s": 3
+  },
+  "proposal": {
+    "changes": [
+      {
+        "param": "baseHalfSpreadBps",
+        "fromValue": "10",
+        "toValue": "9"
+      },
+      {
+        "param": "refreshIntervalMs",
+        "fromValue": "1000",
+        "toValue": "900"
+      }
+    ],
+    "rollbackConditions": [
+      "If fills remain at 0 over the next hour after changes are applied.",
+      "If increased fills result in negative markout beyond acceptable thresholds."
+    ],
+    "reasoningTrace": [
+      "The fill count is 0, indicating that spreads might be too wide, preventing successful trades.",
+      "Reducing 'baseHalfSpreadBps' by 10% from 10 to 9 bps could encourage more fills by narrowing the spread slightly.",
+      "Decreasing 'refreshIntervalMs' by 10% from 1000 to 900 ms will make the bot more responsive, potentially capturing more favorable market conditions with quicker quote updates.",
+      "If the changes do not lead to increased fills or if fills occur with negative markout, rollback conditions will be triggered to revert to safer parameters."
+    ]
+  },
+  "integrity": {
+    "sha256": "9b175b6d089710c8e6a7f5bf92099b9524e63fd3795fd0ec638f50eb697802c9"
+  }
+}

@@ -27,7 +27,7 @@ const baseParams: StrategyParams = {
   baseHalfSpreadBps: "10",
   volSpreadGain: "0.5",
   toxSpreadGain: "0.3",
-  quoteSizeBase: "0.1",
+  quoteSizeUsd: "10",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "1.0",
@@ -229,7 +229,7 @@ describe("ALLOWED_PARAM_KEYS", () => {
     expect(ALLOWED_PARAM_KEYS).toContain("baseHalfSpreadBps");
     expect(ALLOWED_PARAM_KEYS).toContain("volSpreadGain");
     expect(ALLOWED_PARAM_KEYS).toContain("toxSpreadGain");
-    expect(ALLOWED_PARAM_KEYS).toContain("quoteSizeBase");
+    expect(ALLOWED_PARAM_KEYS).toContain("quoteSizeUsd");
     expect(ALLOWED_PARAM_KEYS).toContain("refreshIntervalMs");
     expect(ALLOWED_PARAM_KEYS).toContain("staleCancelMs");
     expect(ALLOWED_PARAM_KEYS).toContain("maxInventory");

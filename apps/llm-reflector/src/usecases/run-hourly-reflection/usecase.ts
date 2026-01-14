@@ -102,6 +102,17 @@ export function runHourlyReflection(deps: RunHourlyReflectionDeps): ResultAsync<
         return okAsync({ type: "SKIPPED", reason: error.message });
       }
 
+      if (error.type === "GATE_REJECTED") {
+        // Gate rejection is an expected outcome (LLM may propose invalid changes).
+        // Treat as a skip for this hour to avoid retry loops and noisy error logs.
+        markHourAsProcessed();
+        logger.warn("Reflection skipped - proposal rejected by gate", { error });
+        return okAsync({
+          type: "SKIPPED",
+          reason: `Proposal rejected by gate: ${error.error.type}`,
+        });
+      }
+
       logger.error("Reflection failed", { error });
       return okAsync({ type: "ERROR", error });
     });

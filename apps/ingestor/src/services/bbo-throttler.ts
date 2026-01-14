@@ -32,26 +32,60 @@ export class BboThrottler {
    * @returns true if write should be performed
    */
   shouldWrite(nowMs: number, currentMid: number): boolean {
-    // Time-based throttling
-    const timePassed = nowMs - this.lastWriteMs >= this.throttleMs;
+    return this.decide(nowMs, currentMid).shouldWrite;
+  }
 
-    // Price-change-based throttling
+  /**
+   * Decide whether to write and why (for observability / UI).
+   * Side-effect: when shouldWrite=true, it updates internal lastWriteMs/lastMid (same as shouldWrite()).
+   */
+  decide(
+    nowMs: number,
+    currentMid: number,
+  ): {
+    shouldWrite: boolean;
+    reason: "first_write" | "time_throttle" | "price_change" | "throttled";
+    throttleMs: number;
+    minChangeBps: number;
+    timeSinceLastWriteMs: number;
+    lastMid: number | null;
+    currentMid: number;
+    changeBps: number | null;
+  } {
+    const timeSinceLastWriteMs = nowMs - this.lastWriteMs;
+    const timePassed = timeSinceLastWriteMs >= this.throttleMs;
+
+    const isFirstWrite = this.lastMid === null;
+
+    let changeBps: number | null = null;
     let priceChanged = false;
     if (this.lastMid !== null && this.lastMid > 0) {
-      const changeBps = Math.abs((currentMid - this.lastMid) / this.lastMid) * 10000;
+      changeBps = Math.abs((currentMid - this.lastMid) / this.lastMid) * 10000;
       priceChanged = changeBps >= this.minChangeBps;
     }
 
-    // First write always passes
-    const isFirstWrite = this.lastMid === null;
+    const shouldWrite = isFirstWrite || timePassed || priceChanged;
+    const reason: "first_write" | "time_throttle" | "price_change" | "throttled" =
+      isFirstWrite ? "first_write"
+      : timePassed ? "time_throttle"
+      : priceChanged ? "price_change"
+      : "throttled";
 
-    if (isFirstWrite || timePassed || priceChanged) {
+    if (shouldWrite) {
       this.lastWriteMs = nowMs;
       this.lastMid = currentMid;
-      return true;
     }
 
-    return false;
+    return {
+      shouldWrite,
+      reason,
+      throttleMs: this.throttleMs,
+      minChangeBps: this.minChangeBps,
+      timeSinceLastWriteMs,
+      lastMid: this.lastMid,
+      currentMid,
+      changeBps,
+    };
   }
 
   /**

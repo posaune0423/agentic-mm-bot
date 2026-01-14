@@ -8,12 +8,14 @@
  */
 
 import { type Result, err, ok } from "neverthrow";
+import { z } from "zod";
 
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
-import type { ParamName, ProposalOutput } from "../types/schemas";
+import { ParamChangeSchema, type ParamName } from "../types/schemas";
 
 export type ParamGateError =
+  | { type: "INVALID_PROPOSAL_SHAPE"; message: string }
   | { type: "TOO_MANY_CHANGES"; count: number }
   | {
       type: "CHANGE_EXCEEDS_10PCT";
@@ -24,6 +26,15 @@ export type ParamGateError =
     }
   | { type: "MISSING_ROLLBACK_CONDITIONS" }
   | { type: "INVALID_PARAM_VALUE"; param: ParamName; value: string };
+
+const ProposalGateInputSchema = z.object({
+  // Keep this permissive: rule enforcement happens in this module.
+  changes: z.array(ParamChangeSchema),
+  rollbackConditions: z.array(z.string()),
+  reasoningTrace: z.array(z.string()).optional(),
+});
+
+type ProposalGateInput = z.infer<typeof ProposalGateInputSchema>;
 
 /**
  * Get current value for a parameter from strategy params
@@ -49,20 +60,27 @@ function getCurrentValue(params: CurrentParamsSummary, param: ParamName): number
  * 2. Each change must be within ±10% of current value
  * 3. Rollback conditions are required
  */
-export function validateProposal(
-  proposal: ProposalOutput,
-  currentParams: CurrentParamsSummary,
-): Result<void, ParamGateError> {
+export function validateProposal(proposal: unknown, currentParams: CurrentParamsSummary): Result<void, ParamGateError> {
+  const parsed = ProposalGateInputSchema.safeParse(proposal);
+  if (!parsed.success) {
+    return err({
+      type: "INVALID_PROPOSAL_SHAPE",
+      message: parsed.error.issues.map(i => `${i.path.join(".") || "<root>"}: ${i.message}`).join("; "),
+    });
+  }
+
+  const proposalOutput: ProposalGateInput = parsed.data;
+
   // 1. Maximum 2 changes
-  if (proposal.changes.length > 2) {
+  if (proposalOutput.changes.length > 2) {
     return err({
       type: "TOO_MANY_CHANGES",
-      count: proposal.changes.length,
+      count: proposalOutput.changes.length,
     });
   }
 
   // 2. Each change within ±10%
-  for (const change of proposal.changes) {
+  for (const change of proposalOutput.changes) {
     const currentValue = getCurrentValue(currentParams, change.param);
     const proposedValue = parseFloat(change.toValue);
 
@@ -103,7 +121,7 @@ export function validateProposal(
   }
 
   // 3. Rollback conditions required
-  if (proposal.rollbackConditions.length === 0) {
+  if (proposalOutput.rollbackConditions.length === 0) {
     return err({
       type: "MISSING_ROLLBACK_CONDITIONS",
     });

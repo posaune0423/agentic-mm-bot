@@ -24,7 +24,7 @@ import {
 } from "@agentic-mm-bot/db";
 
 // Test database URL
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 const describeDb = TEST_DATABASE_URL ? describe : describe.skip;
 
@@ -39,7 +39,7 @@ describeDb("Summarizer fills_enriched Integration", () => {
 
   beforeAll(async () => {
     if (!TEST_DATABASE_URL) {
-      throw new Error("TEST_DATABASE_URL (or DATABASE_URL) must be set for integration tests.");
+      throw new Error("TEST_DATABASE_URL must be set for integration tests.");
     }
 
     db = getDb(TEST_DATABASE_URL);

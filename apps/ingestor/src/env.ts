@@ -35,6 +35,9 @@ export const env = createEnv({
     BBO_THROTTLE_MS: z.coerce.number().default(100), // Throttle BBO writes (min interval ms)
     BBO_MIN_CHANGE_BPS: z.coerce.number().default(1), // Min mid change to write (bps)
     LATEST_TOP_UPSERT_INTERVAL_MS: z.coerce.number().default(1000), // latest_top upsert interval
+
+    // CLI dashboard (TTY UI)
+    INGESTOR_DASHBOARD: z.coerce.boolean().default(true),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

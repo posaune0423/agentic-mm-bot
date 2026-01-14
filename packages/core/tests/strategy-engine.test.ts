@@ -14,7 +14,7 @@ const createDefaultParams = (): StrategyParams => ({
   baseHalfSpreadBps: "10",
   volSpreadGain: "1",
   toxSpreadGain: "1",
-  quoteSizeBase: "0.1",
+  quoteSizeUsd: "10",
   refreshIntervalMs: 1000,
   staleCancelMs: 5000,
   maxInventory: "1.0",
