@@ -225,61 +225,34 @@ export function generateProposal(
     }),
   )
     .andThen(result => {
-      try {
-        const jsonText = extractFirstJsonObject(result.text);
-        if (!jsonText) {
-          return ResultAsync.fromPromise(
-            Promise.reject(new Error(`JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`)),
-            e => ({
-              type: "INVALID_RESPONSE" as const,
-              message: e instanceof Error ? e.message : "Invalid response",
-            }),
-          );
-        }
-
-        let parsedJson: unknown;
-        try {
-          parsedJson = JSON.parse(jsonText);
-        } catch (e) {
-          return ResultAsync.fromPromise(
-            Promise.reject(
-              new Error(
-                `JSON Parse error: ${e instanceof Error ? e.message : "unknown"}; got="${snippet(result.text)}"`,
-              ),
-            ),
-            err => ({
-              type: "INVALID_RESPONSE" as const,
-              message: err instanceof Error ? err.message : "Invalid response",
-            }),
-          );
-        }
-
-        const parsed = LlmResponseSchema.safeParse(parsedJson);
-        if (!parsed.success) {
-          return ResultAsync.fromPromise(
-            Promise.reject(
-              new Error(
-                `Invalid response JSON: ${parsed.error.issues
-                  .map(i => `${i.path.join(".") || "<root>"}: ${i.message}`)
-                  .join("; ")}`,
-              ),
-            ),
-            () => ({
-              type: "INVALID_RESPONSE" as const,
-              message: "Invalid response JSON",
-            }),
-          );
-        }
-        return ResultAsync.fromPromise(Promise.resolve(parsed.data), () => ({
+      const jsonText = extractFirstJsonObject(result.text);
+      if (!jsonText) {
+        return errAsync({
           type: "INVALID_RESPONSE" as const,
-          message: "Invalid response JSON",
-        }));
-      } catch (e) {
-        return ResultAsync.fromPromise(Promise.reject(e instanceof Error ? e : new Error(String(e))), () => ({
-          type: "INVALID_RESPONSE" as const,
-          message: e instanceof Error ? e.message : "Failed to parse response JSON",
-        }));
+          message: `JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`,
+        });
       }
+
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(jsonText);
+      } catch (e) {
+        return errAsync({
+          type: "INVALID_RESPONSE" as const,
+          message: `JSON Parse error: ${e instanceof Error ? e.message : "unknown"}; got="${snippet(result.text)}"`,
+        });
+      }
+
+      const parsed = LlmResponseSchema.safeParse(parsedJson);
+      if (!parsed.success) {
+        return errAsync({
+          type: "INVALID_RESPONSE" as const,
+          message: `Invalid response JSON: ${parsed.error.issues
+            .map(i => `${i.path.join(".") || "<root>"}: ${i.message}`)
+            .join("; ")}`,
+        });
+      }
+      return okAsync(parsed.data);
     })
     .map(obj => {
       // Filter out undefined values from changes
