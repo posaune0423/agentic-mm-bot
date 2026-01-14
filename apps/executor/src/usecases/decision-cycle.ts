@@ -31,19 +31,35 @@ import { generateClientOrderId, planExecution, type ExecutionAction } from "../s
  */
 let lastCancelAllAttemptMs = 0;
 let lastOpenOrdersSyncMs = 0;
+let lastPeriodicReconcileMs = 0;
 const CANCEL_ALL_MIN_INTERVAL_WITH_ORDERS_MS = 1_000;
 const CANCEL_ALL_MIN_INTERVAL_WITHOUT_ORDERS_MS = 30_000;
 const OPEN_ORDERS_SYNC_INTERVAL_MS = 5_000;
+/**
+ * Periodic reconciliation interval (ms)
+ * Runs in every tick if enough time has passed, to detect tracker drift.
+ * Set to 30s to balance accuracy vs rate limit risk.
+ */
+const PERIODIC_RECONCILE_INTERVAL_MS = 30_000;
+let rateLimitUntilMs = 0;
 
 /**
  * Decision cycle dependencies
  */
+type ExecutorPhase = "IDLE" | "READ" | "DECIDE" | "PLAN" | "EXECUTE" | "PERSIST";
+
 export interface DecisionCycleDeps {
   marketDataCache: MarketDataCache;
   orderTracker: OrderTracker;
   positionTracker: PositionTracker;
   executionPort: ExecutionPort;
   params: StrategyParams;
+  /**
+   * Optional phase hook for CLI dashboard / observability.
+   *
+   * This is best-effort and should never throw or block the hot path.
+   */
+  onPhase?: (phase: ExecutorPhase) => void;
   /**
    * High-signal per-tick debug hook (for TTY dashboard / observability)
    */
@@ -94,6 +110,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   const { marketDataCache, orderTracker, positionTracker, executionPort, params } = deps;
 
   // Step 1: Build snapshot
+  deps.onPhase?.("READ");
   const snapshot = marketDataCache.getSnapshot(nowMs);
 
   // Step 2: Get trades for feature calculation
@@ -108,6 +125,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   const position = positionTracker.getPosition();
 
   // Step 5: Run strategy decision
+  deps.onPhase?.("DECIDE");
   const input: DecideInput = {
     nowMs,
     state: currentState,
@@ -119,8 +137,69 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   const output = decide(input);
 
   // Step 6: Plan and execute
+  deps.onPhase?.("PLAN");
   const plannedActions: ExecutionAction[] = [];
   let targetQuote: { bidPx: string; askPx: string; size: string } | undefined;
+
+  deps.onPhase?.("EXECUTE");
+
+  // Periodic reconciliation: sync tracker with exchange to detect drift
+  // This runs every PERIODIC_RECONCILE_INTERVAL_MS regardless of tracker state
+  if (nowMs - lastPeriodicReconcileMs >= PERIODIC_RECONCILE_INTERVAL_MS && nowMs >= rateLimitUntilMs) {
+    lastPeriodicReconcileMs = nowMs;
+    const reconcileResult = await executionPort.getOpenOrders(snapshot.symbol);
+    if (reconcileResult.isOk()) {
+      const exchangeOrders = reconcileResult.value;
+      const trackedOrders = orderTracker.getActiveOrders();
+
+      // Build sets for comparison
+      const exchangeIds = new Set(exchangeOrders.map(o => o.exchangeOrderId));
+      const trackedExchangeIds = new Set(
+        trackedOrders.map(o => o.exchangeOrderId).filter((id): id is string => id !== undefined),
+      );
+
+      // Detect drift: orders on exchange not in tracker, or orders in tracker not on exchange
+      const missingInTracker = exchangeOrders.filter(o => !trackedExchangeIds.has(o.exchangeOrderId));
+      const staleInTracker = trackedOrders.filter(
+        o => o.exchangeOrderId !== undefined && !exchangeIds.has(o.exchangeOrderId),
+      );
+
+      if (missingInTracker.length > 0 || staleInTracker.length > 0) {
+        logger.warn("Periodic reconciliation detected drift; syncing from exchange", {
+          missingInTracker: missingInTracker.length,
+          staleInTracker: staleInTracker.length,
+          exchangeOrderCount: exchangeOrders.length,
+          trackedOrderCount: trackedOrders.length,
+        });
+
+        // Sync from exchange to fix drift
+        orderTracker.syncFromOpenOrders(exchangeOrders);
+      } else {
+        logger.debug("Periodic reconciliation: no drift detected", {
+          exchangeOrderCount: exchangeOrders.length,
+          trackedOrderCount: trackedOrders.length,
+        });
+      }
+    } else {
+      logger.debug("Periodic reconciliation failed", reconcileResult.error);
+      if (reconcileResult.error.type === "rate_limit") {
+        rateLimitUntilMs = nowMs + (reconcileResult.error.retryAfterMs ?? 1000);
+      }
+    }
+  }
+
+  // Guardrail: we expect at most 1 bid + 1 ask live. If there's more, clean slate first.
+  {
+    const orders = orderTracker.getActiveOrders();
+    const buyCount = orders.filter(o => o.side === "buy").length;
+    const sellCount = orders.length - buyCount;
+
+    if (orders.length > 2 || buyCount > 1 || sellCount > 1) {
+      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot.symbol, deps.onAction);
+      deps.onPhase?.("IDLE");
+      return output;
+    }
+  }
 
   for (const intent of output.intents) {
     const currentBid = orderTracker.getBidOrder();
@@ -186,6 +265,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     intents: output.intents.length,
   });
 
+  deps.onPhase?.("IDLE");
   return output;
 }
 
@@ -199,6 +279,11 @@ async function executeAction(
   symbol: string,
   onAction?: (args: { phase: "start" | "ok" | "err"; action: ExecutionAction; error?: unknown }) => void,
 ): Promise<void> {
+  const nowMs = Date.now();
+  if (nowMs < rateLimitUntilMs) {
+    // Skip API calls during backoff window.
+    return;
+  }
   switch (action.type) {
     case "cancel_all": {
       onAction?.({ phase: "start", action });
@@ -241,6 +326,9 @@ async function executeAction(
           logger.debug("Issued cancel_all (no tracked orders)");
         }
       } else {
+        if (result.error.type === "rate_limit") {
+          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+        }
         onAction?.({ phase: "err", action, error: result.error });
         logger.error("Failed to cancel all orders", result.error);
       }
@@ -249,14 +337,29 @@ async function executeAction(
 
     case "cancel": {
       onAction?.({ phase: "start", action });
-      const result = await executionPort.cancelOrder({
+      const tracked = orderTracker.getOrder(action.clientOrderId);
+
+      // If clientOrderId is a fallback key (generated from exchangeOrderId),
+      // use exchangeOrderId for cancellation since the exchange doesn't know about our fallback key
+      const isFallbackKey = action.clientOrderId.startsWith("__ext_");
+      logger.debug("Cancelling order", {
         clientOrderId: action.clientOrderId,
+        isFallbackKey,
+        tracked: Boolean(tracked),
+      });
+      const result = await executionPort.cancelOrder({
+        clientOrderId: isFallbackKey ? undefined : action.clientOrderId,
+        exchangeOrderId: isFallbackKey ? action.exchangeOrderId : undefined,
         symbol,
       });
       if (result.isOk()) {
+        const removed = orderTracker.removeOrder(action.clientOrderId);
         onAction?.({ phase: "ok", action });
-        logger.debug("Cancelled order", { clientOrderId: action.clientOrderId });
+        logger.debug("Cancelled order", { clientOrderId: action.clientOrderId, removedFromTracker: removed });
       } else {
+        if (result.error.type === "rate_limit") {
+          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+        }
         onAction?.({ phase: "err", action, error: result.error });
         logger.error("Failed to cancel order", result.error);
       }
@@ -287,6 +390,9 @@ async function executeAction(
         });
         logger.debug("Placed order", { clientOrderId, side: action.side, price: action.price });
       } else {
+        if (result.error.type === "rate_limit") {
+          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+        }
         onAction?.({ phase: "err", action, error: result.error });
         // Check for post-only rejection
         if (result.error.type === "post_only_rejected") {

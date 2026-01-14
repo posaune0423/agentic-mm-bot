@@ -8,9 +8,22 @@
  * - DB buffers / dead letter size
  */
 import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import {
+  createDashboardControl,
+  FlowStatusTracker,
+  LayoutPolicy,
+  LogBuffer,
+  LogLevel,
+  logger,
+  Style,
+  TTYRenderer,
+  TTYScreen,
+  type LogRecord,
+} from "@agentic-mm-bot/utils";
 import type { IngestorMetrics } from "../types";
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+type IngestorPhase = "IDLE" | "CONNECTING" | "SUBSCRIBED" | "RECEIVING" | "FLUSHING";
 
 type BboDecision = {
   shouldWrite: boolean;
@@ -23,54 +36,29 @@ type BboDecision = {
   changeBps: number | null;
 };
 
-type DashboardEvent = { ts: number; level: "INFO" | "WARN" | "ERROR"; message: string; data?: unknown };
-
-const ANSI = {
-  altScreenOn: "\x1b[?1049h",
-  altScreenOff: "\x1b[?1049l",
-  clear: "\x1b[2J",
-  home: "\x1b[H",
-  hideCursor: "\x1b[?25l",
-  showCursor: "\x1b[?25h",
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bold: "\x1b[1m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  green: "\x1b[32m",
-  cyan: "\x1b[36m",
-} as const;
-
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
   return n.toFixed(digits);
-}
-
-function fmtAgeMs(nowMs: number, ts?: Date | number | null): string {
-  const t =
-    ts instanceof Date ? ts.getTime()
-    : typeof ts === "number" ? ts
-    : null;
-  if (t === null) return "-";
-  const age = Math.max(0, nowMs - t);
-  if (age < 1_000) return `${age}ms`;
-  if (age < 60_000) return `${(age / 1_000).toFixed(1)}s`;
-  return `${(age / 60_000).toFixed(1)}m`;
-}
-
-function padRight(s: string, width: number): string {
-  if (s.length >= width) return s.slice(0, width);
-  return s + " ".repeat(width - s.length);
 }
 
 export class IngestorCliDashboard {
   private readonly enabled: boolean;
   private readonly exchange: string;
   private readonly symbol: string;
+  private readonly refreshMs: number;
+  private readonly staleMs: number;
+
+  private readonly style: Style;
+  private readonly layout: LayoutPolicy;
+  private readonly screen: TTYScreen;
+  private readonly renderer: TTYRenderer;
+  private readonly logs: LogBuffer;
+  private readonly flow: FlowStatusTracker<IngestorPhase>;
 
   private status: ConnectionStatus = "connecting";
   private statusReason?: string;
-  private readonly startedAtMs = Date.now();
+  private lastReceiveAtMs = Date.now();
+  private hasStaleWarned = false;
 
   private metrics: IngestorMetrics;
   private lastMetricsSampleAtMs = Date.now();
@@ -87,42 +75,72 @@ export class IngestorCliDashboard {
   private deadLetterSize = 0;
 
   private interval: ReturnType<typeof setInterval> | null = null;
-  private events: DashboardEvent[] = [];
 
-  constructor(args: { enabled: boolean; exchange: string; symbol: string; initialMetrics: IngestorMetrics }) {
-    this.enabled = args.enabled && Boolean(process.stdout.isTTY);
+  constructor(args: {
+    enabled: boolean;
+    exchange: string;
+    symbol: string;
+    initialMetrics: IngestorMetrics;
+    refreshMs?: number;
+    staleMs?: number;
+    noColor?: boolean;
+    maxLogs?: number;
+  }) {
+    const control = createDashboardControl({
+      enabled: args.enabled,
+      refreshMs: args.refreshMs ?? 250,
+      noColor: args.noColor ?? false,
+      isTTY: Boolean(process.stdout.isTTY),
+    });
+    const cfg = control.config();
+
+    this.enabled = cfg.enabled;
     this.exchange = args.exchange;
     this.symbol = args.symbol;
+    this.refreshMs = cfg.refreshMs;
+    this.staleMs = args.staleMs ?? 3_000;
+
+    this.style = new Style({ noColor: cfg.noColor });
+    this.layout = new LayoutPolicy();
+    this.renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
+    this.screen = new TTYScreen({ enabled: this.enabled, write: chunk => process.stdout.write(chunk) });
+    this.logs = new LogBuffer(args.maxLogs ?? 200);
+    this.flow = new FlowStatusTracker<IngestorPhase>("CONNECTING", Date.now());
+
     this.metrics = { ...args.initialMetrics };
     this.lastMetricsSample = { ...args.initialMetrics };
   }
 
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
   start(): void {
     if (!this.enabled || this.interval) return;
-    // Alternate screen buffer avoids corrupting scrollback.
-    process.stdout.write(ANSI.altScreenOn + ANSI.hideCursor);
-    this.interval = setInterval(() => this.render(), 250);
 
-    const restore = () => {
-      this.stop();
-    };
-    process.once("SIGINT", restore);
-    process.once("SIGTERM", restore);
-    process.once("exit", () => this.stop());
+    this.screen.start();
+    this.renderer.reset();
+
+    // Route logs into dashboard (avoid stdout/stderr collisions).
+    logger.setSink({ write: r => this.logs.push(r) });
+
+    // Render loop: snapshot-only, never blocks hot paths.
+    this.interval = setInterval(() => this.render(), this.refreshMs);
   }
 
   stop(): void {
     if (!this.enabled) return;
     if (this.interval) clearInterval(this.interval);
     this.interval = null;
-    process.stdout.write(ANSI.showCursor + ANSI.altScreenOff);
+    logger.clearSink();
+    this.screen.stop();
   }
 
   setConnectionStatus(status: ConnectionStatus, reason?: string): void {
     this.status = status;
     this.statusReason = reason;
     this.pushEvent(
-      status === "disconnected" ? "WARN" : "INFO",
+      status === "disconnected" ? LogLevel.WARN : LogLevel.INFO,
       `market data: ${status}`,
       reason ? { reason } : undefined,
     );
@@ -137,32 +155,66 @@ export class IngestorCliDashboard {
     this.metrics = metrics;
   }
 
+  enterPhase(phase: IngestorPhase, nowMs = Date.now()): void {
+    this.flow.enterPhase(phase, nowMs);
+  }
+
   onBbo(event: BboEvent, decision?: BboDecision): void {
     this.lastBbo = event;
     if (decision) this.lastBboDecision = decision;
+    this.lastReceiveAtMs = Date.now();
   }
 
   onTrade(event: TradeEvent): void {
     this.lastTrade = event;
+    this.lastReceiveAtMs = Date.now();
   }
 
   onPrice(event: PriceEvent): void {
     this.lastPrice = event;
+    this.lastReceiveAtMs = Date.now();
   }
 
   onFunding(event: FundingRateEvent): void {
     this.lastFunding = event;
+    this.lastReceiveAtMs = Date.now();
   }
 
-  pushEvent(level: DashboardEvent["level"], message: string, data?: unknown): void {
-    const e: DashboardEvent = { ts: Date.now(), level, message, data };
-    this.events.push(e);
-    if (this.events.length > 12) this.events = this.events.slice(this.events.length - 12);
+  pushEvent(level: LogLevel, message: string, data?: unknown): void {
+    const fields =
+      data && typeof data === "object" ?
+        Object.fromEntries(Object.entries(data as Record<string, unknown>).map(([k, v]) => [k, JSON.stringify(v)]))
+      : undefined;
+    const r: LogRecord = { tsMs: Date.now(), level, message, fields };
+    this.logs.push(r);
   }
 
   private render(): void {
     if (!this.enabled) return;
     const nowMs = Date.now();
+
+    // Derive IDLE based on receive quietness (helps distinguish quiet vs stuck).
+    const quietMs = nowMs - this.lastReceiveAtMs;
+    const isStale = quietMs >= this.staleMs;
+    if (isStale && !this.hasStaleWarned) {
+      this.hasStaleWarned = true;
+      this.pushEvent(LogLevel.WARN, "market data stale (no events)", {
+        quietMs,
+        staleMs: this.staleMs,
+        status: this.status,
+        reason: this.statusReason ?? null,
+      });
+    } else if (!isStale && this.hasStaleWarned && quietMs <= Math.floor(this.staleMs / 2)) {
+      this.hasStaleWarned = false;
+    }
+    if (quietMs >= Math.max(2000, this.refreshMs * 4)) {
+      this.flow.enterPhase("IDLE", nowMs);
+    } else {
+      // Best-effort: if we're connected and receiving recently, call it RECEIVING.
+      if (this.status === "connected" || this.status === "reconnecting") {
+        this.flow.enterPhase("RECEIVING", nowMs);
+      }
+    }
 
     // rates
     const dtMs = Math.max(1, nowMs - this.lastMetricsSampleAtMs);
@@ -181,17 +233,23 @@ export class IngestorCliDashboard {
     }
 
     const statusColor =
-      this.status === "connected" ? ANSI.green
-      : this.status === "reconnecting" ? ANSI.yellow
-      : this.status === "connecting" ? ANSI.cyan
-      : ANSI.red;
+      this.status === "connected" ? this.style.token("green")
+      : this.status === "reconnecting" ? this.style.token("yellow")
+      : this.status === "connecting" ? this.style.token("cyan")
+      : this.style.token("red");
 
     const header =
-      `${ANSI.bold}Ingestor Dashboard${ANSI.reset}  ` +
-      `${ANSI.dim}${this.exchange}/${this.symbol}${ANSI.reset}  ` +
-      `status=${statusColor}${this.status}${ANSI.reset}` +
+      `${this.style.token("bold")}Ingestor Dashboard${this.style.token("reset")}  ` +
+      `${this.style.token("dim")}${this.exchange}/${this.symbol}${this.style.token("reset")}  ` +
+      `status=${statusColor}${this.status}${this.style.token("reset")}` +
       (this.statusReason ? ` (${this.statusReason})` : "") +
-      `  uptime=${fmtAgeMs(nowMs, this.startedAtMs)}`;
+      `  uptime=${this.layout.formatDurationMs(Math.floor(process.uptime() * 1000))}`;
+
+    const flowSnap = this.flow.snapshot();
+    const flowLine =
+      `FLOW  phase=${flowSnap.phase}  since=${this.layout.formatAgeMs(nowMs, flowSnap.sinceMs)}` +
+      `  lastDur=${flowSnap.lastDurationMs === undefined ? "-" : `${flowSnap.lastDurationMs}ms`}` +
+      `  quiet=${quietMs}ms`;
 
     const bboLine =
       this.lastBbo ?
@@ -200,11 +258,14 @@ export class IngestorCliDashboard {
           const ask = parseFloat(this.lastBbo.bestAskPx);
           const mid = (bid + ask) / 2;
           const spreadBps = mid > 0 ? ((ask - bid) / mid) * 10000 : null;
+          const ageMs = nowMs - this.lastBbo.ts.getTime();
+          const stale = ageMs >= this.staleMs;
+          const staleTok = stale ? this.style.token("yellow") : "";
           return (
             `BBO   bid ${this.lastBbo.bestBidPx} x ${this.lastBbo.bestBidSz}  ` +
             `ask ${this.lastBbo.bestAskPx} x ${this.lastBbo.bestAskSz}  ` +
             `mid ${fmtNum(mid, 2)}  spread ${fmtNum(spreadBps, 2)}bps  ` +
-            `age ${fmtAgeMs(nowMs, this.lastBbo.ts)}`
+            `age ${staleTok}${this.layout.formatAgeMs(nowMs, this.lastBbo.ts.getTime())}${this.style.token("reset")}`
           );
         })()
       : "BBO   -";
@@ -213,7 +274,10 @@ export class IngestorCliDashboard {
       this.lastBboDecision ?
         (() => {
           const d = this.lastBboDecision;
-          const ok = d.shouldWrite ? `${ANSI.green}WRITE${ANSI.reset}` : `${ANSI.dim}skip${ANSI.reset}`;
+          const ok =
+            d.shouldWrite ?
+              `${this.style.token("green")}WRITE${this.style.token("reset")}`
+            : `${this.style.token("dim")}skip${this.style.token("reset")}`;
           const why =
             d.reason === "first_write" ? "first"
             : d.reason === "time_throttle" ? `time>=${d.throttleMs}ms`
@@ -229,17 +293,17 @@ export class IngestorCliDashboard {
 
     const tradeLine =
       this.lastTrade ?
-        `TRD   ${this.lastTrade.side} px=${this.lastTrade.px} sz=${this.lastTrade.sz} type=${this.lastTrade.tradeType} age ${fmtAgeMs(nowMs, this.lastTrade.ts)}`
+        `TRD   ${this.lastTrade.side} px=${this.lastTrade.px} sz=${this.lastTrade.sz} type=${this.lastTrade.tradeType} age ${this.layout.formatAgeMs(nowMs, this.lastTrade.ts.getTime())}`
       : "TRD   -";
 
     const priceLine =
       this.lastPrice ?
-        `PX    type=${this.lastPrice.priceType} mark=${this.lastPrice.markPx ?? "-"} index=${this.lastPrice.indexPx ?? "-"} age ${fmtAgeMs(nowMs, this.lastPrice.ts)}`
+        `PX    type=${this.lastPrice.priceType} mark=${this.lastPrice.markPx ?? "-"} index=${this.lastPrice.indexPx ?? "-"} age ${this.layout.formatAgeMs(nowMs, this.lastPrice.ts.getTime())}`
       : "PX    -";
 
     const fundingLine =
       this.lastFunding ?
-        `FUND  rate=${this.lastFunding.fundingRate} age ${fmtAgeMs(nowMs, this.lastFunding.ts)}`
+        `FUND  rate=${this.lastFunding.fundingRate} age ${this.layout.formatAgeMs(nowMs, this.lastFunding.ts.getTime())}`
       : "FUND  -";
 
     const countsLine =
@@ -251,23 +315,25 @@ export class IngestorCliDashboard {
 
     const buffersLine = `BUF   bbo=${this.bufferSizes.bbo}  trade=${this.bufferSizes.trade}  price=${this.bufferSizes.price}  dead_letter=${this.deadLetterSize}`;
 
-    const evHeader = `${ANSI.bold}Recent events${ANSI.reset}`;
-    const evLines = this.events
+    const logHeader = `${this.style.token("bold")}Logs${this.style.token("reset")}`;
+    const logLines = this.logs
+      .latest(200)
       .slice()
       .reverse()
-      .slice(0, 8)
-      .map(e => {
-        const t = new Date(e.ts).toISOString().slice(11, 19);
+      .slice(0, 10)
+      .map(r => {
+        const t = new Date(r.tsMs).toISOString().slice(11, 19);
         const c =
-          e.level === "ERROR" ? ANSI.red
-          : e.level === "WARN" ? ANSI.yellow
-          : ANSI.cyan;
-        const msg = `${t} ${c}${e.level}${ANSI.reset} ${e.message}`;
-        return padRight(msg, 120);
+          r.level === LogLevel.ERROR ? this.style.token("red")
+          : r.level === LogLevel.WARN ? this.style.token("yellow")
+          : this.style.token("cyan");
+        const msg = `${t} ${c}${r.level}${this.style.token("reset")} ${r.message}`;
+        return this.layout.padRight(msg, 140);
       });
 
-    const outLines = [
+    const outLines: string[] = [
       header,
+      flowLine,
       "",
       bboLine,
       bboDecisionLine,
@@ -278,10 +344,10 @@ export class IngestorCliDashboard {
       countsLine,
       buffersLine,
       "",
-      evHeader,
-      ...evLines,
+      logHeader,
+      ...logLines,
     ];
 
-    process.stdout.write(ANSI.clear + ANSI.home + outLines.join("\n") + "\n");
+    this.renderer.render(outLines);
   }
 }

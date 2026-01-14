@@ -43,6 +43,15 @@ export class MarketDataCache {
    * Update from BBO event
    */
   updateBbo(event: BboEvent): void {
+    const bid = parseFloat(event.bestBidPx);
+    const ask = parseFloat(event.bestAskPx);
+
+    // Guard: ignore crossed/invalid BBO (bid >= ask), keep last good prices but still refresh age.
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid >= ask) {
+      this.lastUpdateMs = Math.max(this.lastUpdateMs, event.ts.getTime());
+      return;
+    }
+
     this.bestBidPx = event.bestBidPx;
     this.bestBidSz = event.bestBidSz;
     this.bestAskPx = event.bestAskPx;
@@ -50,7 +59,7 @@ export class MarketDataCache {
     this.lastUpdateMs = event.ts.getTime();
 
     // Add mid snapshot for volatility calculation
-    const mid = (parseFloat(event.bestBidPx) + parseFloat(event.bestAskPx)) / 2;
+    const mid = (bid + ask) / 2;
     this.midSnapshots.push({
       ts: event.ts.getTime(),
       midPx: mid.toString(),

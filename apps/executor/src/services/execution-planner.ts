@@ -16,7 +16,7 @@ import type { TrackedOrder } from "./order-tracker";
  */
 export type ExecutionAction =
   | { type: "cancel_all" }
-  | { type: "cancel"; clientOrderId: string }
+  | { type: "cancel"; clientOrderId: string; exchangeOrderId?: string }
   | { type: "place"; side: "buy" | "sell"; price: PriceStr; size: string };
 
 /**
@@ -80,7 +80,11 @@ export function planExecution(
     const needsUpdate = priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
     if (stale || needsUpdate) {
-      actions.push({ type: "cancel", clientOrderId: currentBid.clientOrderId });
+      actions.push({
+        type: "cancel",
+        clientOrderId: currentBid.clientOrderId,
+        exchangeOrderId: currentBid.exchangeOrderId,
+      });
       actions.push({ type: "place", side: "buy", price: bidPx, size });
     }
   } else if (canRefresh) {
@@ -93,7 +97,11 @@ export function planExecution(
     const needsUpdate = priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
     if (stale || needsUpdate) {
-      actions.push({ type: "cancel", clientOrderId: currentAsk.clientOrderId });
+      actions.push({
+        type: "cancel",
+        clientOrderId: currentAsk.clientOrderId,
+        exchangeOrderId: currentAsk.exchangeOrderId,
+      });
       actions.push({ type: "place", side: "sell", price: askPx, size });
     }
   } else if (canRefresh) {

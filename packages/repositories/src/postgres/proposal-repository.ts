@@ -20,8 +20,44 @@ import {
   type StrategyParams,
   type NewStrategyParams,
 } from "@agentic-mm-bot/db";
+import { logger } from "@agentic-mm-bot/utils";
 
 import type { ProposalRepository, ProposalRepositoryError } from "../interfaces/proposal-repository";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Defaults
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Default strategy parameters used when DB is empty.
+ *
+ * Note:
+ * - Keep these values consistent with executor/backtest defaults unless intentionally diverging.
+ * - Stored as strings to match the DB layer numeric->string behavior in Drizzle.
+ */
+const DEFAULT_STRATEGY_PARAMS_VALUES = {
+  baseHalfSpreadBps: "3",
+  volSpreadGain: "1",
+  toxSpreadGain: "1",
+  quoteSizeUsd: "10",
+  refreshIntervalMs: 1000,
+  staleCancelMs: 5000,
+  maxInventory: "1",
+  inventorySkewGain: "5",
+  pauseMarkIndexBps: "50",
+  pauseLiqCount10s: 3,
+} as const;
+
+function buildSeededCurrentParams(exchange: string, symbol: string): NewStrategyParams {
+  return {
+    exchange,
+    symbol,
+    isCurrent: true,
+    createdBy: "system",
+    comment: "Seeded default parameters (empty DB)",
+    ...DEFAULT_STRATEGY_PARAMS_VALUES,
+  };
+}
 
 /**
  * Create a unified Postgres proposal repository
@@ -143,6 +179,11 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
     },
 
     getCurrentParams(exchange: string, symbol: string): ResultAsync<StrategyParams, ProposalRepositoryError> {
+      const dbError = (e: unknown) => ({
+        type: "DB_ERROR" as const,
+        message: e instanceof Error ? e.message : "Unknown error",
+      });
+
       return ResultAsync.fromPromise(
         db
           .select()
@@ -155,37 +196,46 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
             ),
           )
           .limit(1),
-        e => ({
-          type: "DB_ERROR" as const,
-          message: e instanceof Error ? e.message : "Unknown error",
-        }),
+        dbError,
       ).andThen(rows => {
-        if (rows.length === 0) {
-          // Fallback to default params if not found (Requirement: Work with empty DB)
-          console.warn(`No current params found for ${exchange}:${symbol}, using defaults`);
-          return ResultAsync.fromSafePromise(
-            Promise.resolve({
-              id: "00000000-0000-0000-0000-000000000000",
-              exchange,
-              symbol,
-              baseHalfSpreadBps: "10",
-              volSpreadGain: "1",
-              toxSpreadGain: "1",
-              quoteSizeUsd: "100",
-              refreshIntervalMs: 1000,
-              staleCancelMs: 5000,
-              maxInventory: "1",
-              inventorySkewGain: "5",
-              pauseMarkIndexBps: "50",
-              pauseLiqCount10s: 3,
-              isCurrent: true,
-              createdAt: new Date(),
-              createdBy: "system",
-              comment: "Default parameters",
-            }),
-          );
+        if (rows.length > 0) {
+          return ResultAsync.fromSafePromise(Promise.resolve(rows[0]));
         }
-        return ResultAsync.fromSafePromise(Promise.resolve(rows[0]));
+
+        /**
+         * Requirement: Work with empty DB.
+         *
+         * Previously we returned in-memory defaults without persisting. That leaves
+         * `strategy_params` empty forever, which makes it look like "params are not updating".
+         *
+         * Instead, seed a default params row in DB and mark it current.
+         */
+        logger.debug(`No current params found for ${exchange}:${symbol}; seeding defaults into DB`);
+
+        return ResultAsync.fromPromise(
+          (async () => {
+            // Best-effort: ensure there's at most one current row for this key.
+            await db
+              .update(strategyParams)
+              .set({ isCurrent: false })
+              .where(
+                and(
+                  eq(strategyParams.exchange, exchange),
+                  eq(strategyParams.symbol, symbol),
+                  eq(strategyParams.isCurrent, true),
+                ),
+              );
+
+            const seeded = await db
+              .insert(strategyParams)
+              .values(buildSeededCurrentParams(exchange, symbol))
+              .returning()
+              .then(r => r[0]);
+
+            return seeded;
+          })(),
+          dbError,
+        );
       });
     },
   };

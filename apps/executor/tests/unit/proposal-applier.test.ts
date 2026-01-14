@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { isAtFiveMinuteBoundary } from "../../src/services/proposal-applier";
+import { isAtFiveMinuteBoundary, isAtTimeBoundary } from "../../src/services/proposal-applier";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // isAtFiveMinuteBoundary Tests
@@ -57,5 +57,17 @@ describe("isAtFiveMinuteBoundary", () => {
   test("should return true at 23:55:00", () => {
     const ts = new Date("2024-01-01T23:55:00.000Z").getTime();
     expect(isAtFiveMinuteBoundary(ts)).toBe(true);
+  });
+});
+
+describe("isAtTimeBoundary", () => {
+  test("should support 1-minute boundaries", () => {
+    const ts = new Date("2024-01-01T00:01:00.000Z").getTime();
+    expect(isAtTimeBoundary(ts, { boundaryMinutes: 1, graceSeconds: 30 })).toBe(true);
+  });
+
+  test("should return false when outside grace window", () => {
+    const ts = new Date("2024-01-01T00:01:30.000Z").getTime();
+    expect(isAtTimeBoundary(ts, { boundaryMinutes: 1, graceSeconds: 30 })).toBe(false);
   });
 });

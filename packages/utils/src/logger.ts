@@ -7,12 +7,23 @@
  * Only logs at or above the set level will be output
  */
 
-enum LogLevel {
+export enum LogLevel {
   ERROR = "ERROR",
   WARN = "WARN",
   INFO = "INFO",
   DEBUG = "DEBUG",
   LOG = "LOG",
+}
+
+export type LogRecord = {
+  tsMs: number;
+  level: LogLevel;
+  message: string;
+  fields?: Record<string, string>;
+};
+
+export interface LogSink {
+  write(record: LogRecord): void;
 }
 
 // Define log level priority (lower number = higher priority)
@@ -70,31 +81,81 @@ const formatHeader = (level: LogLevel): string => {
   return colorize(`${timestamp} ${levelTag}`, level);
 };
 
+let sink: LogSink | null = null;
+
+function toFields(args: unknown[]): Record<string, string> | undefined {
+  // Common case in this codebase: logger.info("msg", { ...fields })
+  const maybeFields = args[1];
+  if (maybeFields && typeof maybeFields === "object" && !(maybeFields instanceof Error)) {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(maybeFields as Record<string, unknown>)) {
+      out[k] = typeof v === "string" ? v : JSON.stringify(v);
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+  return undefined;
+}
+
+function toMessage(args: unknown[]): string {
+  if (args.length === 0) return "";
+  const [first, ...rest] = args;
+
+  const head =
+    typeof first === "string" ? first
+    : first instanceof Error ? first.message
+    : JSON.stringify(first);
+
+  if (rest.length === 0) return head;
+
+  // Avoid duplicating the common fields object in the message; store it in `fields`.
+  const tail =
+    rest.length >= 1 && rest[0] && typeof rest[0] === "object" && !(rest[0] instanceof Error) ? rest.slice(1) : rest;
+
+  if (tail.length === 0) return head;
+
+  return `${head} ${tail
+    .map(a =>
+      typeof a === "string" ? a
+      : a instanceof Error ? a.message
+      : JSON.stringify(a),
+    )
+    .join(" ")}`.trim();
+}
+
+function emit(level: LogLevel, args: unknown[], consoleFn: (...a: unknown[]) => void): void {
+  if (!shouldLog(level)) return;
+
+  const record: LogRecord = {
+    tsMs: Date.now(),
+    level,
+    message: toMessage(args),
+    fields: toFields(args),
+  };
+
+  if (sink) {
+    sink.write(record);
+    return;
+  }
+
+  const header = formatHeader(level);
+  consoleFn(header, ...args);
+}
+
 export const logger = {
   log: (...args: unknown[]) => {
-    if (!shouldLog(LogLevel.LOG)) return;
-    const header = formatHeader(LogLevel.LOG);
-    console.log(header, ...args);
+    emit(LogLevel.LOG, args, console.log);
   },
   info: (...args: unknown[]) => {
-    if (!shouldLog(LogLevel.INFO)) return;
-    const header = formatHeader(LogLevel.INFO);
-    console.info(header, ...args);
+    emit(LogLevel.INFO, args, console.info);
   },
   debug: (...args: unknown[]) => {
-    if (!shouldLog(LogLevel.DEBUG)) return;
-    const header = formatHeader(LogLevel.DEBUG);
-    console.log(header, ...args);
+    emit(LogLevel.DEBUG, args, console.log);
   },
   warn: (...args: unknown[]) => {
-    if (!shouldLog(LogLevel.WARN)) return;
-    const header = formatHeader(LogLevel.WARN);
-    console.warn(header, ...args);
+    emit(LogLevel.WARN, args, console.warn);
   },
   error: (...args: unknown[]) => {
-    if (!shouldLog(LogLevel.ERROR)) return;
-    const header = formatHeader(LogLevel.ERROR);
-    console.error(header, ...args);
+    emit(LogLevel.ERROR, args, console.error);
   },
   /**
    * Get the currently set log level
@@ -104,4 +165,19 @@ export const logger = {
    * Get list of available log levels
    */
   getLevels: () => Object.values(LogLevel),
+  /**
+   * Route logs to a custom sink (e.g., CLI dashboard).
+   *
+   * When a sink is set, logs are sent to it instead of printing to console,
+   * except ERROR logs which still print to stderr for debugging.
+   */
+  setSink: (next: LogSink) => {
+    sink = next;
+  },
+  /**
+   * Restore default console logging.
+   */
+  clearSink: () => {
+    sink = null;
+  },
 };

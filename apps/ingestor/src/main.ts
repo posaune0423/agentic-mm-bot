@@ -11,8 +11,6 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 
-console.log("Ingestor starting...");
-
 // Load .env from project root (three levels up from apps/ingestor)
 config({ path: resolve(process.cwd(), "../../.env") });
 
@@ -24,7 +22,7 @@ import {
   type TradeEvent,
 } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
-import { logger } from "@agentic-mm-bot/utils";
+import { LogLevel, logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
 import { BboThrottler, EventWriter, IngestorCliDashboard, LatestStateManager } from "./services";
@@ -35,48 +33,6 @@ import type { IngestorMetrics } from "./types";
 // ============================================================================
 
 async function main(): Promise<void> {
-  // If TTY dashboard is enabled, suppress normal logs to avoid flicker.
-  // (Dashboard shows the latest data + buffers; keep ERROR logs for debugging.)
-  const dashboardEnabled = env.INGESTOR_DASHBOARD && Boolean(process.stdout.isTTY);
-  if (dashboardEnabled) {
-    process.env.LOG_LEVEL = "ERROR";
-  }
-
-  // Market-data streaming does not require signing, so we intentionally skip signer WASM init.
-  try {
-    await ExtendedMarketDataAdapter.initialize();
-    if (!dashboardEnabled) logger.info("WASM init skipped (market data only)");
-  } catch (error) {
-    logger.error("Failed to initialize WASM", error);
-    process.exit(1);
-  }
-
-  if (!dashboardEnabled)
-    logger.info("Starting ingestor", {
-      exchange: env.EXCHANGE,
-      symbol: env.SYMBOL,
-      bboThrottleMs: env.BBO_THROTTLE_MS,
-      bboMinChangeBps: env.BBO_MIN_CHANGE_BPS,
-      latestTopUpsertIntervalMs: env.LATEST_TOP_UPSERT_INTERVAL_MS,
-    });
-
-  // Initialize database
-  const db = getDb(env.DATABASE_URL);
-
-  // Initialize services
-  const bboThrottler = new BboThrottler(env.BBO_THROTTLE_MS, env.BBO_MIN_CHANGE_BPS);
-  const eventWriter = new EventWriter(db);
-  const latestStateManager = new LatestStateManager(db);
-
-  // Initialize adapter
-  const marketDataAdapter = new ExtendedMarketDataAdapter({
-    network: env.EXTENDED_NETWORK,
-    apiKey: env.EXTENDED_API_KEY,
-    starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
-    starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
-    vaultId: env.EXTENDED_VAULT_ID,
-  });
-
   // Metrics
   const metrics: IngestorMetrics = {
     bboReceived: 0,
@@ -95,9 +51,57 @@ async function main(): Promise<void> {
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
     initialMetrics: metrics,
+    refreshMs: env.INGESTOR_DASHBOARD_REFRESH_MS,
+    noColor: env.INGESTOR_DASHBOARD_NO_COLOR,
+    staleMs: env.INGESTOR_DASHBOARD_STALE_MS,
   });
   dashboard.start();
-  dashboard.pushEvent("INFO", "ingestor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  dashboard.enterPhase("CONNECTING");
+  dashboard.pushEvent(LogLevel.INFO, "ingestor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+
+  // Market-data streaming does not require signing, so we intentionally skip signer WASM init.
+  try {
+    await ExtendedMarketDataAdapter.initialize();
+    logger.info("WASM init skipped (market data only)");
+  } catch (error) {
+    logger.error("Failed to initialize WASM", error);
+    process.exit(1);
+  }
+
+  logger.info("Starting ingestor", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+    bboThrottleMs: env.BBO_THROTTLE_MS,
+    bboMinChangeBps: env.BBO_MIN_CHANGE_BPS,
+    latestTopUpsertIntervalMs: env.LATEST_TOP_UPSERT_INTERVAL_MS,
+  });
+
+  // Initialize database
+  const db = getDb(env.DATABASE_URL);
+
+  // Initialize services
+  const bboThrottler = new BboThrottler(env.BBO_THROTTLE_MS, env.BBO_MIN_CHANGE_BPS);
+  const eventWriter = new EventWriter(db);
+  const latestStateManager = new LatestStateManager(db);
+
+  // Initialize adapter
+  const marketDataAdapter = new ExtendedMarketDataAdapter({
+    network: env.EXTENDED_NETWORK,
+    apiKey: env.EXTENDED_API_KEY,
+    starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
+    starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
+    vaultId: env.EXTENDED_VAULT_ID,
+  });
+
+  // Local debug-only counters (no secrets).
+  let dbgFirstEventLogged = false;
+  let lastDataEventAtMs = Date.now();
+  let watchdogInFlight = false;
+  let watchdogLastKickAtMs = 0;
+  const watchdogThresholdMs = Math.max(env.INGESTOR_DASHBOARD_STALE_MS * 2, 6000);
+  const watchdogCooldownMs = 15_000;
+  let lastMetricsAtMs = Date.now();
+  let lastMetrics = { bboReceived: 0, tradeReceived: 0, priceReceived: 0, fundingReceived: 0 };
 
   // ============================================================================
   // Event Handlers
@@ -105,6 +109,7 @@ async function main(): Promise<void> {
 
   const handleBbo = (event: BboEvent): void => {
     metrics.bboReceived++;
+    dashboard.enterPhase("RECEIVING");
 
     const mid = (parseFloat(event.bestBidPx) + parseFloat(event.bestAskPx)) / 2;
     const midStr = mid.toString();
@@ -144,6 +149,7 @@ async function main(): Promise<void> {
 
   const handleTrade = (event: TradeEvent): void => {
     metrics.tradeReceived++;
+    dashboard.enterPhase("RECEIVING");
     dashboard.onTrade(event);
 
     eventWriter.addTrade({
@@ -162,6 +168,7 @@ async function main(): Promise<void> {
 
   const handlePrice = (event: PriceEvent): void => {
     metrics.priceReceived++;
+    dashboard.enterPhase("RECEIVING");
     dashboard.onPrice(event);
 
     // Add to price buffer
@@ -185,17 +192,16 @@ async function main(): Promise<void> {
 
   const handleFunding = (event: FundingRateEvent): void => {
     metrics.fundingReceived++;
+    dashboard.enterPhase("RECEIVING");
     dashboard.onFunding(event);
 
     // MVP: Just log funding rate, don't persist to DB
     // Future: Add md_funding_rate table
-    if (!dashboardEnabled) {
-      logger.debug("Received funding rate", {
-        symbol: event.symbol,
-        fundingRate: event.fundingRate,
-        ts: event.ts.toISOString(),
-      });
-    }
+    logger.debug("Received funding rate", {
+      symbol: event.symbol,
+      fundingRate: event.fundingRate,
+      ts: event.ts.toISOString(),
+    });
   };
 
   // ============================================================================
@@ -203,6 +209,20 @@ async function main(): Promise<void> {
   // ============================================================================
 
   marketDataAdapter.onEvent(event => {
+    // Track last time we saw any data event (used by stale watchdog).
+    if (event.type === "bbo" || event.type === "trade" || event.type === "price" || event.type === "funding") {
+      lastDataEventAtMs = Date.now();
+    }
+
+    if (!dbgFirstEventLogged && (event.type === "bbo" || event.type === "trade" || event.type === "funding")) {
+      dbgFirstEventLogged = true;
+    } else if (
+      !dbgFirstEventLogged &&
+      (event.type === "connected" || event.type === "reconnecting" || event.type === "disconnected")
+    ) {
+      // Record connection events if we never see data events.
+    }
+
     switch (event.type) {
       case "bbo":
         handleBbo(event);
@@ -218,15 +238,15 @@ async function main(): Promise<void> {
         break;
       case "connected":
         dashboard.setConnectionStatus("connected");
-        if (!dashboardEnabled) logger.info("Market data connected");
+        logger.info("Market data connected");
         break;
       case "disconnected":
         dashboard.setConnectionStatus("disconnected");
-        if (!dashboardEnabled) logger.warn("Market data disconnected");
+        logger.warn("Market data disconnected");
         break;
       case "reconnecting":
         dashboard.setConnectionStatus("reconnecting", event.reason);
-        if (!dashboardEnabled) logger.info("Market data reconnecting", { reason: event.reason });
+        logger.info("Market data reconnecting", { reason: event.reason });
         break;
     }
   });
@@ -243,6 +263,65 @@ async function main(): Promise<void> {
 
   // UI metrics + buffers refresh (every 1 second)
   const uiInterval = setInterval(() => {
+    // Stale watchdog: if we stop receiving WS events for too long, force reconnect.
+    // Uses this existing 1s interval (no new timers).
+    const now = Date.now();
+    const quietMs = now - lastDataEventAtMs;
+    const cooldownOk = now - watchdogLastKickAtMs >= watchdogCooldownMs;
+    if (!watchdogInFlight && cooldownOk && quietMs >= watchdogThresholdMs) {
+      watchdogInFlight = true;
+      watchdogLastKickAtMs = now;
+      dashboard.setConnectionStatus("reconnecting", `stale_watchdog quiet=${quietMs}ms`);
+      logger.warn("Stale watchdog: forcing market-data reconnect", {
+        quietMs,
+        watchdogThresholdMs,
+        watchdogCooldownMs,
+      });
+      void (async () => {
+        try {
+          await marketDataAdapter.disconnect();
+          await marketDataAdapter.connect();
+        } catch (error) {
+          logger.error("Stale watchdog reconnect failed", { error });
+        } finally {
+          watchdogInFlight = false;
+        }
+      })();
+    }
+
+    // When we appear stale, record counters/deltas once per ~5s to keep logs readable.
+    const now2 = Date.now();
+    const dt = Math.max(1, now2 - lastMetricsAtMs);
+    const isStale = now2 - lastDataEventAtMs >= env.INGESTOR_DASHBOARD_STALE_MS;
+    if (isStale && dt >= 5000) {
+      const delta = {
+        bbo: metrics.bboReceived - lastMetrics.bboReceived,
+        trade: metrics.tradeReceived - lastMetrics.tradeReceived,
+        price: metrics.priceReceived - lastMetrics.priceReceived,
+        funding: metrics.fundingReceived - lastMetrics.fundingReceived,
+      };
+      logger.warn("Ingestor appears stale (no recent market-data events)", {
+        symbol: env.SYMBOL,
+        exchange: env.EXCHANGE,
+        quietMs: now2 - lastDataEventAtMs,
+        dt,
+        delta,
+        totals: {
+          bbo: metrics.bboReceived,
+          trade: metrics.tradeReceived,
+          price: metrics.priceReceived,
+          funding: metrics.fundingReceived,
+        },
+      });
+      lastMetricsAtMs = now2;
+      lastMetrics = {
+        bboReceived: metrics.bboReceived,
+        tradeReceived: metrics.tradeReceived,
+        priceReceived: metrics.priceReceived,
+        fundingReceived: metrics.fundingReceived,
+      };
+    }
+
     const bufferSizes = eventWriter.getBufferSizes();
     metrics.bboBufferSize = bufferSizes.bbo;
     metrics.tradeBufferSize = bufferSizes.trade;
@@ -255,7 +334,7 @@ async function main(): Promise<void> {
   // Connect and Subscribe
   // ============================================================================
 
-  if (!dashboardEnabled) logger.info("Connecting to market data...");
+  logger.info("Connecting to market data...");
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
     logger.error("Failed to connect to market data", connectResult.error);
@@ -268,21 +347,20 @@ async function main(): Promise<void> {
     symbol: env.SYMBOL,
     channels: ["bbo", "trades", "prices", "funding"],
   });
+  dashboard.enterPhase("SUBSCRIBED");
 
-  if (!dashboardEnabled) {
-    logger.info("Subscribed to market data", {
-      exchange: env.EXCHANGE,
-      symbol: env.SYMBOL,
-      channels: ["bbo", "trades", "prices", "funding"],
-    });
-  }
+  logger.info("Subscribed to market data", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+    channels: ["bbo", "trades", "prices", "funding"],
+  });
 
   // ============================================================================
   // Graceful Shutdown
   // ============================================================================
 
   const shutdown = async (): Promise<void> => {
-    if (!dashboardEnabled) logger.info("Shutting down...");
+    logger.info("Shutting down...");
 
     clearInterval(uiInterval);
 
@@ -294,15 +372,13 @@ async function main(): Promise<void> {
     await db.$client.end();
 
     dashboard.stop();
-    if (!dashboardEnabled) {
-      logger.info("Shutdown complete", {
-        bboReceived: metrics.bboReceived,
-        bboWritten: metrics.bboWritten,
-        tradeReceived: metrics.tradeReceived,
-        priceReceived: metrics.priceReceived,
-        fundingReceived: metrics.fundingReceived,
-      });
-    }
+    logger.info("Shutdown complete", {
+      bboReceived: metrics.bboReceived,
+      bboWritten: metrics.bboWritten,
+      tradeReceived: metrics.tradeReceived,
+      priceReceived: metrics.priceReceived,
+      fundingReceived: metrics.fundingReceived,
+    });
     process.exit(0);
   };
 
@@ -313,7 +389,7 @@ async function main(): Promise<void> {
     void shutdown();
   });
 
-  if (!dashboardEnabled) logger.info("Ingestor running");
+  logger.info("Ingestor running");
 }
 
 main().catch(error => {

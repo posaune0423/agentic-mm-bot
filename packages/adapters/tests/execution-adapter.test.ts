@@ -350,4 +350,99 @@ describe("ExtendedExecutionAdapter", () => {
       expect(getTimeInForce(false)).toBe("IOC");
     });
   });
+
+  describe("getOpenOrders externalId normalization", () => {
+    /**
+     * This tests the externalId normalization logic extracted from the adapter.
+     * The adapter tries multiple field names and generates a fallback key if needed.
+     */
+
+    // Simulate the normalization logic from the adapter
+    const normalizeClientOrderId = (rawOrder: Record<string, unknown>, exchangeOrderId: string): string => {
+      const externalId =
+        (rawOrder["externalId"] as string | undefined) ??
+        (rawOrder["externalID"] as string | undefined) ??
+        (rawOrder["external_id"] as string | undefined) ??
+        (rawOrder["clientOrderId"] as string | undefined);
+
+      const clientOrderId =
+        externalId && (externalId as string).trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
+      return clientOrderId;
+    };
+
+    test("should use externalId when available", () => {
+      const rawOrder = { externalId: "ord_123", id: 100 };
+      const result = normalizeClientOrderId(rawOrder, "100");
+      expect(result).toBe("ord_123");
+    });
+
+    test("should try externalID (capital D) as fallback", () => {
+      const rawOrder = { externalID: "ord_456", id: 200 };
+      const result = normalizeClientOrderId(rawOrder, "200");
+      expect(result).toBe("ord_456");
+    });
+
+    test("should try external_id (snake_case) as fallback", () => {
+      const rawOrder = { external_id: "ord_789", id: 300 };
+      const result = normalizeClientOrderId(rawOrder, "300");
+      expect(result).toBe("ord_789");
+    });
+
+    test("should try clientOrderId as fallback", () => {
+      const rawOrder = { clientOrderId: "ord_abc", id: 400 };
+      const result = normalizeClientOrderId(rawOrder, "400");
+      expect(result).toBe("ord_abc");
+    });
+
+    test("should generate fallback key when no externalId found", () => {
+      const rawOrder = { id: 500, market: "BTC-USD" };
+      const result = normalizeClientOrderId(rawOrder, "500");
+      expect(result).toBe("__ext_500");
+    });
+
+    test("should generate fallback key when externalId is empty string", () => {
+      const rawOrder = { externalId: "", id: 600 };
+      const result = normalizeClientOrderId(rawOrder, "600");
+      expect(result).toBe("__ext_600");
+    });
+
+    test("should generate fallback key when externalId is whitespace only", () => {
+      const rawOrder = { externalId: "   ", id: 700 };
+      const result = normalizeClientOrderId(rawOrder, "700");
+      expect(result).toBe("__ext_700");
+    });
+
+    test("should generate fallback key when externalId is undefined", () => {
+      const rawOrder = { externalId: undefined, id: 800 };
+      const result = normalizeClientOrderId(rawOrder, "800");
+      expect(result).toBe("__ext_800");
+    });
+
+    test("should prioritize externalId over other field names", () => {
+      // When multiple fields are present, externalId should win
+      const rawOrder = {
+        externalId: "preferred",
+        externalID: "fallback1",
+        external_id: "fallback2",
+        id: 900,
+      };
+      const result = normalizeClientOrderId(rawOrder, "900");
+      expect(result).toBe("preferred");
+    });
+
+    test("should not collapse multiple orders with different exchangeOrderIds", () => {
+      // Simulate processing multiple orders from exchange
+      const orders = [
+        { id: 1001, market: "BTC-USD", side: "BUY" }, // No externalId
+        { id: 1002, market: "BTC-USD", side: "SELL" }, // No externalId
+      ];
+
+      const results = orders.map(o => normalizeClientOrderId(o, String(o.id)));
+
+      // Each should have a unique fallback key
+      expect(results[0]).toBe("__ext_1001");
+      expect(results[1]).toBe("__ext_1002");
+      expect(results[0]).not.toBe(results[1]);
+    });
+  });
 });

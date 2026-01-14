@@ -9,6 +9,7 @@ import { eq, and, gte, lte, asc, count, sql } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
 import { fillsEnriched, exOrderEvent, strategyState, strategyParams, type Db } from "@agentic-mm-bot/db";
+import { logger } from "@agentic-mm-bot/utils";
 
 import type { MetricsRepository, MetricsRepositoryError } from "../interfaces/metrics-repository";
 import type { HourlyAggregation, CurrentParamsSummary, WorstFillSummary } from "../types";
@@ -161,14 +162,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
         // Requirement: Work with empty DB (no current params yet).
         // Keep reflector workflow running by returning safe defaults.
         if (rows.length === 0) {
-          console.warn(`No current params found for ${exchange}:${symbol}, using defaults`);
+          logger.debug(`No current params found for ${exchange}:${symbol}, using defaults`);
           return ResultAsync.fromSafePromise(
             Promise.resolve({
               paramsSetId: "00000000-0000-0000-0000-000000000000",
               baseHalfSpreadBps: "10",
               volSpreadGain: "1",
               toxSpreadGain: "1",
-              quoteSizeUsd: "100",
+              quoteSizeUsd: "10",
               refreshIntervalMs: 1000,
               staleCancelMs: 5000,
               maxInventory: "1",

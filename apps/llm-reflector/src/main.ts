@@ -41,7 +41,7 @@ function main(): void {
    * Run one iteration
    */
   const runOnce = async (): Promise<void> => {
-    const result = await runHourlyReflection(deps);
+    const result = await runHourlyReflection(deps, env.REFLECTION_WINDOW_MINUTES);
 
     if (result.isOk()) {
       const value = result.value;
@@ -71,6 +71,7 @@ function main(): void {
       symbol: env.SYMBOL,
       model: env.MODEL,
       runIntervalMs: env.RUN_INTERVAL_MS,
+      reflectionWindowMinutes: env.REFLECTION_WINDOW_MINUTES,
     },
   });
 }

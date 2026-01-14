@@ -68,7 +68,7 @@ function buildPrompt(input: ReflectionInput): string {
     )
     .join("\n");
 
-  return `## Performance Summary (Last Hour: ${input.windowStart.toISOString()} - ${input.windowEnd.toISOString()})
+  return `## Performance Summary (Window: ${input.windowStart.toISOString()} - ${input.windowEnd.toISOString()})
 
 ### Trading Activity
 - Fills: ${input.aggregation.fillsCount}

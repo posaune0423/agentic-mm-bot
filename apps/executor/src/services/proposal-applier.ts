@@ -55,9 +55,18 @@ export interface ProposalApplierOptions {
  * Check if we're at a 5-minute boundary
  */
 export function isAtFiveMinuteBoundary(nowMs: number): boolean {
-  const minutes = Math.floor((nowMs / 1000 / 60) % 5);
-  const seconds = Math.floor((nowMs / 1000) % 60);
-  return minutes === 0 && seconds < 30; // Within first 30 seconds of boundary
+  return isAtTimeBoundary(nowMs, { boundaryMinutes: 5, graceSeconds: 30 });
+}
+
+export function isAtTimeBoundary(nowMs: number, opts: { boundaryMinutes: number; graceSeconds: number }): boolean {
+  const boundaryMinutes = Math.max(1, Math.floor(opts.boundaryMinutes));
+  const graceSeconds = Math.max(0, Math.floor(opts.graceSeconds));
+
+  const date = new Date(nowMs);
+  const minutes = date.getUTCMinutes();
+  const seconds = date.getUTCSeconds();
+
+  return minutes % boundaryMinutes === 0 && seconds < graceSeconds;
 }
 
 /**
@@ -264,19 +273,20 @@ export async function tryApplyProposal(
 }
 
 /**
- * Process pending proposals at 5-minute boundaries
+ * Process pending proposals at N-minute boundaries
  *
  * Requirements: 10.4
- * - Apply at 5-minute boundaries (max 1 per boundary)
+ * - Apply at minute boundaries (max 1 per boundary)
  */
 export async function processPendingProposals(
   repo: ProposalRepository,
   options: ProposalApplierOptions,
   context: OperationalContext,
   nowMs: number,
+  timing: { boundaryMinutes: number; graceSeconds: number } = { boundaryMinutes: 5, graceSeconds: 30 },
 ): Promise<StrategyParams | null> {
-  // Only process at 5-minute boundaries
-  if (!isAtFiveMinuteBoundary(nowMs)) {
+  // Only process at configured boundaries
+  if (!isAtTimeBoundary(nowMs, timing)) {
     return null;
   }
 

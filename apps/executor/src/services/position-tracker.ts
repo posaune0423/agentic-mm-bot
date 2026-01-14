@@ -21,6 +21,10 @@ export class PositionTracker {
 
   /**
    * Update from fill event
+   *
+   * Note: After a fill, entryPrice and unrealizedPnl become stale
+   * (would need recalculation or fresh REST sync). We clear them
+   * to avoid displaying outdated/incorrect values.
    */
   updateFromFill(event: FillEvent): void {
     const currentSize = parseFloat(this.size);
@@ -29,6 +33,10 @@ export class PositionTracker {
 
     this.size = (currentSize + signedFill).toString();
     this.lastUpdateMs = event.ts.getTime();
+
+    // Clear stale values - only size is accurate after fill
+    this.entryPrice = undefined;
+    this.unrealizedPnl = undefined;
   }
 
   /**

@@ -8,3 +8,4 @@ export * from "./proposal-repository";
 export * from "./metrics-repository";
 export * from "./market-data-repository";
 export * from "./fills-repository";
+export * from "./position-repository";

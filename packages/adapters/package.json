@@ -10,7 +10,9 @@
     "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "ws:test": "bun run scripts/test-extended-ws.ts",
+    "ws:adapter-test": "bun run scripts/test-market-data-adapter-ws.ts"
   },
   "dependencies": {
     "@agentic-mm-bot/utils": "workspace:*",
