@@ -83,6 +83,15 @@ describe("ParamsOverlayManager", () => {
       const effective = manager.computeEffectiveParams(params, nowMs);
       expect(effective.baseHalfSpreadBps).toBe("10");
     });
+
+    it("should never widen baseHalfSpreadBps above DB value (even if floor > db)", () => {
+      // floor is 5 (see beforeEach), db is 4.5 -> effective must stay 4.5 (no widening)
+      const params = createParams("4.5");
+      const nowMs = Date.now();
+      const effective = manager.computeEffectiveParams(params, nowMs);
+      expect(effective.baseHalfSpreadBps).toBe("4.5");
+      expect(manager.getState().tightenBps).toBe(0);
+    });
   });
 
   describe("onFill", () => {

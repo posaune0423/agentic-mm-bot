@@ -8,7 +8,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
@@ -51,6 +51,59 @@ const LlmResponseSchema = z.object({
   reasoningTrace: z.array(z.string()),
 });
 
+function extractFirstJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  const withoutFences = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const start = withoutFences.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < withoutFences.length; i++) {
+    const ch = withoutFences[i];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+
+    if (depth === 0) {
+      return withoutFences.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function snippet(text: string, max = 160): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}...` : oneLine;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt Generation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +117,17 @@ CONSTRAINTS (MUST FOLLOW):
 1. You can change AT MOST 2 parameters at a time
 2. Each parameter change must be within ±10% of the current value
 3. You MUST provide rollback conditions
+
+OUTPUT FORMAT (CRITICAL):
+- Return ONLY valid JSON (no Markdown, no code fences, no comments)
+- Do not include any prefix/suffix text
+- The JSON must match this shape:
+  {
+    "changes": { "<param>": "<value or number>", ... },
+    "rollbackConditions": { "markout10sP50BelowBps"?: number, "pauseCountAbove"?: number, "maxDurationMs"?: number },
+    "reasoningTrace": string[]
+  }
+- rollbackConditions must include at least one of the three fields
 
 PARAMETERS YOU CAN ADJUST:
 - baseHalfSpreadBps: Base half spread in basis points (higher = wider spread)
@@ -150,36 +214,90 @@ export function generateProposal(
   const userPrompt = buildUserPrompt(input);
 
   type LlmResponse = z.infer<typeof LlmResponseSchema>;
-  type GenerateTextOutputResult<T> = { output: T };
 
   return ResultAsync.fromPromise(
     generateText({
       model: openai(options.model),
-      output: Output.object({ schema: LlmResponseSchema }),
       system: systemPrompt,
       prompt: userPrompt,
-    }) as Promise<GenerateTextOutputResult<LlmResponse>>,
+    }) as Promise<{ text: string }>,
     e => ({
       type: "LLM_API_ERROR" as const,
       message: e instanceof Error ? e.message : "Unknown error",
     }),
-  ).map(result => {
-    const obj = result.output;
+  )
+    .andThen(result => {
+      try {
+        const jsonText = extractFirstJsonObject(result.text);
+        if (!jsonText) {
+          return ResultAsync.fromPromise(
+            Promise.reject(new Error(`JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`)),
+            e => ({
+              type: "INVALID_RESPONSE" as const,
+              message: e instanceof Error ? e.message : "Invalid response",
+            }),
+          );
+        }
 
-    // Filter out undefined values from changes
-    const filteredChanges: Record<string, string | number> = {};
-    for (const [key, value] of Object.entries(obj.changes)) {
-      if (typeof value === "string" || typeof value === "number") {
-        filteredChanges[key] = value;
+        let parsedJson: unknown;
+        try {
+          parsedJson = JSON.parse(jsonText);
+        } catch (e) {
+          return ResultAsync.fromPromise(
+            Promise.reject(
+              new Error(
+                `JSON Parse error: ${e instanceof Error ? e.message : "unknown"}; got="${snippet(result.text)}"`,
+              ),
+            ),
+            err => ({
+              type: "INVALID_RESPONSE" as const,
+              message: err instanceof Error ? err.message : "Invalid response",
+            }),
+          );
+        }
+
+        const parsed = LlmResponseSchema.safeParse(parsedJson);
+        if (!parsed.success) {
+          return ResultAsync.fromPromise(
+            Promise.reject(
+              new Error(
+                `Invalid response JSON: ${parsed.error.issues
+                  .map(i => `${i.path.join(".") || "<root>"}: ${i.message}`)
+                  .join("; ")}`,
+              ),
+            ),
+            () => ({
+              type: "INVALID_RESPONSE" as const,
+              message: "Invalid response JSON",
+            }),
+          );
+        }
+        return ResultAsync.fromPromise(Promise.resolve(parsed.data), () => ({
+          type: "INVALID_RESPONSE" as const,
+          message: "Invalid response JSON",
+        }));
+      } catch (e) {
+        return ResultAsync.fromPromise(Promise.reject(e), () => ({
+          type: "INVALID_RESPONSE" as const,
+          message: e instanceof Error ? e.message : "Failed to parse response JSON",
+        }));
       }
-    }
+    })
+    .map(obj => {
+      // Filter out undefined values from changes
+      const filteredChanges: Record<string, string | number> = {};
+      for (const [key, value] of Object.entries(obj.changes)) {
+        if (typeof value === "string" || typeof value === "number") {
+          filteredChanges[key] = value;
+        }
+      }
 
-    return {
-      proposal: {
-        changes: filteredChanges,
-        rollbackConditions: obj.rollbackConditions,
-      },
-      reasoningTrace: obj.reasoningTrace,
-    };
-  });
+      return {
+        proposal: {
+          changes: filteredChanges,
+          rollbackConditions: obj.rollbackConditions,
+        },
+        reasoningTrace: obj.reasoningTrace,
+      };
+    });
 }

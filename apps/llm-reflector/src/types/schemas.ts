@@ -2,8 +2,12 @@
  * LLM Reflector Data Contracts (Zod Schemas)
  *
  * Requirements: 10.1, 10.2, 10.3, 13.3
- * - ProposalOutput: max 2 changes, ±10%, rollback required
+ * - ProposalOutput: max 2 changes (object format), ±10%, rollback required (structured)
  * - ReasoningLog: file format with sha256 integrity
+ *
+ * IMPORTANT: This schema must match the format expected by executor/core (ParamProposal).
+ * - changes: { [paramName]: value } (object, not array)
+ * - rollbackConditions: { markout10sP50BelowBps?, pauseCountAbove?, maxDurationMs? } (at least one required)
  *
  * Note: Aggregation and CurrentParams types are imported from @agentic-mm-bot/repositories
  */
@@ -11,7 +15,7 @@
 import { z } from "zod";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Param Change Schema
+// Param Names (for reference/validation)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ParamNameSchema = z.enum([
@@ -29,21 +33,66 @@ export const ParamNameSchema = z.enum([
 
 export type ParamName = z.infer<typeof ParamNameSchema>;
 
-export const ParamChangeSchema = z.object({
-  param: ParamNameSchema,
-  fromValue: z.string(),
-  toValue: z.string(),
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// Rollback Conditions Schema (structured object)
+// ─────────────────────────────────────────────────────────────────────────────
 
-export type ParamChange = z.infer<typeof ParamChangeSchema>;
+export const RollbackConditionsSchema = z
+  .object({
+    /** Rollback if markout 10s P50 falls below this value (bps) */
+    markout10sP50BelowBps: z.number().optional(),
+    /** Rollback if PAUSE count exceeds this in 1 hour */
+    pauseCountAbove: z.number().optional(),
+    /** Rollback after this duration (ms) regardless of performance */
+    maxDurationMs: z.number().optional(),
+  })
+  .refine(
+    data =>
+      data.markout10sP50BelowBps !== undefined ||
+      data.pauseCountAbove !== undefined ||
+      data.maxDurationMs !== undefined,
+    { message: "At least one rollback condition is required" },
+  );
+
+export type RollbackConditions = z.infer<typeof RollbackConditionsSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Proposal Output Schema (10.2)
+// Changes Schema (object format: { paramName: value })
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ChangesSchema = z
+  .object({
+    baseHalfSpreadBps: z.union([z.string(), z.number()]).optional(),
+    volSpreadGain: z.union([z.string(), z.number()]).optional(),
+    toxSpreadGain: z.union([z.string(), z.number()]).optional(),
+    quoteSizeUsd: z.union([z.string(), z.number()]).optional(),
+    refreshIntervalMs: z.number().optional(),
+    staleCancelMs: z.number().optional(),
+    maxInventory: z.union([z.string(), z.number()]).optional(),
+    inventorySkewGain: z.union([z.string(), z.number()]).optional(),
+    pauseMarkIndexBps: z.union([z.string(), z.number()]).optional(),
+    pauseLiqCount10s: z.number().optional(),
+  })
+  .refine(
+    data => {
+      const definedKeys = Object.entries(data).filter(([, v]) => v !== undefined);
+      return definedKeys.length >= 1 && definedKeys.length <= 2;
+    },
+    { message: "Must have 1-2 parameter changes" },
+  );
+
+export type Changes = z.infer<typeof ChangesSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proposal Output Schema (10.2) - New format compatible with executor/core
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ProposalOutputSchema = z.object({
-  changes: z.array(ParamChangeSchema).min(1).max(2),
-  rollbackConditions: z.array(z.string()).min(1),
+  /** Parameter changes as { paramName: newValue } object (max 2 keys) */
+  changes: ChangesSchema,
+  /** Structured rollback conditions (at least one required) */
+  rollbackConditions: RollbackConditionsSchema,
+  /** Reasoning trace for audit/debugging */
   reasoningTrace: z.array(z.string()).min(1),
 });
 
@@ -54,13 +103,13 @@ export type ProposalOutput = z.infer<typeof ProposalOutputSchema>;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ReasoningLogSchema = z.object({
-  proposalId: z.uuid(),
-  timestamp: z.iso.datetime(),
+  proposalId: z.string().uuid(),
+  timestamp: z.string().datetime(),
   exchange: z.string(),
   symbol: z.string(),
   inputSummary: z.object({
-    windowStart: z.iso.datetime(),
-    windowEnd: z.iso.datetime(),
+    windowStart: z.string().datetime(),
+    windowEnd: z.string().datetime(),
     fillsCount: z.number(),
     cancelCount: z.number(),
     pauseCount: z.number(),
@@ -68,7 +117,7 @@ export const ReasoningLogSchema = z.object({
     worstFillsCount: z.number(),
   }),
   currentParams: z.object({
-    paramsSetId: z.uuid(),
+    paramsSetId: z.string().uuid(),
     baseHalfSpreadBps: z.string(),
     volSpreadGain: z.string(),
     toxSpreadGain: z.string(),

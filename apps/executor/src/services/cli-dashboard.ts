@@ -78,6 +78,15 @@ function fmtSize(sz: string | null | undefined, width = 8): string {
   return sz.padStart(width);
 }
 
+/** Params change notification for display */
+export type ParamsChangeNotification = {
+  source: "db_refresh" | "proposal_apply" | "proposal_reject";
+  changedAt: number;
+  paramsSetId?: string;
+  changedKeys?: string[];
+  rejectReason?: string;
+};
+
 export class ExecutorCliDashboard {
   private readonly enabled: boolean;
   private readonly exchange: string;
@@ -93,6 +102,12 @@ export class ExecutorCliDashboard {
 
   /** Realtime position data (updated immediately on fills) */
   private realtimePosition?: PositionData;
+
+  /** Last params change notification (for highlighted display) */
+  private lastParamsChange?: ParamsChangeNotification;
+
+  /** How long to highlight params change (ms) */
+  private readonly paramsChangeHighlightMs = 30_000;
 
   private readonly style: Style;
   private readonly layout: LayoutPolicy;
@@ -172,6 +187,36 @@ export class ExecutorCliDashboard {
    */
   setPosition(position: PositionData): void {
     this.realtimePosition = position;
+  }
+
+  /**
+   * Notify about params change (for highlighted display in STRATEGY section)
+   */
+  notifyParamsChange(notification: Omit<ParamsChangeNotification, "changedAt">): void {
+    this.lastParamsChange = {
+      ...notification,
+      changedAt: Date.now(),
+    };
+
+    // Also push to event log
+    const level = notification.source === "proposal_reject" ? LogLevel.WARN : LogLevel.INFO;
+    const sourceLabel =
+      notification.source === "db_refresh" ? "DB refresh"
+      : notification.source === "proposal_apply" ? "proposal apply"
+      : "proposal reject";
+
+    let message = `PARAMS ${sourceLabel}`;
+    if (notification.paramsSetId) {
+      message += ` id=${notification.paramsSetId.slice(0, 8)}...`;
+    }
+    if (notification.changedKeys && notification.changedKeys.length > 0) {
+      message += ` keys=[${notification.changedKeys.join(",")}]`;
+    }
+    if (notification.rejectReason) {
+      message += ` reason=${notification.rejectReason}`;
+    }
+
+    this.pushEvent(level, message);
   }
 
   onExecutionEvent(event: ExecutionEvent): void {
@@ -453,6 +498,33 @@ export class ExecutorCliDashboard {
     lines.push(this.boxRow("", width));
     const paramsTitle = this.style.wrap("Params", "bold", "underline");
     lines.push(this.boxRow(paramsTitle, width));
+
+    // Show recent params change notification (highlighted for 30s)
+    if (this.lastParamsChange && nowMs - this.lastParamsChange.changedAt < this.paramsChangeHighlightMs) {
+      const changeAge = this.layout.formatAgeMs(nowMs, this.lastParamsChange.changedAt);
+      const sourceLabel =
+        this.lastParamsChange.source === "db_refresh" ? "DB"
+        : this.lastParamsChange.source === "proposal_apply" ? "PROPOSAL"
+        : "REJECT";
+
+      const sourceBadge =
+        this.lastParamsChange.source === "proposal_reject" ? this.style.badge(sourceLabel, "bgRed", "white", "bold")
+        : this.lastParamsChange.source === "proposal_apply" ? this.style.badge(sourceLabel, "bgGreen", "white", "bold")
+        : this.style.badge(sourceLabel, "bgCyan", "white");
+
+      let changeInfo = `${this.style.token("dim")}Last:${this.style.token("reset")} ${sourceBadge} ${changeAge} ago`;
+      if (this.lastParamsChange.changedKeys && this.lastParamsChange.changedKeys.length > 0) {
+        changeInfo += ` ${this.style.token("dim")}keys:${this.style.token("reset")}${this.style.wrap(this.lastParamsChange.changedKeys.join(","), "yellow")}`;
+      }
+      if (this.lastParamsChange.rejectReason) {
+        const shortReason =
+          this.lastParamsChange.rejectReason.length > 30 ?
+            this.lastParamsChange.rejectReason.slice(0, 27) + "..."
+          : this.lastParamsChange.rejectReason;
+        changeInfo += ` ${this.style.wrap(shortReason, "red")}`;
+      }
+      lines.push(this.boxRow(changeInfo, width));
+    }
 
     const dbBaseHalf = t.dbParams.baseHalfSpreadBps;
     const effBaseHalf = t.effectiveParams.baseHalfSpreadBps;

@@ -575,18 +575,31 @@ async function main(): Promise<void> {
         lastParamsId = dbParams.id;
         lastParamsSig = newSig;
         currentParamsSetId = dbParams.id;
+
+        // Detect which keys changed
+        const changedKeys: string[] = [];
+        for (const key of Object.keys(newParams) as (keyof typeof newParams)[]) {
+          if (String(newParams[key]) !== String(params[key])) {
+            changedKeys.push(key);
+          }
+        }
+
         params = newParams;
 
         // Reset overlay when base params change (start fresh)
         paramsOverlay.reset();
 
-        dashboard.pushEvent(
-          LogLevel.INFO,
-          `params updated from DB (${changeReason}): id=${dbParams.id} baseHalf=${newParams.baseHalfSpreadBps}`,
-        );
+        // Notify dashboard with highlighted params change
+        dashboard.notifyParamsChange({
+          source: "db_refresh",
+          paramsSetId: dbParams.id,
+          changedKeys: changedKeys.length > 0 ? changedKeys : undefined,
+        });
+
         logger.info("Params updated from DB", {
           paramsSetId: dbParams.id,
           changeReason,
+          changedKeys,
           baseHalfSpreadBps: newParams.baseHalfSpreadBps,
         });
       }
@@ -628,7 +641,7 @@ async function main(): Promise<void> {
         markout10sP50 = aggResult.value.markout10sP50 ?? undefined;
       }
 
-      const newParams = await processPendingProposals(
+      const proposalResult = await processPendingProposals(
         proposalRepo,
         {
           exchange: env.EXCHANGE,
@@ -647,13 +660,35 @@ async function main(): Promise<void> {
         timing,
       );
 
-      if (newParams) {
+      if (proposalResult.type === "applied") {
         // Apply immediately in-memory so next tick uses updated params.
-        params = toCoreParams(newParams);
-        currentParamsSetId = newParams.id;
-        lastParamsId = newParams.id;
-        dashboard.pushEvent(LogLevel.INFO, `proposal applied; params updated: id=${newParams.id}`);
-        logger.info("Proposal applied; params updated", { paramsSetId: newParams.id });
+        const newCoreParams = toCoreParams(proposalResult.params);
+        params = newCoreParams;
+        currentParamsSetId = proposalResult.params.id;
+        lastParamsId = proposalResult.params.id;
+
+        // Notify dashboard with highlighted params change
+        dashboard.notifyParamsChange({
+          source: "proposal_apply",
+          paramsSetId: proposalResult.params.id,
+          changedKeys: proposalResult.changedKeys.length > 0 ? proposalResult.changedKeys : undefined,
+        });
+
+        logger.info("Proposal applied; params updated", {
+          paramsSetId: proposalResult.params.id,
+          changedKeys: proposalResult.changedKeys,
+        });
+      } else if (proposalResult.type === "rejected") {
+        // Notify dashboard about rejection
+        dashboard.notifyParamsChange({
+          source: "proposal_reject",
+          rejectReason: proposalResult.reason,
+        });
+
+        logger.warn("Proposal rejected", {
+          proposalId: proposalResult.proposalId,
+          reason: proposalResult.reason,
+        });
       }
     })();
   }, env.PROPOSAL_APPLY_POLL_INTERVAL_MS);
