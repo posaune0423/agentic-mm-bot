@@ -84,7 +84,11 @@ function convertChanges(oldChanges: OldParamChange[]): NewChanges {
     const value = change.toValue;
     const numParams = ["refreshIntervalMs", "staleCancelMs", "pauseLiqCount10s"];
     if (numParams.includes(change.param)) {
-      newChanges[change.param] = parseInt(value, 10);
+      const parsed = parseInt(value, 10);
+      if (Number.isNaN(parsed)) {
+        throw new Error(`Invalid numeric value for param "${change.param}": "${value}"`);
+      }
+      newChanges[change.param] = parsed;
     } else {
       newChanges[change.param] = value;
     }
