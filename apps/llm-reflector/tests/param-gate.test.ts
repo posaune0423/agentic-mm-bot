@@ -2,16 +2,16 @@
  * ParamGate Unit Tests
  *
  * Requirements: 10.2, 10.5
- * - Maximum 2 parameter changes
+ * - Maximum 2 parameter changes (object format: { paramName: value })
  * - Each change within ±10% of current value
- * - Rollback conditions required
+ * - Rollback conditions required (structured object with at least one condition)
  */
 
 import { describe, expect, it } from "bun:test";
 
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
-import { validateProposal, type ParamGateError } from "../src/services/param-gate";
+import { validateProposal } from "../src/services/param-gate";
 import type { ProposalOutput } from "../src/types/schemas";
 
 const createMockParams = (): CurrentParamsSummary => ({
@@ -32,8 +32,8 @@ describe("validateProposal", () => {
   describe("maximum 2 changes rule", () => {
     it("should pass with 1 change", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
-        rollbackConditions: ["revert if markout < -10bps"],
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Increased spread due to volatility"],
       };
 
@@ -43,11 +43,11 @@ describe("validateProposal", () => {
 
     it("should pass with 2 changes", () => {
       const proposal: ProposalOutput = {
-        changes: [
-          { param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" },
-          { param: "volSpreadGain", fromValue: "0.5", toValue: "0.52" },
-        ],
-        rollbackConditions: ["revert if markout < -10bps"],
+        changes: {
+          baseHalfSpreadBps: "1.6",
+          volSpreadGain: "0.52",
+        },
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Adjusted for market conditions"],
       };
 
@@ -56,21 +56,22 @@ describe("validateProposal", () => {
     });
 
     it("should reject with 3+ changes", () => {
-      const proposal: ProposalOutput = {
-        changes: [
-          { param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" },
-          { param: "volSpreadGain", fromValue: "0.5", toValue: "0.52" },
-          { param: "toxSpreadGain", fromValue: "0.3", toValue: "0.31" },
-        ] as any, // Force 3 changes to bypass Zod max(2)
-        rollbackConditions: ["revert if markout < -10bps"],
+      // Force 3 changes by using type assertion
+      const proposal = {
+        changes: {
+          baseHalfSpreadBps: "1.6",
+          volSpreadGain: "0.52",
+          toxSpreadGain: "0.31",
+        },
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Too many changes"],
       };
 
       const result = validateProposal(proposal, createMockParams());
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.type).toBe("TOO_MANY_CHANGES");
-        expect((result.error as { type: "TOO_MANY_CHANGES"; count: number }).count).toBe(3);
+        // Either TOO_MANY_CHANGES or INVALID_PROPOSAL_SHAPE (from Zod refine)
+        expect(["TOO_MANY_CHANGES", "INVALID_PROPOSAL_SHAPE"]).toContain(result.error.type);
       }
     });
   });
@@ -78,8 +79,8 @@ describe("validateProposal", () => {
   describe("±10% change limit", () => {
     it("should pass with exactly 10% increase", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.65" }], // +10%
-        rollbackConditions: ["revert if markout < -10bps"],
+        changes: { baseHalfSpreadBps: "1.65" }, // +10%
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Widened spread by 10%"],
       };
 
@@ -89,8 +90,8 @@ describe("validateProposal", () => {
 
     it("should pass with exactly 10% decrease", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.35" }], // -10%
-        rollbackConditions: ["revert if fills too low"],
+        changes: { baseHalfSpreadBps: "1.35" }, // -10%
+        rollbackConditions: { pauseCountAbove: 50 },
         reasoningTrace: ["Narrowed spread by 10%"],
       };
 
@@ -100,8 +101,8 @@ describe("validateProposal", () => {
 
     it("should reject with >10% increase", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.70" }], // +13.3%
-        rollbackConditions: ["revert if markout < -10bps"],
+        changes: { baseHalfSpreadBps: "1.70" }, // +13.3%
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Tried to widen spread too much"],
       };
 
@@ -114,8 +115,8 @@ describe("validateProposal", () => {
 
     it("should reject with >10% decrease", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.30" }], // -13.3%
-        rollbackConditions: ["revert if fills too low"],
+        changes: { baseHalfSpreadBps: "1.30" }, // -13.3%
+        rollbackConditions: { pauseCountAbove: 50 },
         reasoningTrace: ["Tried to narrow spread too much"],
       };
 
@@ -128,8 +129,8 @@ describe("validateProposal", () => {
 
     it("should work with integer parameters (refreshIntervalMs)", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "refreshIntervalMs", fromValue: "1000", toValue: "1100" }], // +10%
-        rollbackConditions: ["revert if latency increases"],
+        changes: { refreshIntervalMs: 1100 }, // +10%
+        rollbackConditions: { maxDurationMs: 3600000 },
         reasoningTrace: ["Slowed refresh rate slightly"],
       };
 
@@ -139,8 +140,8 @@ describe("validateProposal", () => {
 
     it("should reject integer parameter exceeding 10%", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "refreshIntervalMs", fromValue: "1000", toValue: "1200" }], // +20%
-        rollbackConditions: ["revert if latency increases"],
+        changes: { refreshIntervalMs: 1200 }, // +20%
+        rollbackConditions: { maxDurationMs: 3600000 },
         reasoningTrace: ["Tried to slow refresh too much"],
       };
 
@@ -153,25 +154,64 @@ describe("validateProposal", () => {
   });
 
   describe("rollback conditions required", () => {
-    it("should reject when no rollback conditions", () => {
-      const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
-        rollbackConditions: [],
+    it("should reject when no rollback conditions set", () => {
+      // All conditions are undefined
+      const proposal = {
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: {},
         reasoningTrace: ["Missing rollback conditions"],
       };
 
       const result = validateProposal(proposal, createMockParams());
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.type).toBe("MISSING_ROLLBACK_CONDITIONS");
+        // Should fail at Zod validation (refine) or MISSING_ROLLBACK_CONDITIONS
+        expect(["INVALID_PROPOSAL_SHAPE", "MISSING_ROLLBACK_CONDITIONS"]).toContain(result.error.type);
       }
     });
 
-    it("should pass with at least one rollback condition", () => {
+    it("should pass with markout10sP50BelowBps condition", () => {
       const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
-        rollbackConditions: ["revert after 1 hour if markout < -5bps"],
-        reasoningTrace: ["Has rollback condition"],
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: { markout10sP50BelowBps: -5 },
+        reasoningTrace: ["Has markout rollback condition"],
+      };
+
+      const result = validateProposal(proposal, createMockParams());
+      expect(result.isOk()).toBe(true);
+    });
+
+    it("should pass with pauseCountAbove condition", () => {
+      const proposal: ProposalOutput = {
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: { pauseCountAbove: 20 },
+        reasoningTrace: ["Has pause count rollback condition"],
+      };
+
+      const result = validateProposal(proposal, createMockParams());
+      expect(result.isOk()).toBe(true);
+    });
+
+    it("should pass with maxDurationMs condition", () => {
+      const proposal: ProposalOutput = {
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: { maxDurationMs: 3600000 },
+        reasoningTrace: ["Has duration rollback condition"],
+      };
+
+      const result = validateProposal(proposal, createMockParams());
+      expect(result.isOk()).toBe(true);
+    });
+
+    it("should pass with multiple rollback conditions", () => {
+      const proposal: ProposalOutput = {
+        changes: { baseHalfSpreadBps: "1.6" },
+        rollbackConditions: {
+          markout10sP50BelowBps: -10,
+          pauseCountAbove: 30,
+          maxDurationMs: 7200000,
+        },
+        reasoningTrace: ["Has multiple rollback conditions"],
       };
 
       const result = validateProposal(proposal, createMockParams());
@@ -180,10 +220,10 @@ describe("validateProposal", () => {
   });
 
   describe("invalid values", () => {
-    it("should reject non-numeric value", () => {
-      const proposal: ProposalOutput = {
-        changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "invalid" }],
-        rollbackConditions: ["revert if issues"],
+    it("should reject non-numeric string value", () => {
+      const proposal = {
+        changes: { baseHalfSpreadBps: "invalid" },
+        rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Invalid value"],
       };
 

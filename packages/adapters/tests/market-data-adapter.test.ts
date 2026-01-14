@@ -24,8 +24,19 @@ const EXCHANGE_NAME = "extended";
 describe("ExtendedMarketDataAdapter", () => {
   describe("BBO message normalization (Extended API doc format)", () => {
     test("should normalize Extended orderbook SNAPSHOT to BBO format", () => {
+      type OrderbookMessage = {
+        ts: number;
+        type: "SNAPSHOT" | "DELTA";
+        data?: {
+          m: string;
+          b?: Array<{ p: string; q: string }>;
+          a?: Array<{ p: string; q: string }>;
+        };
+        seq: number;
+      };
+
       // Extended API doc format for orderbook
-      const message = {
+      const message: OrderbookMessage = {
         ts: 1704067200000,
         type: "SNAPSHOT" as const,
         data: {
@@ -42,7 +53,7 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12345,
       };
 
-      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+      const normalizeOrderbook = (msg: OrderbookMessage, symbol: string): BboEvent | null => {
         if (msg.type === "DELTA") return null; // depth=1 should only get SNAPSHOT
 
         const bids = msg.data?.b;
@@ -77,6 +88,17 @@ describe("ExtendedMarketDataAdapter", () => {
     });
 
     test("should return null for DELTA message (unexpected for depth=1)", () => {
+      type OrderbookMessage = {
+        ts: number;
+        type: "SNAPSHOT" | "DELTA";
+        data?: {
+          m: string;
+          b?: Array<{ p: string; q: string }>;
+          a?: Array<{ p: string; q: string }>;
+        };
+        seq: number;
+      };
+
       const message = {
         ts: 1704067200000,
         type: "DELTA" as const,
@@ -88,7 +110,7 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeOrderbook = (msg: typeof message, symbol: string): BboEvent | null => {
+      const normalizeOrderbook = (msg: OrderbookMessage, symbol: string): BboEvent | null => {
         if (msg.type === "DELTA") return null;
         return null;
       };
@@ -124,9 +146,23 @@ describe("ExtendedMarketDataAdapter", () => {
   });
 
   describe("Trade message normalization (Extended API doc format)", () => {
+    type TradesMessage = {
+      ts: number;
+      data: Array<{
+        m: string;
+        S: "BUY" | "SELL";
+        tT: "TRADE" | "LIQUIDATION" | "DELEVERAGE";
+        T: number;
+        p: string;
+        q: string;
+        i: number;
+      }>;
+      seq: number;
+    };
+
     test("should normalize Extended trades message with single trade", () => {
       // Extended API doc format for trades
-      const message = {
+      const message: TradesMessage = {
         ts: 1704067200000,
         data: [
           { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
@@ -134,7 +170,7 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (msg: TradesMessage, symbol: string): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
         return msg.data.map(item => ({
@@ -168,7 +204,7 @@ describe("ExtendedMarketDataAdapter", () => {
     });
 
     test("should normalize Extended trades message with multiple trades", () => {
-      const message = {
+      const message: TradesMessage = {
         ts: 1704067200000,
         data: [
           { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
@@ -185,7 +221,7 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12346,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (msg: TradesMessage, symbol: string): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
         return msg.data.map(item => ({
@@ -216,7 +252,7 @@ describe("ExtendedMarketDataAdapter", () => {
     });
 
     test("should map DELEVERAGE trade type to delev", () => {
-      const message = {
+      const message: TradesMessage = {
         ts: 1704067200000,
         data: [
           {
@@ -232,7 +268,7 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12347,
       };
 
-      const normalizeTrades = (msg: typeof message, symbol: string): TradeEvent[] => {
+      const normalizeTrades = (msg: TradesMessage, symbol: string): TradeEvent[] => {
         if (!msg.data?.length) return [];
 
         return msg.data.map(item => ({
@@ -357,7 +393,11 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12348,
       };
 
-      const normalizeMarkPrice = (msg: { data?: { p?: string } }, symbol: string): PriceEvent | null => {
+      // NOTE: include non-p fields to avoid TS "weak type" mismatch in tests
+      const normalizeMarkPrice = (
+        msg: { data?: { p?: string; m?: string; ts?: number } },
+        symbol: string,
+      ): PriceEvent | null => {
         const markPx = msg.data?.p;
         if (!markPx) return null;
         return null;
@@ -408,7 +448,11 @@ describe("ExtendedMarketDataAdapter", () => {
         seq: 12347,
       };
 
-      const normalizeFundingRate = (msg: { data?: { f?: string } }, symbol: string): FundingRateEvent | null => {
+      // NOTE: include non-f fields to avoid TS "weak type" mismatch in tests
+      const normalizeFundingRate = (
+        msg: { data?: { f?: string; m?: string; T?: number } },
+        symbol: string,
+      ): FundingRateEvent | null => {
         const fundingRate = msg.data?.f;
         if (!fundingRate) return null;
         return null;

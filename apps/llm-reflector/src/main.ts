@@ -3,7 +3,7 @@
  *
  * Requirements: 10.1, 13.1
  * - Interval-based worker (similar to summarizer)
- * - Runs hourly reflection to generate parameter proposals
+ * - Runs periodic reflection to generate parameter proposals
  * - Graceful shutdown
  */
 
@@ -41,22 +41,22 @@ function main(): void {
    * Run one iteration
    */
   const runOnce = async (): Promise<void> => {
-    const result = await runHourlyReflection(deps);
+    const result = await runHourlyReflection(deps, env.REFLECTION_WINDOW_MINUTES);
 
     if (result.isOk()) {
       const value = result.value;
 
       switch (value.type) {
         case "SUCCESS":
-          logger.info("Hourly reflection succeeded", {
+          logger.info("Reflection succeeded", {
             proposalId: value.result.proposalId,
           });
           break;
         case "SKIPPED":
-          logger.debug("Hourly reflection skipped", { reason: value.reason });
+          logger.debug("Reflection skipped", { reason: value.reason });
           break;
         case "ERROR":
-          logger.error("Hourly reflection failed", { error: value.error });
+          logger.error("Reflection failed", { error: value.error });
           break;
       }
     }
@@ -71,6 +71,7 @@ function main(): void {
       symbol: env.SYMBOL,
       model: env.MODEL,
       runIntervalMs: env.RUN_INTERVAL_MS,
+      reflectionWindowMinutes: env.REFLECTION_WINDOW_MINUTES,
     },
   });
 }

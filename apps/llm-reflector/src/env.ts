@@ -29,6 +29,13 @@ const EnvSchema = z.object({
 
   // Scheduler
   RUN_INTERVAL_MS: z.coerce.number().default(60_000), // Check every minute
+
+  // Reflection window (minutes)
+  // Examples:
+  // - 5: last complete 5-minute window (default)
+  // - 15: last complete 15-minute window
+  // - 60: last complete hour
+  REFLECTION_WINDOW_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

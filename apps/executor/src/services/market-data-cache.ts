@@ -9,7 +9,7 @@
 
 import type { Ms, PriceStr, Snapshot, SizeStr } from "@agentic-mm-bot/core";
 import type { MidSnapshot, TradeData } from "@agentic-mm-bot/core";
-import type { BboEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
 const MID_SNAPSHOTS_WINDOW_MS = 10_000; // 10 seconds
@@ -29,6 +29,8 @@ export class MarketDataCache {
   private bestAskSz: SizeStr = "0";
   private markPx?: PriceStr;
   private indexPx?: PriceStr;
+  private fundingRate?: string;
+  private fundingTsMs?: Ms;
   private lastUpdateMs: Ms = 0;
 
   private trades: TradeData[] = [];
@@ -43,6 +45,15 @@ export class MarketDataCache {
    * Update from BBO event
    */
   updateBbo(event: BboEvent): void {
+    const bid = parseFloat(event.bestBidPx);
+    const ask = parseFloat(event.bestAskPx);
+
+    // Guard: ignore crossed/invalid BBO (bid >= ask), keep last good prices but still refresh age.
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid >= ask) {
+      this.lastUpdateMs = Math.max(this.lastUpdateMs, event.ts.getTime());
+      return;
+    }
+
     this.bestBidPx = event.bestBidPx;
     this.bestBidSz = event.bestBidSz;
     this.bestAskPx = event.bestAskPx;
@@ -50,7 +61,7 @@ export class MarketDataCache {
     this.lastUpdateMs = event.ts.getTime();
 
     // Add mid snapshot for volatility calculation
-    const mid = (parseFloat(event.bestBidPx) + parseFloat(event.bestAskPx)) / 2;
+    const mid = (bid + ask) / 2;
     this.midSnapshots.push({
       ts: event.ts.getTime(),
       midPx: mid.toString(),
@@ -61,11 +72,30 @@ export class MarketDataCache {
 
   /**
    * Update from price event (mark/index)
+   * Uses != null to handle "0" values correctly (falsy-safe)
    */
   updatePrice(event: PriceEvent): void {
-    if (event.markPx) this.markPx = event.markPx;
-    if (event.indexPx) this.indexPx = event.indexPx;
+    if (event.markPx != null) this.markPx = event.markPx;
+    if (event.indexPx != null) this.indexPx = event.indexPx;
     this.lastUpdateMs = Math.max(this.lastUpdateMs, event.ts.getTime());
+  }
+
+  /**
+   * Update from funding rate event
+   */
+  updateFunding(event: FundingRateEvent): void {
+    this.fundingRate = event.fundingRate;
+    this.fundingTsMs = event.ts.getTime();
+  }
+
+  /**
+   * Get current funding rate info for dashboard display
+   */
+  getFunding(): { rate?: string; tsMs?: Ms } {
+    return {
+      rate: this.fundingRate,
+      tsMs: this.fundingTsMs,
+    };
   }
 
   /**

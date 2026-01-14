@@ -38,6 +38,9 @@ export const env = createEnv({
 
     // CLI dashboard (TTY UI)
     INGESTOR_DASHBOARD: z.coerce.boolean().default(true),
+    INGESTOR_DASHBOARD_REFRESH_MS: z.coerce.number().default(250),
+    INGESTOR_DASHBOARD_NO_COLOR: z.coerce.boolean().default(false),
+    INGESTOR_DASHBOARD_STALE_MS: z.coerce.number().default(3000),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

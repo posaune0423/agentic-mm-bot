@@ -7,9 +7,9 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { ResultAsync, errAsync } from "neverthrow";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { openai } from "@ai-sdk/openai";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 
 import { logger } from "@agentic-mm-bot/utils";
 import type {
@@ -30,7 +30,8 @@ export type WorkflowError =
   | { type: "GATE_REJECTED"; error: ParamGateError }
   | { type: "FILE_WRITE_FAILED"; message: string }
   | { type: "DB_INSERT_FAILED"; message: string }
-  | { type: "ALREADY_EXISTS"; message: string };
+  | { type: "ALREADY_EXISTS"; message: string }
+  | { type: "VALIDATION_ERROR"; message: string };
 
 export interface WorkflowDeps {
   metricsRepo: MetricsRepository;
@@ -68,7 +69,7 @@ function buildPrompt(input: ReflectionInput): string {
     )
     .join("\n");
 
-  return `## Performance Summary (Last Hour: ${input.windowStart.toISOString()} - ${input.windowEnd.toISOString()})
+  return `## Performance Summary (Window: ${input.windowStart.toISOString()} - ${input.windowEnd.toISOString()})
 
 ### Trading Activity
 - Fills: ${input.aggregation.fillsCount}
@@ -95,10 +96,23 @@ ${worstFillsSummary || "No fills in this period"}
 - pauseMarkIndexBps: ${input.currentParams.pauseMarkIndexBps}
 - pauseLiqCount10s: ${input.currentParams.pauseLiqCount10s}
 
-Based on this data, suggest parameter changes to improve performance. Remember:
+Based on this data, suggest parameter changes to improve performance.
+
+RESPONSE FORMAT (CRITICAL):
+{
+  "changes": { "<paramName>": <newValue> },  // 1-2 params as object keys
+  "rollbackConditions": {
+    "markout10sP50BelowBps": <number>,  // optional
+    "pauseCountAbove": <number>,         // optional
+    "maxDurationMs": <number>            // optional (at least one required)
+  },
+  "reasoningTrace": ["reason1", "reason2"]
+}
+
+RULES:
 1. Maximum 2 parameter changes
 2. Each change must be within ±10% of current value
-3. Include rollback conditions
+3. At least ONE rollback condition must be set
 4. Explain your reasoning`;
 }
 
@@ -110,6 +124,61 @@ function getOpenAiModelName(model: string): string {
     throw new Error(`Unsupported model string: ${model}. Expected "openai/<model>"`);
   }
   return rest.join("/");
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+
+  // Strip common Markdown fences if present (best-effort)
+  const withoutFences = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const start = withoutFences.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < withoutFences.length; i++) {
+    const ch = withoutFences[i];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+
+    if (depth === 0) {
+      return withoutFences.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function snippet(text: string, max = 160): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}...` : oneLine;
 }
 
 /**
@@ -166,23 +235,68 @@ function generateProposal(
 ): ResultAsync<{ input: ReflectionInput; proposal: ProposalOutput }, WorkflowError> {
   const prompt = buildPrompt(input);
 
-  type GenerateTextOutputResult<T> = { output: T };
-
   return ResultAsync.fromPromise(
     generateText({
       model: openai(getOpenAiModelName(model)),
-      output: Output.object({ schema: ProposalOutputSchema }),
-      system: REFLECTOR_INSTRUCTIONS,
+      system:
+        `${REFLECTOR_INSTRUCTIONS}\n\n` +
+        "CRITICAL OUTPUT RULES:\n" +
+        "- Return ONLY valid JSON (no Markdown, no code fences, no comments)\n" +
+        "- Do not prefix/suffix with any text\n",
       prompt,
-    }) as Promise<GenerateTextOutputResult<ProposalOutput>>,
+    }) as Promise<{ text: string }>,
     (error): WorkflowError => ({
       type: "AGENT_FAILED",
       message: error instanceof Error ? error.message : "Unknown agent error",
     }),
-  ).map(result => ({
-    input,
-    proposal: result.output,
-  }));
+  ).andThen(result => {
+    try {
+      const jsonText = extractFirstJsonObject(result.text);
+      if (!jsonText) {
+        return errAsync({
+          type: "AGENT_FAILED" as const,
+          message: `JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`,
+        });
+      }
+
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(jsonText);
+      } catch (error) {
+        return errAsync({
+          type: "AGENT_FAILED" as const,
+          message: `JSON Parse error: ${error instanceof Error ? error.message : "unknown"}; got="${snippet(result.text)}"`,
+        });
+      }
+
+      const parsed = ProposalOutputSchema.safeParse(parsedJson);
+      if (!parsed.success) {
+        return errAsync({
+          type: "AGENT_FAILED" as const,
+          message: `Invalid proposal JSON: ${parsed.error.issues
+            .map(i => `${i.path.join(".") || "<root>"}: ${i.message}`)
+            .join("; ")}`,
+        });
+      }
+      return okAsync({ input, proposal: parsed.data });
+    } catch (error) {
+      return errAsync({
+        type: "AGENT_FAILED" as const,
+        message: error instanceof Error ? error.message : "Failed to parse proposal JSON",
+      });
+    }
+  });
+}
+
+/**
+ * Convert changes object to a clean Record
+ */
+function toChangesRecord(changes: ProposalOutput["changes"]): Record<string, string | number> {
+  const result: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(changes)) {
+    result[key] = value;
+  }
+  return result;
 }
 
 /**
@@ -225,6 +339,9 @@ function validateAndPersist(
     proposal,
   };
 
+  // Convert changes to clean Record format for DB (removes undefined values)
+  const changesForDb = toChangesRecord(proposal.changes);
+
   // Write to file first (requirement: file must succeed before DB)
   return deps.fileSink
     .writeJsonLog(deps.logDir, input.exchange, input.symbol, proposalId, logContent)
@@ -239,7 +356,8 @@ function validateAndPersist(
           inputWindowStart: input.windowStart,
           inputWindowEnd: input.windowEnd,
           currentParamsSetId: input.currentParams.paramsSetId,
-          proposalJson: proposal.changes,
+          // New format: changes is { paramName: value }, rollbackConditions is structured object
+          proposalJson: changesForDb,
           rollbackJson: proposal.rollbackConditions,
           reasoningLogPath: path,
           reasoningLogSha256: sha256,

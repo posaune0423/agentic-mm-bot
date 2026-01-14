@@ -44,14 +44,19 @@
     "db:generate": "turbo run db:generate",
     "db:push": "turbo run db:push",
     "db:studio": "turbo run db:studio",
-    "clean": "bun scripts/clean.ts"
+    "clean": "bun scripts/clean.ts",
+    "cancel:all-orders": "bun run scripts/cancel-all-orders.ts",
+    "migrate:llm-proposals-v2": "bun run scripts/migrate-llm-proposals-v2.ts"
   },
   "devDependencies": {
+    "@agentic-mm-bot/adapters": "workspace:*",
+    "@agentic-mm-bot/db": "workspace:*",
+    "drizzle-orm": "catalog:",
     "@prettier/plugin-oxc": "^0.1.3",
     "@types/bun": "^1.3.6",
     "@types/node": "^25.0.8",
     "@types/dotenv": "^8.2.3",
-    "@typescript/native-preview": "^7.0.0-dev.20260113.1",
+    "@typescript/native-preview": "^7.0.0-dev.20260114.1",
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "dotenv": "^17.2.3",
     "jiti": "^2.6.1",

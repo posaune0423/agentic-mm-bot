@@ -25,7 +25,7 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 ## Constraints (CRITICAL - MUST FOLLOW)
 1. You may change AT MOST 2 parameters
 2. Each change must be within ±10% of the current value
-3. You MUST provide rollback conditions (when to revert changes)
+3. You MUST provide at least one rollback condition (structured object)
 4. You MUST explain your reasoning clearly
 
 ## Parameters You Can Adjust
@@ -46,7 +46,26 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 - Low fills = spread too wide → consider narrowing spread
 - High inventory = not managing risk well → consider increasing skew
 
-Respond with a JSON object containing your proposed changes, rollback conditions, and reasoning.`;
+## Response Format (CRITICAL)
+Your response MUST be a JSON object with this exact structure:
+{
+  "changes": {
+    "<paramName>": <newValue>,  // 1-2 parameters only, e.g. "baseHalfSpreadBps": "5.5"
+  },
+  "rollbackConditions": {
+    "markout10sP50BelowBps": <number>,  // optional: rollback if markout P50 falls below this
+    "pauseCountAbove": <number>,         // optional: rollback if PAUSE count exceeds this
+    "maxDurationMs": <number>            // optional: rollback after this duration (ms)
+  },
+  "reasoningTrace": ["reason1", "reason2", ...]  // explain your reasoning
+}
+
+IMPORTANT:
+- "changes" is an OBJECT with parameter names as keys (NOT an array)
+- "rollbackConditions" is a structured OBJECT (NOT an array of strings)
+- At least ONE rollback condition must be set (not undefined)
+- String parameters (like baseHalfSpreadBps) can be string or number
+- Integer parameters (like refreshIntervalMs) must be numbers`;
 
 /**
  * Parse model string (e.g., "openai/gpt-4o") into provider and model name

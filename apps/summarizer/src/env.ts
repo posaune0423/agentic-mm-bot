@@ -16,7 +16,7 @@ export const env = createEnv({
     APP_ENV: z.enum(["development", "test", "production"]).default("development"),
     EXCHANGE: z.string().default("extended"),
     SYMBOL: z.string().default("BTC-USD"),
-    RUN_INTERVAL_MS: z.coerce.number().default(60_000), // Run every minute
+    RUN_INTERVAL_MS: z.coerce.number().default(10_000), // Run every 10 seconds
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

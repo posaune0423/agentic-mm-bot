@@ -36,6 +36,17 @@ export class LatestStateManager {
     bestAskSz: string,
     midPx: string,
   ): void {
+    const bid = parseFloat(bestBidPx);
+    const ask = parseFloat(bestAskPx);
+    // Guard: if BBO is crossed/invalid, keep previous prices but still refresh timestamp.
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid >= ask) {
+      if (this.state) {
+        this.state.ts = ts;
+        this.state.dirty = true;
+      }
+      return;
+    }
+
     if (!this.state) {
       this.state = {
         exchange,

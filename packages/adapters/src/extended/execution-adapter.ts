@@ -66,6 +66,10 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private accountVaultCache: number | null = null;
   private accountL2KeyPrefixCache: string | null = null;
   private feeCache: Map<string, TradingFeeModel> = new Map();
+  private tradingConfigCache: Map<
+    string,
+    { minQtyStep: Decimal | null; minQty: Decimal | null; priceStep: Decimal | null }
+  > = new Map();
 
   constructor(config: ExtendedConfig) {
     this.config = config;
@@ -180,31 +184,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
       const overridden = postOnly ? new TradingFeeModel(symbol, maker, maker, builder) : effective;
       this.starkAccount.setTradingFee(symbol, overridden);
-
-      // #region agent log
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "post-fix2",
-          hypothesisId: "H6",
-          location: "packages/adapters/src/extended/execution-adapter.ts:ensureTradingFee",
-          message: "loaded trading fees and applied override if postOnly",
-          data: {
-            symbol,
-            postOnly,
-            source: fee ? "api" : "default",
-            makerFeeRate: maker.toString(),
-            takerFeeRate: taker.toString(),
-            builderFeeRate: builder.toString(),
-            appliedTakerFeeRate: overridden.takerFeeRate.toString(),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion agent log
-    } catch (error) {
+    } catch {
       // Fallback to default fees, still apply postOnly override
       const maker = this.normalizeDecimal(this.getObjectProp(DEFAULT_FEES, "makerFeeRate"), "0");
       const taker = this.normalizeDecimal(this.getObjectProp(DEFAULT_FEES, "takerFeeRate"), "0");
@@ -213,30 +193,6 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       this.feeCache.set(symbol, effective);
       const overridden = postOnly ? new TradingFeeModel(symbol, maker, maker, builder) : effective;
       this.starkAccount.setTradingFee(symbol, overridden);
-
-      // #region agent log
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "post-fix2",
-          hypothesisId: "H6",
-          location: "packages/adapters/src/extended/execution-adapter.ts:ensureTradingFee",
-          message: "failed to load fees; using default and applied override if postOnly",
-          data: {
-            symbol,
-            postOnly,
-            error: error instanceof Error ? error.message : String(error),
-            makerFeeRate: maker.toString(),
-            takerFeeRate: taker.toString(),
-            builderFeeRate: builder.toString(),
-            appliedTakerFeeRate: overridden.takerFeeRate.toString(),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion agent log
     }
   }
 
@@ -298,30 +254,12 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     return value.div(step).toDecimalPlaces(0, Decimal.ROUND_DOWN).mul(step);
   }
 
-  placeOrder(request: PlaceOrderRequest): ResultAsync<OrderResponse, ExecutionError> {
-    // #region agent log
-    fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "post-fix",
-        hypothesisId: "H0",
-        location: "packages/adapters/src/extended/execution-adapter.ts:placeOrder:entry",
-        message: "placeOrder called",
-        data: {
-          symbol: request.symbol,
-          side: request.side,
-          postOnly: request.postOnly,
-          size: request.size,
-          price: request.price,
-          clientOrderIdPresent: Boolean(request.clientOrderId),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion agent log
+  private roundUpToStep(value: Decimal, step: Decimal): Decimal {
+    if (step.lte(0)) return value;
+    return value.div(step).toDecimalPlaces(0, Decimal.ROUND_UP).mul(step);
+  }
 
+  placeOrder(request: PlaceOrderRequest): ResultAsync<OrderResponse, ExecutionError> {
     let amountOfSynthetic: Decimal;
     try {
       amountOfSynthetic = new Decimal(request.size);
@@ -345,33 +283,6 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
           const account = await this.getAccountInfoCached();
           const accountVault = account.vault;
-          const accountL2KeyPrefix = account.l2KeyPrefix;
-
-          // #region agent log
-          fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: "debug-session",
-              runId: "post-fix",
-              hypothesisId: "H5",
-              location: "packages/adapters/src/extended/execution-adapter.ts:placeOrder:accountVault",
-              message: "account vault fetched (or missing)",
-              data: {
-                configuredVaultId: this.config.vaultId,
-                accountVault,
-                match: accountVault === null ? null : accountVault === this.config.vaultId,
-                configuredStarkPublicKeyPrefix: String(this.config.starkPublicKey).slice(0, 10),
-                accountL2KeyPrefix,
-                keyMatch:
-                  accountL2KeyPrefix === null ? null : (
-                    accountL2KeyPrefix === String(this.config.starkPublicKey).slice(0, 10)
-                  ),
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion agent log
 
           if (accountVault !== null && accountVault !== this.config.vaultId) {
             throw new Error(
@@ -384,87 +295,51 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
           const minOrderSizeChange = this.getObjectProp(tc, "minOrderSizeChange");
           const minOrderSize = this.getObjectProp(tc, "minOrderSize");
           const minPriceChange = this.getObjectProp(tc, "minPriceChange");
-          const quantityPrecision = this.getObjectProp(tc, "quantityPrecision");
-          const pricePrecision = this.getObjectProp(tc, "pricePrecision");
-
-          // #region agent log
-          fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: "debug-session",
-              runId: "post-fix",
-              hypothesisId: "H1",
-              location: "packages/adapters/src/extended/execution-adapter.ts:placeOrder:marketConfig",
-              message: "market trading config fetched (or missing)",
-              data: {
-                symbol: request.symbol,
-                marketFound: Boolean(market),
-                minOrderSizeChange:
-                  typeof minOrderSizeChange === "string" ? minOrderSizeChange : String(minOrderSizeChange),
-                minOrderSize: typeof minOrderSize === "string" ? minOrderSize : String(minOrderSize),
-                minPriceChange: typeof minPriceChange === "string" ? minPriceChange : String(minPriceChange),
-                quantityPrecision,
-                pricePrecision,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion agent log
 
           const rawPrice = new Decimal(request.price);
 
-          const minQtyStep = this.toDecimal(minOrderSizeChange);
-          const minQty = this.toDecimal(minOrderSize);
-          const priceStep = this.toDecimal(minPriceChange);
+          const parsedMinQtyStep = this.toDecimal(minOrderSizeChange);
+          const parsedMinQty = this.toDecimal(minOrderSize);
+          const parsedPriceStep = this.toDecimal(minPriceChange);
 
-          const sizeRounded =
-            minQtyStep && minQtyStep.gt(0) ? this.roundDownToStep(amountOfSynthetic, minQtyStep) : amountOfSynthetic;
-          const priceRounded = priceStep && priceStep.gt(0) ? this.roundDownToStep(rawPrice, priceStep) : rawPrice;
+          if (parsedMinQtyStep !== null || parsedMinQty !== null || parsedPriceStep !== null) {
+            const cached = this.tradingConfigCache.get(request.symbol);
+            this.tradingConfigCache.set(request.symbol, {
+              minQtyStep: parsedMinQtyStep ?? cached?.minQtyStep ?? null,
+              minQty: parsedMinQty ?? cached?.minQty ?? null,
+              priceStep: parsedPriceStep ?? cached?.priceStep ?? null,
+            });
+          }
 
-          const sizeOk = !minQty || sizeRounded.gte(minQty);
+          const cached = this.tradingConfigCache.get(request.symbol);
+          const minQtyStep = parsedMinQtyStep ?? cached?.minQtyStep ?? new Decimal("0.00001");
+          const minQty = parsedMinQty ?? cached?.minQty ?? new Decimal("0.0001");
+          const priceStep = parsedPriceStep ?? cached?.priceStep ?? new Decimal("1");
 
-          // #region agent log
-          fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: "debug-session",
-              runId: "post-fix",
-              hypothesisId: "H2",
-              location: "packages/adapters/src/extended/execution-adapter.ts:placeOrder:rounding",
-              message: "computed raw/sent vs sdk-suggested rounding",
-              data: {
-                symbol: request.symbol,
-                sentSize: amountOfSynthetic.toString(),
-                sentPrice: rawPrice.toString(),
-                minQtyStep: minQtyStep?.toString(),
-                minQty: minQty?.toString(),
-                priceStep: priceStep?.toString(),
-                roundedSize: sizeRounded.toString(),
-                roundedPrice: priceRounded.toString(),
-                sizeOk,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion agent log
+          const sizeRounded = this.roundDownToStep(amountOfSynthetic, minQtyStep);
+          const priceRounded = this.roundDownToStep(rawPrice, priceStep);
 
-          if (!sizeRounded.isFinite() || sizeRounded.lte(0) || !sizeOk) {
+          let sizeFinal = sizeRounded;
+          if (sizeFinal.lt(minQty)) {
+            // Clamp up to minQty (aligned to step) rather than erroring.
+            sizeFinal = this.roundUpToStep(minQty, minQtyStep);
+          }
+
+          if (!sizeFinal.isFinite() || sizeFinal.lte(0)) {
             throw new Error(
-              `Invalid size after market rounding (size=${amountOfSynthetic.toString()} rounded=${sizeRounded.toString()} min=${minQty?.toString() ?? "n/a"})`,
+              `Invalid size after market rounding (size=${amountOfSynthetic.toString()} rounded=${sizeFinal.toString()} min=${minQty.toString()})`,
             );
           }
 
           if (!priceRounded.isFinite() || priceRounded.lte(0)) {
             throw new Error(
-              `Invalid price after market rounding (price=${rawPrice.toString()} rounded=${priceRounded.toString()} step=${priceStep?.toString() ?? "n/a"})`,
+              `Invalid price after market rounding (price=${rawPrice.toString()} rounded=${priceRounded.toString()} step=${priceStep.toString()})`,
             );
           }
 
           return this.tradingClient.placeOrder({
             marketName: request.symbol,
-            amountOfSynthetic: sizeRounded,
+            amountOfSynthetic: sizeFinal,
             price: priceRounded,
             side: request.side === "buy" ? ExtendedOrderSide.BUY : ExtendedOrderSide.SELL,
             postOnly: request.postOnly,
@@ -524,17 +399,34 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       this.tradingClient.account.getOpenOrders({ marketNames: [symbol] }),
       this.mapError,
     ).map(response =>
-      (response.data ?? []).map((o: OpenOrderModel) => ({
-        clientOrderId: o.externalId,
-        exchangeOrderId: o.id.toString(),
-        symbol: o.market,
-        side: (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
-        price: o.price.toString(),
-        size: o.qty.toString(),
-        filledSize: o.filledQty?.toString() ?? "0",
-        status: this.mapOrderStatus(o.status),
-        createdAt: new Date(o.createdTime),
-      })),
+      (response.data ?? []).map((o: OpenOrderModel) => {
+        const exchangeOrderId = o.id.toString();
+
+        // Normalize clientOrderId: try multiple field names for externalId
+        // The SDK uses `externalId`, but API responses might use variations
+        const raw = o as unknown as Record<string, unknown>;
+        const externalId =
+          (raw["externalId"] as string | undefined) ??
+          (raw["externalID"] as string | undefined) ??
+          (raw["external_id"] as string | undefined) ??
+          (raw["clientOrderId"] as string | undefined);
+
+        // If no externalId found, generate a fallback key from exchangeOrderId
+        // This prevents multiple orders collapsing to the same Map key in OrderTracker
+        const clientOrderId = externalId && externalId.trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
+
+        return {
+          clientOrderId,
+          exchangeOrderId,
+          symbol: o.market,
+          side: (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
+          price: o.price.toString(),
+          size: o.qty.toString(),
+          filledSize: o.filledQty?.toString() ?? "0",
+          status: this.mapOrderStatus(o.status),
+          createdAt: new Date(o.createdTime),
+        };
+      }),
     );
   }
 
@@ -704,26 +596,13 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     if (error instanceof Error) {
       const message = error.message.toLowerCase();
 
-      // #region agent log
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "post-fix",
-          hypothesisId: "H3",
-          location: "packages/adapters/src/extended/execution-adapter.ts:mapError",
-          message: "mapped exchange error",
-          data: {
-            message: error.message,
-            hasInvalidQtyPrecision: message.includes("invalid quantity precision"),
-            hasInvalidOrderParameters: message.includes("invalid order parameters"),
-            hasInvalidVault: message.includes("invalid starkex vault"),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion agent log
+      if (message.includes("rate limited")) {
+        return {
+          type: "rate_limit",
+          message: error.message,
+          retryAfterMs: 1000,
+        };
+      }
 
       if (message.includes("post_only") || message.includes("post only failed")) {
         return {
@@ -763,9 +642,15 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         };
       }
 
+      // Extract numeric error code if present (Extended often embeds JSON in message)
+      // Example: {"status":"ERROR","error":{"code":1126,"message":"Max open orders number exceeded"}}
+      const codeMatch = /"code"\s*:\s*(\d+)/.exec(error.message);
+      const extractedCode = codeMatch?.[1];
+
       return {
         type: "exchange_error",
         message: error.message,
+        code: extractedCode,
       };
     }
 

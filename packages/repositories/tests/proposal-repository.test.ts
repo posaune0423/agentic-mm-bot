@@ -272,6 +272,47 @@ describe("ProposalRepository.getCurrentParams", () => {
         })),
       })),
     }));
+
+    // When DB is empty, repository seeds a default strategy_params row via transaction.
+    const seededParams = {
+      id: "seeded-params-1",
+      exchange: "extended",
+      symbol: "BTC-USD",
+      baseHalfSpreadBps: "10",
+      volSpreadGain: "1",
+      toxSpreadGain: "1",
+      quoteSizeUsd: "10",
+      refreshIntervalMs: 1000,
+      staleCancelMs: 5000,
+      maxInventory: "1",
+      inventorySkewGain: "5",
+      pauseMarkIndexBps: "50",
+      pauseLiqCount10s: 3,
+      isCurrent: true,
+      createdAt: new Date(),
+      createdBy: "system",
+      comment: "Seeded default parameters (empty DB)",
+    };
+
+    const txUpdateMock = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => Promise.resolve()),
+      })),
+    }));
+    const txInsertMock = mock(() => ({
+      values: mock(() => ({
+        returning: mock(() => Promise.resolve([seededParams])),
+      })),
+    }));
+
+    // Override transaction to use the mocks that return seeded params
+    db.transaction = mock(async (fn: (tx: any) => Promise<any>) =>
+      fn({
+        update: txUpdateMock,
+        insert: txInsertMock,
+      }),
+    );
+
     const repo = createPostgresProposalRepository(db);
 
     const result = await repo.getCurrentParams("extended", "BTC-USD");

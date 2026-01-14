@@ -4,15 +4,16 @@
  * Requirements: 10.2, 10.5
  * - Maximum 2 parameter changes
  * - Each change within ±10% of current value
- * - Rollback conditions required
+ * - Rollback conditions required (structured object with at least one condition)
+ *
+ * IMPORTANT: This validates the NEW format (object-based changes, structured rollback).
  */
 
 import { type Result, err, ok } from "neverthrow";
-import { z } from "zod";
 
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
-import { ParamChangeSchema, type ParamName } from "../types/schemas";
+import { type ParamName, ProposalOutputSchema, type RollbackConditions } from "../types/schemas";
 
 export type ParamGateError =
   | { type: "INVALID_PROPOSAL_SHAPE"; message: string }
@@ -27,14 +28,19 @@ export type ParamGateError =
   | { type: "MISSING_ROLLBACK_CONDITIONS" }
   | { type: "INVALID_PARAM_VALUE"; param: ParamName; value: string };
 
-const ProposalGateInputSchema = z.object({
-  // Keep this permissive: rule enforcement happens in this module.
-  changes: z.array(ParamChangeSchema),
-  rollbackConditions: z.array(z.string()),
-  reasoningTrace: z.array(z.string()).optional(),
-});
-
-type ProposalGateInput = z.infer<typeof ProposalGateInputSchema>;
+/** Allowed parameter names */
+const ALLOWED_PARAMS: readonly ParamName[] = [
+  "baseHalfSpreadBps",
+  "volSpreadGain",
+  "toxSpreadGain",
+  "quoteSizeUsd",
+  "refreshIntervalMs",
+  "staleCancelMs",
+  "maxInventory",
+  "inventorySkewGain",
+  "pauseMarkIndexBps",
+  "pauseLiqCount10s",
+];
 
 /**
  * Get current value for a parameter from strategy params
@@ -53,15 +59,27 @@ function getCurrentValue(params: CurrentParamsSummary, param: ParamName): number
 }
 
 /**
+ * Check if rollback conditions are present (at least one must be set)
+ */
+function hasRollbackConditions(conditions: RollbackConditions): boolean {
+  return (
+    conditions.markout10sP50BelowBps !== undefined ||
+    conditions.pauseCountAbove !== undefined ||
+    conditions.maxDurationMs !== undefined
+  );
+}
+
+/**
  * Validate a proposal against the param gate rules
  *
  * Rules:
  * 1. Maximum 2 parameter changes
  * 2. Each change must be within ±10% of current value
- * 3. Rollback conditions are required
+ * 3. Rollback conditions are required (structured object)
  */
 export function validateProposal(proposal: unknown, currentParams: CurrentParamsSummary): Result<void, ParamGateError> {
-  const parsed = ProposalGateInputSchema.safeParse(proposal);
+  // First, validate the shape using the schema
+  const parsed = ProposalOutputSchema.safeParse(proposal);
   if (!parsed.success) {
     return err({
       type: "INVALID_PROPOSAL_SHAPE",
@@ -69,59 +87,68 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
     });
   }
 
-  const proposalOutput: ProposalGateInput = parsed.data;
+  const proposalOutput = parsed.data;
+
+  // Extract changes
+  const changes = Object.entries(proposalOutput.changes) as [ParamName, string | number][];
 
   // 1. Maximum 2 changes
-  if (proposalOutput.changes.length > 2) {
+  if (changes.length > 2) {
     return err({
       type: "TOO_MANY_CHANGES",
-      count: proposalOutput.changes.length,
+      count: changes.length,
     });
   }
 
   // 2. Each change within ±10%
-  for (const change of proposalOutput.changes) {
-    const currentValue = getCurrentValue(currentParams, change.param);
-    const proposedValue = parseFloat(change.toValue);
+  for (const [param, proposedValue] of changes) {
+    if (!ALLOWED_PARAMS.includes(param)) {
+      return err({
+        type: "INVALID_PROPOSAL_SHAPE",
+        message: `Invalid parameter: ${param}`,
+      });
+    }
 
-    if (Number.isNaN(proposedValue)) {
+    const currentValue = getCurrentValue(currentParams, param);
+    const proposedNum = typeof proposedValue === "string" ? parseFloat(proposedValue) : proposedValue;
+
+    if (Number.isNaN(proposedNum)) {
       return err({
         type: "INVALID_PARAM_VALUE",
-        param: change.param,
-        value: change.toValue,
+        param,
+        value: String(proposedValue),
       });
     }
 
     // Handle edge case where current value is 0
     if (currentValue === 0) {
-      // If current is 0, only allow small absolute changes
-      if (Math.abs(proposedValue) > 0.1) {
+      if (Math.abs(proposedNum) > 0.1) {
         return err({
           type: "CHANGE_EXCEEDS_10PCT",
-          param: change.param,
+          param,
           currentValue,
-          proposedValue,
+          proposedValue: proposedNum,
           diffPct: 100,
         });
       }
       continue;
     }
 
-    const diffPct = Math.abs((proposedValue - currentValue) / currentValue) * 100;
+    const diffPct = Math.abs((proposedNum - currentValue) / currentValue) * 100;
 
     if (diffPct > 10) {
       return err({
         type: "CHANGE_EXCEEDS_10PCT",
-        param: change.param,
+        param,
         currentValue,
-        proposedValue,
+        proposedValue: proposedNum,
         diffPct,
       });
     }
   }
 
-  // 3. Rollback conditions required
-  if (proposalOutput.rollbackConditions.length === 0) {
+  // 3. Rollback conditions required (at least one must be set)
+  if (!hasRollbackConditions(proposalOutput.rollbackConditions)) {
     return err({
       type: "MISSING_ROLLBACK_CONDITIONS",
     });

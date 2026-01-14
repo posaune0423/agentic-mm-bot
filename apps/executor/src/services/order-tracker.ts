@@ -76,6 +76,9 @@ export class OrderTracker {
 
   /**
    * Sync from REST API response
+   *
+   * Note: If clientOrderId is empty/undefined, we use exchangeOrderId as the Map key
+   * to prevent multiple orders from collapsing to the same key.
    */
   syncFromOpenOrders(openOrders: OpenOrder[]): void {
     // Clear current orders
@@ -83,8 +86,14 @@ export class OrderTracker {
 
     // Add from REST response
     for (const order of openOrders) {
-      this.orders.set(order.clientOrderId, {
-        clientOrderId: order.clientOrderId,
+      // Use clientOrderId if available, otherwise fallback to exchangeOrderId-based key
+      const key =
+        order.clientOrderId && order.clientOrderId.trim() !== "" ?
+          order.clientOrderId
+        : `__ext_${order.exchangeOrderId}`;
+
+      this.orders.set(key, {
+        clientOrderId: key,
         exchangeOrderId: order.exchangeOrderId,
         side: order.side,
         price: order.price,
@@ -135,5 +144,15 @@ export class OrderTracker {
    */
   clear(): void {
     this.orders.clear();
+  }
+
+  /**
+   * Remove a single order (best-effort)
+   *
+   * We call this after a successful cancel request to avoid relying solely on
+   * async order update events (which can be delayed or dropped).
+   */
+  removeOrder(clientOrderId: string): boolean {
+    return this.orders.delete(clientOrderId);
   }
 }

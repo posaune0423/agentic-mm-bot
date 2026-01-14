@@ -41,8 +41,23 @@ export const env = createEnv({
     STATE_PERSIST_INTERVAL_MS: z.coerce.number().default(10_000),
     EVENT_FLUSH_INTERVAL_MS: z.coerce.number().default(1_000),
 
+    // Strategy params refresh + LLM proposal apply cadence
+    PARAMS_REFRESH_ENABLED: z.coerce.boolean().default(true),
+    PARAMS_REFRESH_INTERVAL_MS: z.coerce.number().default(5_000),
+
+    PROPOSAL_APPLY_ENABLED: z.coerce.boolean().default(true),
+    PROPOSAL_APPLY_POLL_INTERVAL_MS: z.coerce.number().default(1_000),
+    PROPOSAL_APPLY_BOUNDARY_MINUTES: z.coerce.number().default(1),
+    PROPOSAL_APPLY_BOUNDARY_GRACE_SECONDS: z.coerce.number().default(30),
+    PROPOSAL_APPLY_DATA_STALE_MS: z.coerce.number().default(10_000),
+    PROPOSAL_APPLY_MAX_PAUSE_COUNT_LAST_HOUR: z.coerce.number().default(20),
+    // If markout P50 is below this, reject proposals. Set very low (e.g. -1e9) to effectively disable.
+    PROPOSAL_APPLY_MIN_MARKOUT10S_P50_BPS: z.coerce.number().default(-1e9),
+
     // CLI dashboard (TTY UI)
     EXECUTOR_DASHBOARD: z.coerce.boolean().default(true),
+    EXECUTOR_DASHBOARD_REFRESH_MS: z.coerce.number().default(250),
+    EXECUTOR_DASHBOARD_NO_COLOR: z.coerce.boolean().default(false),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

@@ -99,3 +99,16 @@
 - **8.4** The system shall stale/遅延や異常（data stale、reject、WS再接続など）を強調表示する（色、太字、アイコン/ラベル等）。
 - **8.5** The system shall レイアウトが更新のたびに横揺れしない（列幅の固定、数値の桁揃え、単位表記の統一など）。
 - **8.6** The system shall 端末が色/装飾に対応しない場合や `NO_COLOR` が設定されている場合、装飾を無効化しつつ可読性を維持する（プレーンテキストでも破綻しない）。
+
+### Requirement 9: 意思決定フロー/ステータス/ログの統合表示（運用観測の完成形）
+
+**Objective:** As a 運用担当者, I want bot の意思決定の流れ・重要指標・DEXの最新データ・現在のステータス・ログを同一画面で確認したい, so that 何が起きているかを正確に把握し、トラブルシュートが速くなる
+
+#### Acceptance Criteria
+
+- **9.1** The system shall executor において「現在どの処理フェーズにいるか」を表示する（例：READ / DECIDE / PLAN / EXECUTE / PERSIST / IDLE）。
+- **9.2** The system shall ingestor において「現在どの処理フェーズにいるか」を表示する（例：CONNECTING / SUBSCRIBED / RECEIVING / FLUSHING / IDLE）。
+- **9.3** The system shall 各フェーズの最終遷移時刻と、直近の所要時間（または経過時間）を表示できる（stuck/quiet判別）。
+- **9.4** The system shall bot の重要指標（例：data age、spread、vol/tox、mark/index乖離、liq proxy、position、active orders、last quote age）を “監視用に要約された形” で表示する。
+- **9.5** The system shall ダッシュボード表示中、アプリが出すログ（少なくとも INFO/WARN/ERROR）をダッシュボード内のログ領域に取り込み、ログ出力場所がUIと衝突しないようにする。
+- **9.6** The system shall ログ領域はリングバッファで保持し、直近N件のログをレベル別に色/太字で強調しつつ表示する（NO_COLOR時は装飾なしでも判別可能）。

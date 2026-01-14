@@ -7,18 +7,12 @@ mock.module("@ai-sdk/openai", () => ({
 }));
 
 mock.module("ai", () => ({
-  Output: {
-    object: (_args: unknown) => ({
-      /* marker */
-    }),
-  },
   generateText: async () => ({
-    // AI SDK v6 returns `output` for structured data (not `object`)
-    output: {
-      changes: [{ param: "baseHalfSpreadBps", fromValue: "1.5", toValue: "1.6" }],
-      rollbackConditions: ["revert if markout worsens"],
+    text: JSON.stringify({
+      changes: { baseHalfSpreadBps: "1.6" },
+      rollbackConditions: { markout10sP50BelowBps: -10 },
       reasoningTrace: ["Slightly widen spread due to adverse selection."],
-    },
+    }),
   }),
 }));
 

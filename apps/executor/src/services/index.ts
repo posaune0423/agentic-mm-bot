@@ -7,3 +7,4 @@ export { OrderTracker, type TrackedOrder } from "./order-tracker";
 export { PositionTracker } from "./position-tracker";
 export { generateClientOrderId, planExecution, type ExecutionAction } from "./execution-planner";
 export { ExecutorCliDashboard, type TickDebug } from "./cli-dashboard";
+export { buildLatestPositionState } from "./latest-position-publisher";
