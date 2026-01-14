@@ -105,10 +105,15 @@ describe("IngestorCliDashboard", () => {
         dash.render();
 
         const out = writes.join("");
-        expect(out).toContain("Ingestor Dashboard");
-        expect(out).toContain("BBO   -");
-        expect(out).toContain("TRD   -");
-        expect(out).toContain("PX    -");
+        // New boxed format uses uppercase title and structured sections
+        expect(out).toContain("INGESTOR DASHBOARD");
+        expect(out).toContain("MARKET DATA");
+        expect(out).toContain("BBO: No data");
+        expect(out).toContain("Trade: No data");
+        expect(out).toContain("Price: No data");
+        expect(out).toContain("METRICS");
+        expect(out).toContain("BUFFERS");
+        expect(out).toContain("LOGS");
       }),
     );
   });

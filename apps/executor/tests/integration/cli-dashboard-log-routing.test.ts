@@ -71,7 +71,7 @@ describe("CLI dashboard log routing (integration)", () => {
           dash.render();
 
           const out = writes.join("");
-          expect(out).toContain("Logs");
+          expect(out).toContain("LOGS");
           expect(out).toContain("hello-from-logger");
         } finally {
           logger.clearSink();

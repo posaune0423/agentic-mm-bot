@@ -36,6 +36,26 @@ import type { ExtendedConfig } from "./types";
 const EXCHANGE_NAME = "extended";
 const log = logger;
 
+type StreamClientWithMarkPrice = {
+  subscribeToMarkPrice: (marketName?: string) => PerpetualStreamConnection<unknown>;
+};
+
+type StreamClientWithIndexPrice = {
+  subscribeToIndexPrice: (marketName?: string) => PerpetualStreamConnection<unknown>;
+};
+
+function hasSubscribeToMarkPrice(
+  client: PerpetualStreamClient,
+): client is PerpetualStreamClient & StreamClientWithMarkPrice {
+  return typeof (client as unknown as Record<string, unknown>)["subscribeToMarkPrice"] === "function";
+}
+
+function hasSubscribeToIndexPrice(
+  client: PerpetualStreamClient,
+): client is PerpetualStreamClient & StreamClientWithIndexPrice {
+  return typeof (client as unknown as Record<string, unknown>)["subscribeToIndexPrice"] === "function";
+}
+
 // ============================================================================
 // Extended WS Message Types (from API docs)
 // ============================================================================
@@ -203,9 +223,16 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     this.reconnectConfig = reconnectConfig;
 
     // Feature-detect optional streams (SDK versions may differ).
-    const anyClient = this.streamClient as unknown as Record<string, unknown>;
-    if (typeof anyClient["subscribeToMarkPrice"] !== "function") this.disabledStreamTypes.add("markPrice");
-    if (typeof anyClient["subscribeToIndexPrice"] !== "function") this.disabledStreamTypes.add("indexPrice");
+    // Note: As of extended-typescript-sdk@0.0.7, subscribeToMarkPrice and subscribeToIndexPrice
+    // are NOT available. The exchange API supports these streams but the SDK hasn't wrapped them yet.
+    if (!hasSubscribeToMarkPrice(this.streamClient)) {
+      this.disabledStreamTypes.add("markPrice");
+      log.warn("Mark price stream not available in SDK - subscribeToMarkPrice method missing");
+    }
+    if (!hasSubscribeToIndexPrice(this.streamClient)) {
+      this.disabledStreamTypes.add("indexPrice");
+      log.warn("Index price stream not available in SDK - subscribeToIndexPrice method missing");
+    }
   }
 
   subscribe(subscription: MarketDataSubscription): Result<void, MarketDataError> {
@@ -374,11 +401,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         // extended-typescript-sdk@0.0.1 includes a `depth` query param which the testnet orderbooks
         // endpoint currently doesn't emit data for. Omitting `depth` yields a SNAPSHOT immediately.
         // We only need BBO, so we'll take the first bid/ask from the snapshot.
-        return (
-          this.streamClient as unknown as {
-            subscribeToOrderbooks: (args: { marketName: string }) => PerpetualStreamConnection<unknown>;
-          }
-        ).subscribeToOrderbooks({
+        return this.streamClient.subscribeToOrderbooks({
           marketName: symbol,
         });
       case "trades":
@@ -386,29 +409,106 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       case "fundingRate":
         return this.streamClient.subscribeToFundingRates(symbol);
       case "markPrice":
-        return typeof (this.streamClient as unknown as Record<string, unknown>)["subscribeToMarkPrice"] === "function" ?
-            (
-              this.streamClient as unknown as {
-                subscribeToMarkPrice: (s: string) => PerpetualStreamConnection<unknown>;
-              }
-            ).subscribeToMarkPrice(symbol)
-          : null;
+        return hasSubscribeToMarkPrice(this.streamClient) ? this.streamClient.subscribeToMarkPrice(symbol) : null;
       case "indexPrice":
-        return (
-            typeof (this.streamClient as unknown as Record<string, unknown>)["subscribeToIndexPrice"] === "function"
-          ) ?
-            (
-              this.streamClient as unknown as {
-                subscribeToIndexPrice: (s: string) => PerpetualStreamConnection<unknown>;
-              }
-            ).subscribeToIndexPrice(symbol)
-          : null;
+        return hasSubscribeToIndexPrice(this.streamClient) ? this.streamClient.subscribeToIndexPrice(symbol) : null;
       default:
         return null;
     }
   }
 
   private async listenStream(state: StreamState): Promise<void> {
+    const { streamType } = state;
+
+    // For markPrice, indexPrice, and fundingRate: prefer AsyncIterable (SDK's native pattern)
+    // to avoid issues where connection.websocket is not exposed.
+    const useAsyncIterable = streamType === "markPrice" || streamType === "indexPrice" || streamType === "fundingRate";
+
+    if (useAsyncIterable) {
+      await this.listenStreamAsyncIterable(state);
+    } else {
+      await this.listenStreamWebsocket(state);
+    }
+  }
+
+  /**
+   * Listen to a stream using the SDK's AsyncIterable pattern (for await ... of connection).
+   * This is the preferred approach for markPrice, indexPrice, fundingRate streams.
+   */
+  private async listenStreamAsyncIterable(state: StreamState): Promise<void> {
+    const { streamType, symbol } = state;
+
+    try {
+      let sawFirstNormalized = false;
+
+      log.info(`Starting AsyncIterable listener for ${streamType}`, { symbol });
+
+      // The SDK's PerpetualStreamConnection implements AsyncIterable
+      const iterable = state.connection as unknown as AsyncIterable<unknown>;
+
+      for await (const message of iterable) {
+        if (!state.isRunning || state.connection.isClosed()) break;
+
+        const events = this.normalizeMessage(message, streamType, symbol);
+
+        if (!sawFirstNormalized && events.length > 0) {
+          sawFirstNormalized = true;
+          const types = Array.from(new Set(events.map(e => e.type))).slice(0, 8);
+          log.info("First normalized market data events received (AsyncIterable)", { symbol, streamType, types });
+        }
+
+        for (const event of events) {
+          const seqBreak = this.checkSequence(event, streamType);
+
+          if (seqBreak) {
+            // For mark/index, reconnect immediately on sequence break
+            if (streamType === "markPrice" || streamType === "indexPrice") {
+              log.warn(`Sequence break on ${streamType}, triggering reconnect`, {
+                expected: seqBreak.expected,
+                actual: seqBreak.actual,
+              });
+              this.scheduleReconnect("seq_break", {
+                symbol,
+                streamType,
+                expected: seqBreak.expected,
+                actual: seqBreak.actual,
+              });
+              return;
+            } else {
+              // For funding, just log (non-critical)
+              log.warn(`Sequence gap on ${streamType} (non-critical)`, {
+                expected: seqBreak.expected,
+                actual: seqBreak.actual,
+              });
+            }
+          }
+
+          this.emitEvent(event);
+        }
+      }
+
+      // Iterator completed
+      if (state.isRunning) {
+        log.warn(`Stream ${streamType} ended unexpectedly (AsyncIterable completed)`, { symbol });
+        this.handleDisconnect("asynciterable_completed", { symbol, streamType });
+      }
+    } catch (error) {
+      if (state.isRunning) {
+        log.warn(`Stream ${streamType} disconnected (AsyncIterable)`, { error });
+        this.handleDisconnect("asynciterable_threw", {
+          symbol,
+          streamType,
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    }
+  }
+
+  /**
+   * Listen to a stream using direct websocket access with buffering.
+   * This approach is used for orderbook and trades to avoid message drops.
+   */
+  private async listenStreamWebsocket(state: StreamState): Promise<void> {
     const { streamType, symbol } = state;
 
     try {
@@ -430,6 +530,13 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
             CLOSED: number;
           }
         | undefined;
+
+      // If websocket is not available, fall back to AsyncIterable
+      if (!ws) {
+        log.info(`Websocket not exposed for ${streamType}, falling back to AsyncIterable`, { symbol });
+        await this.listenStreamAsyncIterable(state);
+        return;
+      }
 
       let wsClosed = false;
       const queue: unknown[] = [];
@@ -467,10 +574,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         wake();
       };
 
-      if (ws) {
-        ws.on("message", onMessage);
-        ws.on("close", onClose);
-      }
+      ws.on("message", onMessage);
+      ws.on("close", onClose);
 
       const nextMessage = async (): Promise<unknown> => {
         if (queue.length > 0) return queue.shift()!;
@@ -524,10 +629,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
           this.emitEvent(event);
         }
       }
-      if (ws) {
-        ws.off("message", onMessage);
-        ws.off("close", onClose);
-      }
+
+      ws.off("message", onMessage);
+      ws.off("close", onClose);
+
       // Some SDK iterators may end "cleanly" on disconnect (no throw).
       // Treat an unexpected end as a disconnect and trigger reconnection.
       if (state.isRunning) {

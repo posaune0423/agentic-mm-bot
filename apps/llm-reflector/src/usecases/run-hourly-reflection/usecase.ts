@@ -1,5 +1,5 @@
 /**
- * Run Hourly Reflection Usecase
+ * Run Periodic Reflection Usecase
  *
  * Requirements: 10.1
  * - Orchestrates one reflection cycle
@@ -73,7 +73,7 @@ export function getLastCompleteWindow(now: Date, windowMinutes: number): { start
 const windowGuard = createWindowGuard();
 
 /**
- * Execute the hourly reflection
+ * Execute the periodic reflection
  */
 export function runHourlyReflection(
   deps: RunHourlyReflectionDeps,
@@ -90,7 +90,7 @@ export function runHourlyReflection(
     });
   }
 
-  logger.info("Starting hourly reflection", {
+  logger.info("Starting reflection", {
     exchange: deps.exchange,
     symbol: deps.symbol,
     windowStart: start.toISOString(),

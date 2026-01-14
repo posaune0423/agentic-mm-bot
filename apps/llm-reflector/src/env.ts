@@ -32,10 +32,10 @@ const EnvSchema = z.object({
 
   // Reflection window (minutes)
   // Examples:
-  // - 60: last complete hour (default)
+  // - 5: last complete 5-minute window (default)
   // - 15: last complete 15-minute window
-  // - 5: last complete 5-minute window
-  REFLECTION_WINDOW_MINUTES: z.coerce.number().int().positive().default(60),
+  // - 60: last complete hour
+  REFLECTION_WINDOW_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

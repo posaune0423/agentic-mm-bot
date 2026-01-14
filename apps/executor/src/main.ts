@@ -27,6 +27,7 @@ import { PositionTracker } from "./services/position-tracker";
 import { ExecutorCliDashboard } from "./services/cli-dashboard";
 import { buildLatestPositionState } from "./services/latest-position-publisher";
 import { executeTick } from "./usecases/decision-cycle";
+import { ParamsOverlayManager, computeParamsSignature } from "./services/params-overlay";
 import {
   createPostgresEventRepository,
   createPostgresMetricsRepository,
@@ -213,6 +214,14 @@ async function main(): Promise<void> {
     }
   }
 
+  // Params overlay manager: adjusts baseHalfSpreadBps when fills are sparse (memory-only)
+  const paramsOverlay = new ParamsOverlayManager({
+    noFillWindowMs: 120_000, // 2 min without fills
+    tightenStepBps: 0.5, // tighten by 0.5 bps per step
+    minBaseHalfSpreadBps: 5, // floor
+    tightenIntervalMs: 60_000, // max 1 step per minute
+  });
+
   // Load last state from DB or initialize (Requirement 4.11)
   let state: StrategyState;
   const savedState = await strategyStateRepo.getLatest(env.EXCHANGE, env.SYMBOL);
@@ -245,6 +254,9 @@ async function main(): Promise<void> {
       case "price":
         marketDataCache.updatePrice(event);
         break;
+      case "funding":
+        marketDataCache.updateFunding(event);
+        break;
       case "connected":
         dashboard.setConnectionStatus("connected");
         logger.info("Market data connected");
@@ -267,6 +279,17 @@ async function main(): Promise<void> {
         orderTracker.updateFromFill(event);
         positionTracker.updateFromFill(event);
         dashboard.onExecutionEvent(event);
+
+        // Update dashboard position immediately for realtime display
+        dashboard.setPosition({
+          size: positionTracker.getPosition().size,
+          entryPrice: positionTracker.getEntryPrice(),
+          unrealizedPnl: positionTracker.getUnrealizedPnl(),
+          lastUpdateMs: positionTracker.getLastUpdateMs(),
+        });
+
+        // Notify overlay manager (resets spread tightening on fill)
+        paramsOverlay.onFill(event.ts.getTime());
 
         // Queue fill for async persistence (Requirement 4.10)
         eventRepo.queueFill({
@@ -330,7 +353,7 @@ async function main(): Promise<void> {
   marketDataAdapter.subscribe({
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices"],
+    channels: ["bbo", "trades", "prices", "funding"],
   });
 
   // Connect to private stream
@@ -361,10 +384,19 @@ async function main(): Promise<void> {
 
     // Check if we have valid market data
     if (!marketDataCache.hasValidData()) {
+      // Disable overlay when data is stale
+      paramsOverlay.setActive(false);
       return;
     }
 
     lastTickMs = nowMs;
+
+    // Enable/disable overlay based on mode (disable during PAUSE for safety)
+    paramsOverlay.setActive(state.mode !== "PAUSE");
+
+    // Compute effective params with overlay applied (db params + tighten adjustment)
+    const effectiveParams = paramsOverlay.computeEffectiveParams(params, nowMs);
+    const overlayState = paramsOverlay.getState();
 
     try {
       const output = await executeTick(
@@ -373,7 +405,7 @@ async function main(): Promise<void> {
           orderTracker,
           positionTracker,
           executionPort: executionAdapter,
-          params,
+          params: effectiveParams, // Use effective params for order calculation
           onPhase: phase => dashboard.enterPhase(phase, nowMs),
           onTickDebug: ({
             nowMs,
@@ -393,7 +425,9 @@ async function main(): Promise<void> {
               stateBefore,
               stateAfter,
               paramsSetId: currentParamsSetId,
-              params,
+              dbParams: params, // Original DB params
+              effectiveParams, // Params with overlay applied
+              overlayState, // Overlay state for display
               plannedActions,
               targetQuote,
               orders: orderTracker.getActiveOrders(),
@@ -403,6 +437,7 @@ async function main(): Promise<void> {
                 unrealizedPnl: positionTracker.getUnrealizedPnl(),
                 lastUpdateMs: positionTracker.getLastUpdateMs(),
               },
+              funding: marketDataCache.getFunding(),
             });
           },
           onAction: ({ phase, action, error }) => {
@@ -515,9 +550,10 @@ async function main(): Promise<void> {
 
   /**
    * Params refresh loop: update in-memory params when DB current params changes.
-   * This increases the "parameter adjustment" responsiveness even without a restart.
+   * Uses both ID and content signature for change detection (catches UPDATEs too).
    */
   let lastParamsId: string | null = currentParamsSetId;
+  let lastParamsSig: string = computeParamsSignature(params);
   const paramsRefreshInterval = setInterval(() => {
     if (!env.PARAMS_REFRESH_ENABLED) return;
     void (async () => {
@@ -527,12 +563,32 @@ async function main(): Promise<void> {
         return;
       }
       const dbParams = result.value;
-      if (dbParams.id !== lastParamsId) {
+      const newParams = toCoreParams(dbParams);
+      const newSig = computeParamsSignature(newParams);
+
+      // Detect change by ID or content signature
+      const idChanged = dbParams.id !== lastParamsId;
+      const sigChanged = newSig !== lastParamsSig;
+
+      if (idChanged || sigChanged) {
+        const changeReason = idChanged ? "id" : "content";
         lastParamsId = dbParams.id;
+        lastParamsSig = newSig;
         currentParamsSetId = dbParams.id;
-        params = toCoreParams(dbParams);
-        dashboard.pushEvent(LogLevel.INFO, `params updated from DB: id=${dbParams.id}`);
-        logger.info("Params updated from DB", { paramsSetId: dbParams.id });
+        params = newParams;
+
+        // Reset overlay when base params change (start fresh)
+        paramsOverlay.reset();
+
+        dashboard.pushEvent(
+          LogLevel.INFO,
+          `params updated from DB (${changeReason}): id=${dbParams.id} baseHalf=${newParams.baseHalfSpreadBps}`,
+        );
+        logger.info("Params updated from DB", {
+          paramsSetId: dbParams.id,
+          changeReason,
+          baseHalfSpreadBps: newParams.baseHalfSpreadBps,
+        });
       }
     })();
   }, env.PARAMS_REFRESH_INTERVAL_MS);

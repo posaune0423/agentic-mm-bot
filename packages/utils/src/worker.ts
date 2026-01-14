@@ -42,6 +42,7 @@ export interface WorkerOptions {
  * This function handles:
  * - Initial run
  * - Periodic execution via setInterval
+ * - In-flight guard to prevent parallel execution
  * - Graceful shutdown on SIGINT/SIGTERM
  * - Error handling
  *
@@ -52,14 +53,31 @@ export function createIntervalWorker(options: WorkerOptions): void {
 
   logger.info(`Starting ${name}`, startupMetadata ?? {});
 
+  // In-flight guard to prevent parallel execution
+  let isRunning = false;
+
+  const runWithGuard = async (): Promise<void> => {
+    if (isRunning) {
+      logger.debug(`${name} skipped - previous run still in progress`);
+      return;
+    }
+
+    isRunning = true;
+    try {
+      await runOnce();
+    } finally {
+      isRunning = false;
+    }
+  };
+
   // Run immediately
-  void runOnce().catch((error: unknown) => {
+  void runWithGuard().catch((error: unknown) => {
     logger.error(`${name} initial run failed`, { error });
   });
 
   // Run periodically
   const interval = setInterval(() => {
-    void runOnce().catch((error: unknown) => {
+    void runWithGuard().catch((error: unknown) => {
       logger.error(`${name} iteration failed`, { error });
     });
   }, intervalMs);

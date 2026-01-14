@@ -3,7 +3,7 @@
  *
  * Requirements: 10.1, 13.1
  * - Interval-based worker (similar to summarizer)
- * - Runs hourly reflection to generate parameter proposals
+ * - Runs periodic reflection to generate parameter proposals
  * - Graceful shutdown
  */
 
@@ -48,15 +48,15 @@ function main(): void {
 
       switch (value.type) {
         case "SUCCESS":
-          logger.info("Hourly reflection succeeded", {
+          logger.info("Reflection succeeded", {
             proposalId: value.result.proposalId,
           });
           break;
         case "SKIPPED":
-          logger.debug("Hourly reflection skipped", { reason: value.reason });
+          logger.debug("Reflection skipped", { reason: value.reason });
           break;
         case "ERROR":
-          logger.error("Hourly reflection failed", { error: value.error });
+          logger.error("Reflection failed", { error: value.error });
           break;
       }
     }

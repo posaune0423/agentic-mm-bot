@@ -78,10 +78,15 @@ describe("ExecutorCliDashboard", () => {
         dash.render();
 
         const out = writes.join("");
-        expect(out).toContain("Executor Dashboard");
-        expect(out).toContain("MKT   -");
-        expect(out).toContain("STR   -");
-        expect(out).toContain("POS   -");
+        // New boxed dashboard format (rich TTY UI)
+        expect(out).toContain("EXECUTOR DASHBOARD");
+        expect(out).toContain("MARKET");
+        expect(out).toContain("STRATEGY");
+        expect(out).toContain("ORDERS");
+        expect(out).toContain("LOGS");
+        expect(out).toContain("No market data");
+        expect(out).toContain("No strategy data");
+        expect(out).toContain("No order data");
       }),
     );
   });
