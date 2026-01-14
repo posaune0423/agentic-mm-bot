@@ -100,6 +100,9 @@ function toCoreparams(params: StrategyParams): CoreStrategyParams {
 
 /**
  * Apply changes to params
+ *
+ * Note: Integer fields (refreshIntervalMs, staleCancelMs, pauseLiqCount10s) are rounded
+ * to ensure compatibility with the database schema.
  */
 function applyChanges(
   current: StrategyParams,
@@ -114,12 +117,12 @@ function applyChanges(
     volSpreadGain: String(changes.volSpreadGain ?? current.volSpreadGain),
     toxSpreadGain: String(changes.toxSpreadGain ?? current.toxSpreadGain),
     quoteSizeUsd: String(changes.quoteSizeUsd ?? current.quoteSizeUsd),
-    refreshIntervalMs: Number(changes.refreshIntervalMs ?? current.refreshIntervalMs),
-    staleCancelMs: Number(changes.staleCancelMs ?? current.staleCancelMs),
+    refreshIntervalMs: Math.round(Number(changes.refreshIntervalMs ?? current.refreshIntervalMs)),
+    staleCancelMs: Math.round(Number(changes.staleCancelMs ?? current.staleCancelMs)),
     maxInventory: String(changes.maxInventory ?? current.maxInventory),
     inventorySkewGain: String(changes.inventorySkewGain ?? current.inventorySkewGain),
     pauseMarkIndexBps: String(changes.pauseMarkIndexBps ?? current.pauseMarkIndexBps),
-    pauseLiqCount10s: Number(changes.pauseLiqCount10s ?? current.pauseLiqCount10s),
+    pauseLiqCount10s: Math.round(Number(changes.pauseLiqCount10s ?? current.pauseLiqCount10s)),
   };
 }
 
