@@ -90,7 +90,21 @@ export function runHourlyReflection(
   windowMinutes: number = 60,
 ): ResultAsync<RunResult, never> {
   const now = new Date();
-  const { start, end } = getLastCompleteWindow(now, windowMinutes);
+
+  let start: Date;
+  let end: Date;
+  try {
+    const window = getLastCompleteWindow(now, windowMinutes);
+    start = window.start;
+    end = window.end;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid windowMinutes parameter";
+    logger.error("Validation error in runHourlyReflection", { error: message, windowMinutes });
+    return okAsync({
+      type: "ERROR",
+      error: { type: "VALIDATION_ERROR", message },
+    });
+  }
 
   // Check if we should run (in-memory idempotency)
   if (!windowGuard.shouldRun(end)) {

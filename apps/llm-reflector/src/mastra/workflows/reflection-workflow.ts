@@ -30,7 +30,8 @@ export type WorkflowError =
   | { type: "GATE_REJECTED"; error: ParamGateError }
   | { type: "FILE_WRITE_FAILED"; message: string }
   | { type: "DB_INSERT_FAILED"; message: string }
-  | { type: "ALREADY_EXISTS"; message: string };
+  | { type: "ALREADY_EXISTS"; message: string }
+  | { type: "VALIDATION_ERROR"; message: string };
 
 export interface WorkflowDeps {
   metricsRepo: MetricsRepository;

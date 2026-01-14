@@ -9,7 +9,7 @@
 
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
-import { ResultAsync } from "neverthrow";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { z } from "zod";
 
 import type { LlmInputSummary, LlmProposalOutput } from "../types";
@@ -214,13 +214,16 @@ export function generateProposal(
   const userPrompt = buildUserPrompt(input);
 
   return ResultAsync.fromPromise(
-    generateText({
-      model: openai(options.model),
-      system: systemPrompt,
-      prompt: userPrompt,
-    }) as Promise<{ text: string }>,
-    e => ({
-      type: "LLM_API_ERROR" as const,
+    (async () => {
+      const { text } = await generateText({
+        model: openai(options.model),
+        system: systemPrompt,
+        prompt: userPrompt,
+      });
+      return { text };
+    })(),
+    (e): ProposalGeneratorError => ({
+      type: "LLM_API_ERROR",
       message: e instanceof Error ? e.message : "Unknown error",
     }),
   )

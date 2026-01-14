@@ -14,7 +14,7 @@ import { resolve } from "path";
 // Load .env from project root (three levels up from apps/executor)
 config({ path: resolve(process.cwd(), "../../.env") });
 
-import { createInitialState, type StrategyParams, type StrategyState } from "@agentic-mm-bot/core";
+import { createInitialState, type StrategyParams, type StrategyState, ALLOWED_PARAM_KEYS } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter, initWasm } from "@agentic-mm-bot/adapters";
 import type { StrategyParams as DbStrategyParams } from "@agentic-mm-bot/db";
 import { getDb } from "@agentic-mm-bot/db";
@@ -576,9 +576,9 @@ async function main(): Promise<void> {
         lastParamsSig = newSig;
         currentParamsSetId = dbParams.id;
 
-        // Detect which keys changed
+        // Detect which keys changed (use canonical key list to avoid metadata fields)
         const changedKeys: string[] = [];
-        for (const key of Object.keys(newParams) as (keyof typeof newParams)[]) {
+        for (const key of ALLOWED_PARAM_KEYS) {
           if (String(newParams[key]) !== String(params[key])) {
             changedKeys.push(key);
           }
@@ -666,6 +666,9 @@ async function main(): Promise<void> {
         params = newCoreParams;
         currentParamsSetId = proposalResult.params.id;
         lastParamsId = proposalResult.params.id;
+
+        // Reset overlay so derived values (e.g., tightenBps) are consistent with new base params
+        paramsOverlay.reset();
 
         // Notify dashboard with highlighted params change
         dashboard.notifyParamsChange({

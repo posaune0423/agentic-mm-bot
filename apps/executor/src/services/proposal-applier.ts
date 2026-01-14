@@ -452,9 +452,10 @@ export async function processPendingProposals(
     };
   }
 
-  // Calculate changed keys
+  // Calculate changed keys - only compare actual strategy parameter keys from currentParams
   const changedKeys: string[] = [];
-  for (const key of Object.keys(result.value) as (keyof StrategyParams)[]) {
+  const keysToCompare = Object.keys(currentParams) as (keyof StrategyParams)[];
+  for (const key of keysToCompare) {
     if (String(result.value[key]) !== String(currentParams[key])) {
       changedKeys.push(key);
     }
