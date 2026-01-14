@@ -20,6 +20,7 @@ import type {
 export function createPostgresPositionRepository(db: Db): PositionRepository {
   return {
     upsertLatestPosition(state: LatestPositionState): ResultAsync<void, PositionRepositoryError> {
+      const now = new Date();
       return ResultAsync.fromPromise(
         db
           .insert(latestPosition)
@@ -30,7 +31,7 @@ export function createPostgresPositionRepository(db: Db): PositionRepository {
             positionSz: state.positionSz,
             entryPx: state.entryPx ?? null,
             unrealizedPnl: state.unrealizedPnl ?? null,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .onConflictDoUpdate({
             target: [latestPosition.exchange, latestPosition.symbol],
@@ -39,7 +40,7 @@ export function createPostgresPositionRepository(db: Db): PositionRepository {
               positionSz: state.positionSz,
               entryPx: state.entryPx ?? null,
               unrealizedPnl: state.unrealizedPnl ?? null,
-              updatedAt: new Date(),
+              updatedAt: now,
             },
           }),
         e => ({

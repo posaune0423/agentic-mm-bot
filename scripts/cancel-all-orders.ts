@@ -205,7 +205,7 @@ async function main(): Promise<void> {
     log("✓ All orders cancelled successfully. Remaining: 0");
     process.exit(0);
   } else {
-    logError(`✗ ${remainingOrders.length} order(s) still open after cancel`, {
+    log(`✗ ${remainingOrders.length} order(s) still open after cancel`, {
       remaining: remainingOrders.map(o => ({
         id: o.exchangeOrderId,
         side: o.side,

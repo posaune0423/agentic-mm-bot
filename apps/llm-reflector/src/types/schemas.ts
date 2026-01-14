@@ -75,7 +75,7 @@ export const ChangesSchema = z
   })
   .refine(
     data => {
-      const definedKeys = Object.entries(data).filter(([, v]) => v !== undefined);
+      const definedKeys = Object.keys(data);
       return definedKeys.length >= 1 && definedKeys.length <= 2;
     },
     { message: "Must have 1-2 parameter changes" },
@@ -103,13 +103,13 @@ export type ProposalOutput = z.infer<typeof ProposalOutputSchema>;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ReasoningLogSchema = z.object({
-  proposalId: z.string().uuid(),
-  timestamp: z.string().datetime(),
+  proposalId: z.uuid(),
+  timestamp: z.iso.datetime(),
   exchange: z.string(),
   symbol: z.string(),
   inputSummary: z.object({
-    windowStart: z.string().datetime(),
-    windowEnd: z.string().datetime(),
+    windowStart: z.iso.datetime(),
+    windowEnd: z.iso.datetime(),
     fillsCount: z.number(),
     cancelCount: z.number(),
     pauseCount: z.number(),
@@ -117,7 +117,7 @@ export const ReasoningLogSchema = z.object({
     worstFillsCount: z.number(),
   }),
   currentParams: z.object({
-    paramsSetId: z.string().uuid(),
+    paramsSetId: z.uuid(),
     baseHalfSpreadBps: z.string(),
     volSpreadGain: z.string(),
     toxSpreadGain: z.string(),

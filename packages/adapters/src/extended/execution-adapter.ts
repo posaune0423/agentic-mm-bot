@@ -302,11 +302,12 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
           const parsedMinQty = this.toDecimal(minOrderSize);
           const parsedPriceStep = this.toDecimal(minPriceChange);
 
-          if (parsedMinQtyStep || parsedMinQty || parsedPriceStep) {
+          if (parsedMinQtyStep !== null || parsedMinQty !== null || parsedPriceStep !== null) {
+            const cached = this.tradingConfigCache.get(request.symbol);
             this.tradingConfigCache.set(request.symbol, {
-              minQtyStep: parsedMinQtyStep,
-              minQty: parsedMinQty,
-              priceStep: parsedPriceStep,
+              minQtyStep: parsedMinQtyStep ?? cached?.minQtyStep ?? null,
+              minQty: parsedMinQty ?? cached?.minQty ?? null,
+              priceStep: parsedPriceStep ?? cached?.priceStep ?? null,
             });
           }
 

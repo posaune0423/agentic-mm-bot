@@ -14,8 +14,18 @@ import { LayoutPolicy, LogBuffer, LogLevel, logger, Style, TTYRenderer, TTYScree
  *   - DASHBOARD_SOAK_REFRESH_MS=200 (default: 200ms)
  */
 
-const durationMs = Number(process.env.DASHBOARD_SOAK_MS ?? 10 * 60 * 1000);
-const refreshMs = Number(process.env.DASHBOARD_SOAK_REFRESH_MS ?? 200);
+const durationMs = (() => {
+  const raw = process.env.DASHBOARD_SOAK_MS;
+  if (!raw) return 10 * 60 * 1000;
+  const parsed = Number(raw);
+  return isNaN(parsed) || parsed <= 0 ? 10 * 60 * 1000 : parsed;
+})();
+const refreshMs = (() => {
+  const raw = process.env.DASHBOARD_SOAK_REFRESH_MS;
+  if (!raw) return 200;
+  const parsed = Number(raw);
+  return isNaN(parsed) || parsed <= 0 ? 200 : parsed;
+})();
 
 if (!process.stdout.isTTY) {
   // eslint-disable-next-line no-console

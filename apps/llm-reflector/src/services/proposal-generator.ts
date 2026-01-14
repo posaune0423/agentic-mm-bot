@@ -213,8 +213,6 @@ export function generateProposal(
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(input);
 
-  type LlmResponse = z.infer<typeof LlmResponseSchema>;
-
   return ResultAsync.fromPromise(
     generateText({
       model: openai(options.model),
@@ -277,7 +275,7 @@ export function generateProposal(
           message: "Invalid response JSON",
         }));
       } catch (e) {
-        return ResultAsync.fromPromise(Promise.reject(e), () => ({
+        return ResultAsync.fromPromise(Promise.reject(e instanceof Error ? e : new Error(String(e))), () => ({
           type: "INVALID_RESPONSE" as const,
           message: e instanceof Error ? e.message : "Failed to parse response JSON",
         }));

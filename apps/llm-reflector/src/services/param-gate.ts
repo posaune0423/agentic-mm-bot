@@ -10,7 +10,6 @@
  */
 
 import { type Result, err, ok } from "neverthrow";
-import { z } from "zod";
 
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
@@ -90,11 +89,8 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
 
   const proposalOutput = parsed.data;
 
-  // Extract changes (filter out undefined values)
-  const changes = Object.entries(proposalOutput.changes).filter(([, v]) => v !== undefined) as [
-    ParamName,
-    string | number,
-  ][];
+  // Extract changes
+  const changes = Object.entries(proposalOutput.changes) as [ParamName, string | number][];
 
   // 1. Maximum 2 changes
   if (changes.length > 2) {

@@ -52,12 +52,20 @@ export function createWindowGuard(): {
 /**
  * Calculate the last complete N-minute window (UTC-aligned).
  *
+ * windowMinutes must be an integer between 1 and 60 (windowMinutes ≤ 60).
+ *
  * Examples (windowMinutes=5):
  * - If now is 00:07:30Z -> { start: 00:00Z, end: 00:05Z }
  * - If now is 00:10:00Z -> { start: 00:05Z, end: 00:10Z }
  */
 export function getLastCompleteWindow(now: Date, windowMinutes: number): { start: Date; end: Date } {
-  const minutes = Math.max(1, Math.floor(windowMinutes));
+  if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
+    throw new RangeError(
+      "getLastCompleteWindow requires windowMinutes to be an integer between 1 and 60 (windowMinutes <= 60).",
+    );
+  }
+
+  const minutes = windowMinutes;
   const truncatedToMinuteUtc = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), 0, 0),
   );
@@ -73,7 +81,9 @@ export function getLastCompleteWindow(now: Date, windowMinutes: number): { start
 const windowGuard = createWindowGuard();
 
 /**
- * Execute the periodic reflection
+ * Execute the periodic reflection.
+ *
+ * windowMinutes must be an integer between 1 and 60 (windowMinutes ≤ 60).
  */
 export function runHourlyReflection(
   deps: RunHourlyReflectionDeps,

@@ -18,6 +18,16 @@ describe("getLastCompleteWindow", () => {
     expect(start.toISOString()).toBe("2024-01-01T00:05:00.000Z");
     expect(end.toISOString()).toBe("2024-01-01T00:10:00.000Z");
   });
+
+  test("throws when windowMinutes is outside 1-60 or non-integer", () => {
+    const now = new Date("2024-01-01T00:07:30.000Z");
+
+    expect(() => getLastCompleteWindow(now, 61)).toThrow(RangeError);
+    expect(() => getLastCompleteWindow(now, 61)).toThrow(/getLastCompleteWindow/);
+    expect(() => getLastCompleteWindow(now, 61)).toThrow(/windowMinutes/);
+
+    expect(() => getLastCompleteWindow(now, 1.5)).toThrow(RangeError);
+  });
 });
 
 describe("createWindowGuard", () => {

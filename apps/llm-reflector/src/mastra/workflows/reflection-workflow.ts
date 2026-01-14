@@ -288,14 +288,12 @@ function generateProposal(
 }
 
 /**
- * Convert changes object to a clean Record (filter out undefined values)
+ * Convert changes object to a clean Record
  */
 function toChangesRecord(changes: ProposalOutput["changes"]): Record<string, string | number> {
   const result: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(changes)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
+    result[key] = value;
   }
   return result;
 }

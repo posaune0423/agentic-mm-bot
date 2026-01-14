@@ -213,9 +213,9 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
         logger.debug(`No current params found for ${exchange}:${symbol}; seeding defaults into DB`);
 
         return ResultAsync.fromPromise(
-          (async () => {
-            // Best-effort: ensure there's at most one current row for this key.
-            await db
+          db.transaction(async tx => {
+            // Atomically ensure there's at most one current row for this key.
+            await tx
               .update(strategyParams)
               .set({ isCurrent: false })
               .where(
@@ -226,14 +226,14 @@ export function createPostgresProposalRepository(db: Db): ProposalRepository {
                 ),
               );
 
-            const seeded = await db
+            const seeded = await tx
               .insert(strategyParams)
               .values(buildSeededCurrentParams(exchange, symbol))
               .returning()
               .then(r => r[0]);
 
             return seeded;
-          })(),
+          }),
           dbError,
         );
       });

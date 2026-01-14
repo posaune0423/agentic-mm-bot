@@ -434,8 +434,7 @@ export async function processPendingProposals(
       result.error.type === "DB_ERROR" ? result.error.message
       : result.error.type === "VALIDATION_FAILED" ? result.error.errors.join(", ")
       : result.error.type === "OPERATIONAL_GATE_FAILED" ? result.error.reason
-      : result.error.type === "FORMAT_MISMATCH" ? result.error.reason
-      : "unknown error";
+      : result.error.reason;
     return { type: "error", message: errMsg };
   }
 
