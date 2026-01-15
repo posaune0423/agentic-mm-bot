@@ -9,16 +9,14 @@
 import { eq, and } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
-import {
-  llmProposal,
-  paramRollout,
-  strategyParams,
-  type Db,
-  type LlmProposal,
-  type NewLlmProposal,
-  type NewParamRollout,
-  type StrategyParams,
-  type NewStrategyParams,
+import { llmProposal, paramRollout, strategyParams } from "@agentic-mm-bot/db";
+import type {
+  Db,
+  LlmProposal,
+  NewLlmProposal,
+  NewParamRollout,
+  StrategyParams,
+  NewStrategyParams,
 } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 

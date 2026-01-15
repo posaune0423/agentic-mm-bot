@@ -50,7 +50,10 @@ export interface FillRecord {
 /**
  * Repository error types
  */
-export type EventRepositoryError = { type: "DB_ERROR"; message: string };
+export interface EventRepositoryError {
+  type: "DB_ERROR";
+  message: string;
+}
 
 /**
  * Event Repository Interface
@@ -61,25 +64,25 @@ export interface EventRepository {
   /**
    * Queue an order event for batch write
    */
-  queueOrderEvent(event: OrderEventRecord): void;
+  queueOrderEvent: (event: OrderEventRecord) => void;
 
   /**
    * Queue a fill for batch write
    */
-  queueFill(fill: FillRecord): void;
+  queueFill: (fill: FillRecord) => void;
 
   /**
    * Flush all queued events to the database
    */
-  flush(): Promise<Result<void, EventRepositoryError>>;
+  flush: () => Promise<Result<void, EventRepositoryError>>;
 
   /**
    * Start periodic flush
    */
-  startPeriodicFlush(intervalMs: number): void;
+  startPeriodicFlush: (intervalMs: number) => void;
 
   /**
    * Stop periodic flush and flush remaining events
    */
-  stop(): Promise<Result<void, EventRepositoryError>>;
+  stop: () => Promise<Result<void, EventRepositoryError>>;
 }

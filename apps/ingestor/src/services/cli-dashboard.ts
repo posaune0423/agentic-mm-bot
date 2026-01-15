@@ -19,14 +19,14 @@ import {
   Style,
   TTYRenderer,
   TTYScreen,
-  type LogRecord,
 } from "@agentic-mm-bot/utils";
+import type { LogRecord } from "@agentic-mm-bot/utils";
 import type { IngestorMetrics } from "../types";
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 type IngestorPhase = "IDLE" | "CONNECTING" | "SUBSCRIBED" | "RECEIVING" | "FLUSHING";
 
-type BboDecision = {
+interface BboDecision {
   shouldWrite: boolean;
   reason: "first_write" | "time_throttle" | "price_change" | "throttled";
   throttleMs: number;
@@ -35,7 +35,7 @@ type BboDecision = {
   lastMid: number | null;
   currentMid: number;
   changeBps: number | null;
-};
+}
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
@@ -72,7 +72,11 @@ export class IngestorCliDashboard {
 
   private lastBboDecision?: BboDecision;
 
-  private bufferSizes: { bbo: number; trade: number; price: number } = { bbo: 0, trade: 0, price: 0 };
+  private bufferSizes: { bbo: number; trade: number; price: number } = {
+    bbo: 0,
+    trade: 0,
+    price: 0,
+  };
   private deadLetterSize = 0;
 
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -89,7 +93,7 @@ export class IngestorCliDashboard {
     const control = createDashboardControl({
       enabled: args.enabled,
       refreshMs: args.refreshMs ?? 250,
-      isTTY: Boolean(process.stdout.isTTY),
+      isTTY: process.stdout.isTTY,
     });
     const cfg = control.config();
 
@@ -102,7 +106,10 @@ export class IngestorCliDashboard {
     this.style = new Style();
     this.layout = new LayoutPolicy();
     this.renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
-    this.screen = new TTYScreen({ enabled: this.enabled, write: chunk => process.stdout.write(chunk) });
+    this.screen = new TTYScreen({
+      enabled: this.enabled,
+      write: chunk => process.stdout.write(chunk),
+    });
     this.logs = new LogBuffer(args.maxLogs ?? 200);
     this.flow = new FlowStatusTracker<IngestorPhase>("CONNECTING", Date.now());
 
@@ -121,10 +128,16 @@ export class IngestorCliDashboard {
     this.renderer.reset();
 
     // Route logs into dashboard (avoid stdout/stderr collisions).
-    logger.setSink({ write: r => this.logs.push(r) });
+    logger.setSink({
+      write: r => {
+        this.logs.push(r);
+      },
+    });
 
     // Render loop: snapshot-only, never blocks hot paths.
-    this.interval = setInterval(() => this.render(), this.refreshMs);
+    this.interval = setInterval(() => {
+      this.render();
+    }, this.refreshMs);
   }
 
   stop(): void {
@@ -141,7 +154,7 @@ export class IngestorCliDashboard {
     this.pushEvent(
       status === "disconnected" ? LogLevel.WARN : LogLevel.INFO,
       `market data: ${status}`,
-      reason ? { reason } : undefined,
+      reason !== undefined && reason !== "" ? { reason } : undefined,
     );
   }
 
@@ -181,7 +194,7 @@ export class IngestorCliDashboard {
 
   pushEvent(level: LogLevel, message: string, data?: unknown): void {
     const fields =
-      data && typeof data === "object" ?
+      data !== null && data !== undefined && typeof data === "object" ?
         Object.fromEntries(Object.entries(data as Record<string, unknown>).map(([k, v]) => [k, JSON.stringify(v)]))
       : undefined;
     const r: LogRecord = { tsMs: Date.now(), level, message, fields };
@@ -278,7 +291,7 @@ export class IngestorCliDashboard {
 
     // Quiet time (highlight if stale)
     const quietStyle = quietMs >= this.staleMs ? "yellow" : "dim";
-    const quietLabel = `${this.style.token("dim")}quiet:${this.style.token("reset")} ${this.style.wrap(`${quietMs}ms`, quietStyle)}`;
+    const quietLabel = `${this.style.token("dim")}quiet:${this.style.token("reset")} ${this.style.wrap(`${String(quietMs)}ms`, quietStyle)}`;
 
     lines.push(this.layout.sectionHeader(title, width));
     lines.push(this.boxRow(`${symbol}  ${connBadge}  ${uptimeLabel}`, width));
@@ -313,7 +326,7 @@ export class IngestorCliDashboard {
         return this.style.wrap(phase, "bold", "cyan");
       case "CONNECTING":
         return this.style.wrap(phase, "bold", "yellow");
-      default:
+      case "IDLE":
         return this.style.wrap(phase, "dim");
     }
   }
@@ -330,8 +343,8 @@ export class IngestorCliDashboard {
 
     // BBO
     if (this.lastBbo) {
-      const bid = parseFloat(this.lastBbo.bestBidPx);
-      const ask = parseFloat(this.lastBbo.bestAskPx);
+      const bid = Number.parseFloat(this.lastBbo.bestBidPx);
+      const ask = Number.parseFloat(this.lastBbo.bestAskPx);
       const mid = (bid + ask) / 2;
       const spreadBps = mid > 0 ? ((ask - bid) / mid) * 10000 : null;
       const ageMs = nowMs - this.lastBbo.ts.getTime();
@@ -401,7 +414,7 @@ export class IngestorCliDashboard {
     // Funding
     if (this.lastFunding) {
       const fundAge = this.layout.formatAgeMs(nowMs, this.lastFunding.ts.getTime());
-      const rate = parseFloat(this.lastFunding.fundingRate);
+      const rate = Number.parseFloat(this.lastFunding.fundingRate);
       const rateColor =
         rate > 0 ? "green"
         : rate < 0 ? "red"
@@ -446,13 +459,14 @@ export class IngestorCliDashboard {
           reasonStr = this.style.wrap("first write", "cyan");
           break;
         case "time_throttle":
-          reasonStr = `${this.style.wrap("time", "yellow")} ≥${d.throttleMs}ms`;
+          reasonStr = `${this.style.wrap("time", "yellow")} ≥${String(d.throttleMs)}ms`;
           break;
         case "price_change":
-          reasonStr = `${this.style.wrap("Δmid", "green")} ≥${d.minChangeBps}bps`;
+          reasonStr = `${this.style.wrap("Δmid", "green")} ≥${String(d.minChangeBps)}bps`;
           break;
-        default:
+        case "throttled":
           reasonStr = this.style.wrap("throttled", "dim");
+          break;
       }
 
       lines.push(
@@ -463,7 +477,7 @@ export class IngestorCliDashboard {
       );
 
       // Details
-      const sinceLastWrite = `${this.style.token("dim")}since_write:${this.style.token("reset")} ${d.timeSinceLastWriteMs}ms`;
+      const sinceLastWrite = `${this.style.token("dim")}since_write:${this.style.token("reset")} ${String(d.timeSinceLastWriteMs)}ms`;
       const changeBps =
         d.changeBps !== null ?
           `${this.style.token("dim")}Δbps:${this.style.token("reset")} ${this.style.wrap(fmtNum(d.changeBps, 2), d.changeBps >= d.minChangeBps ? "green" : "dim")}`
@@ -613,8 +627,9 @@ export class IngestorCliDashboard {
             levelBadge = this.style.wrap("DBG", "dim");
             msgStyle = ["dim"];
             break;
-          default:
-            levelBadge = r.level;
+          case LogLevel.LOG:
+            levelBadge = this.style.wrap("LOG", "dim");
+            break;
         }
 
         const msgContent = msgStyle.length > 0 ? this.style.wrap(r.message, ...msgStyle) : r.message;

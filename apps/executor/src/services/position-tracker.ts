@@ -27,8 +27,8 @@ export class PositionTracker {
    * to avoid displaying outdated/incorrect values.
    */
   updateFromFill(event: FillEvent): void {
-    const currentSize = parseFloat(this.size);
-    const fillSize = parseFloat(event.size);
+    const currentSize = Number.parseFloat(this.size);
+    const fillSize = Number.parseFloat(event.size);
     const signedFill = event.side === "buy" ? fillSize : -fillSize;
 
     this.size = (currentSize + signedFill).toString();
@@ -68,7 +68,7 @@ export class PositionTracker {
    * Get position size as number
    */
   getPositionSize(): number {
-    return parseFloat(this.size);
+    return Number.parseFloat(this.size);
   }
 
   /**

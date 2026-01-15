@@ -62,8 +62,8 @@ export function evaluateRisk(features: Features, position: Position, params: Str
   }
 
   // 5.4: Mark-Index divergence
-  const markIndexDiv = parseFloat(features.markIndexDivBps);
-  const pauseMarkIndex = parseFloat(params.pauseMarkIndexBps);
+  const markIndexDiv = Number.parseFloat(features.markIndexDivBps);
+  const pauseMarkIndex = Number.parseFloat(params.pauseMarkIndexBps);
   if (markIndexDiv >= pauseMarkIndex) {
     shouldPause = true;
     reasonCodes.push("MARK_INDEX_DIVERGED");
@@ -76,8 +76,8 @@ export function evaluateRisk(features: Features, position: Position, params: Str
   }
 
   // 5.5: Inventory limit
-  const absPosition = Math.abs(parseFloat(position.size));
-  const maxInventory = parseFloat(params.maxInventory);
+  const absPosition = Math.abs(Number.parseFloat(position.size));
+  const maxInventory = Number.parseFloat(params.maxInventory);
   if (absPosition > maxInventory) {
     shouldPause = true;
     reasonCodes.push("INVENTORY_LIMIT");
@@ -93,15 +93,15 @@ export function evaluateRisk(features: Features, position: Position, params: Str
   // ─────────────────────────────────────────────────────────────────────────
 
   // High volatility
-  const vol = parseFloat(features.realizedVol10s);
-  if (vol >= parseFloat(DEFENSIVE_VOL_THRESHOLD_BPS)) {
+  const vol = Number.parseFloat(features.realizedVol10s);
+  if (vol >= Number.parseFloat(DEFENSIVE_VOL_THRESHOLD_BPS)) {
     shouldDefensive = true;
     reasonCodes.push("DEFENSIVE_VOL");
   }
 
   // High toxicity
-  const tox = Math.abs(parseFloat(features.tradeImbalance1s));
-  if (tox >= parseFloat(DEFENSIVE_TOX_THRESHOLD)) {
+  const tox = Math.abs(Number.parseFloat(features.tradeImbalance1s));
+  if (tox >= Number.parseFloat(DEFENSIVE_TOX_THRESHOLD)) {
     shouldDefensive = true;
     reasonCodes.push("DEFENSIVE_TOX");
   }

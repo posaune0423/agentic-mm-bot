@@ -3,11 +3,6 @@
   "ui": "tui",
   "globalDependencies": [".encrypted.local", ".encrypted"],
   "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
-      "outputs": ["dist/**"]
-    },
     "db:generate": {
       "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
       "outputs": ["migrations/**"]

@@ -76,7 +76,7 @@ export class LayoutPolicy {
     }
 
     // Add reset before ellipsis to avoid style bleeding
-    return result + "\x1b[0m…";
+    return result + "\x1B[0m…";
   }
 
   padRight(text: string, width: number): string {
@@ -186,7 +186,7 @@ export class LayoutPolicy {
   formatAgeMs(nowMs: number, tsMs?: number | null): string {
     if (tsMs === null || tsMs === undefined) return "-";
     const age = Math.max(0, nowMs - tsMs);
-    if (age < 1_000) return `${age}ms`;
+    if (age < 1_000) return `${String(age)}ms`;
     if (age < 60_000) return `${(age / 1_000).toFixed(1)}s`;
     return `${(age / 60_000).toFixed(1)}m`;
   }
@@ -198,7 +198,7 @@ export class LayoutPolicy {
   formatDurationMs(durationMs: number): string {
     const d = Math.max(0, durationMs);
     const s =
-      d < 1_000 ? `${d}ms`
+      d < 1_000 ? `${String(d)}ms`
       : d < 60_000 ? `${(d / 1_000).toFixed(1)}s`
       : d < 3_600_000 ? `${(d / 60_000).toFixed(1)}m`
       : `${(d / 3_600_000).toFixed(1)}h`;

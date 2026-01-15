@@ -110,30 +110,30 @@ export interface MarketDataPort {
   /**
    * Subscribe to market data
    */
-  subscribe(subscription: MarketDataSubscription): Result<void, MarketDataError>;
+  subscribe: (subscription: MarketDataSubscription) => Result<void, MarketDataError>;
 
   /**
    * Unsubscribe from market data
    */
-  unsubscribe(subscription: MarketDataSubscription): Result<void, MarketDataError>;
+  unsubscribe: (subscription: MarketDataSubscription) => Result<void, MarketDataError>;
 
   /**
    * Connect to market data stream
    */
-  connect(): Promise<Result<void, MarketDataError>>;
+  connect: () => Promise<Result<void, MarketDataError>>;
 
   /**
    * Disconnect from market data stream
    */
-  disconnect(): Promise<Result<void, MarketDataError>>;
+  disconnect: () => Promise<Result<void, MarketDataError>>;
 
   /**
    * Register event handler
    */
-  onEvent(handler: (event: MarketDataEvent) => void): void;
+  onEvent: (handler: (event: MarketDataEvent) => void) => void;
 
   /**
    * Check if connected
    */
-  isConnected(): boolean;
+  isConnected: () => boolean;
 }

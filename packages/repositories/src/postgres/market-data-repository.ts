@@ -8,8 +8,10 @@
  */
 
 import { eq, and, gte, lte, asc, sql } from "drizzle-orm";
-import { ok, err, type Result, ResultAsync } from "neverthrow";
-import { mdBbo, mdTrade, mdPrice, latestTop, type Db, type MdBbo, type MdTrade } from "@agentic-mm-bot/db";
+import { ok, err, ResultAsync } from "neverthrow";
+import type { Result } from "neverthrow";
+import { mdBbo, mdTrade, mdPrice, latestTop } from "@agentic-mm-bot/db";
+import type { Db, MdBbo, MdTrade } from "@agentic-mm-bot/db";
 
 import type {
   MarketDataRepository,
@@ -135,9 +137,9 @@ export function createPostgresMarketDataRepository(db: Db): MarketDataRepository
         if (result.length === 0) return ok(null);
 
         const row = result[0];
-        const mid = parseFloat(row.midPx);
-        const bid = parseFloat(row.bestBidPx);
-        const ask = parseFloat(row.bestAskPx);
+        const mid = Number.parseFloat(row.midPx);
+        const bid = Number.parseFloat(row.bestBidPx);
+        const ask = Number.parseFloat(row.bestAskPx);
         const spreadBps = mid > 0 ? ((ask - bid) / mid) * 10_000 : 0;
 
         return ok({

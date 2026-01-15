@@ -49,8 +49,8 @@ function formatBps(value: number): BpsStr {
  * mid = (best_bid + best_ask) / 2
  */
 export function calculateMid(bestBid: PriceStr, bestAsk: PriceStr): PriceStr {
-  const bid = parseFloat(bestBid);
-  const ask = parseFloat(bestAsk);
+  const bid = Number.parseFloat(bestBid);
+  const ask = Number.parseFloat(bestAsk);
   return ((bid + ask) / 2).toFixed(8);
 }
 
@@ -61,9 +61,9 @@ export function calculateMid(bestBid: PriceStr, bestAsk: PriceStr): PriceStr {
  * spread_bps = (best_ask - best_bid) / mid * 10000
  */
 export function calculateSpreadBps(bestBid: PriceStr, bestAsk: PriceStr, midPx: PriceStr): BpsStr {
-  const bid = parseFloat(bestBid);
-  const ask = parseFloat(bestAsk);
-  const mid = parseFloat(midPx);
+  const bid = Number.parseFloat(bestBid);
+  const ask = Number.parseFloat(bestAsk);
+  const mid = Number.parseFloat(midPx);
 
   if (mid === 0) {
     return "0";
@@ -92,17 +92,17 @@ export function calculateTradeImbalance1s(trades: TradeData[], midPx: PriceStr):
     return "0";
   }
 
-  const mid = parseFloat(midPx);
+  const mid = Number.parseFloat(midPx);
   let buyVol = 0;
   let sellVol = 0;
 
   for (const trade of trades) {
-    const sz = parseFloat(trade.sz);
+    const sz = Number.parseFloat(trade.sz);
     let side = trade.side;
 
     // Infer side if unknown
     if (!side) {
-      const px = parseFloat(trade.px);
+      const px = Number.parseFloat(trade.px);
       side = px >= mid ? "buy" : "sell";
     }
 
@@ -135,13 +135,13 @@ export function calculateRealizedVol10s(midSnapshots: MidSnapshot[]): BpsStr {
 
   // Calculate log returns
   const returns: number[] = [];
-  for (let i = 1; i < midSnapshots.length; i++) {
-    const prevMid = parseFloat(midSnapshots[i - 1].midPx);
-    const currMid = parseFloat(midSnapshots[i].midPx);
-
-    if (prevMid > 0 && currMid > 0) {
+  let prevMid: number | undefined;
+  for (const snap of midSnapshots) {
+    const currMid = Number.parseFloat(snap.midPx);
+    if (prevMid !== undefined && prevMid > 0 && currMid > 0) {
       returns.push(Math.log(currMid / prevMid));
     }
+    prevMid = currMid;
   }
 
   if (returns.length === 0) {
@@ -174,13 +174,16 @@ export function calculateMarkIndexDivBps(
   indexPx: PriceStr | undefined,
   midPx: PriceStr,
 ): BpsStr {
-  if (!markPx || !indexPx) {
+  if (markPx === undefined || indexPx === undefined) {
+    return "0";
+  }
+  if (markPx.length === 0 || indexPx.length === 0) {
     return "0";
   }
 
-  const mark = parseFloat(markPx);
-  const index = parseFloat(indexPx);
-  const mid = parseFloat(midPx);
+  const mark = Number.parseFloat(markPx);
+  const index = Number.parseFloat(indexPx);
+  const mid = Number.parseFloat(midPx);
 
   if (mid === 0) {
     return "0";

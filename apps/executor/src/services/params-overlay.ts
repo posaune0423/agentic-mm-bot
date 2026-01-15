@@ -148,7 +148,7 @@ export class ParamsOverlayManager {
     this.maybeAdjustTighten(dbParams, nowMs);
 
     // Apply tightening to baseHalfSpreadBps
-    const dbBase = parseFloat(dbParams.baseHalfSpreadBps);
+    const dbBase = Number.parseFloat(dbParams.baseHalfSpreadBps);
     if (Number.isNaN(dbBase)) {
       // If baseHalfSpreadBps is not numeric, do not apply overlay.
       return dbParams;
@@ -197,7 +197,7 @@ export class ParamsOverlayManager {
     }
 
     // Check if we can tighten further (not at floor)
-    const dbBase = parseFloat(dbParams.baseHalfSpreadBps);
+    const dbBase = Number.parseFloat(dbParams.baseHalfSpreadBps);
     const currentEffective = dbBase - this.state.tightenBps;
 
     if (currentEffective <= this.config.minBaseHalfSpreadBps) {

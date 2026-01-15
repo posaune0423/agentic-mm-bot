@@ -6,8 +6,10 @@
  * - Queues events in memory and flushes periodically
  */
 
-import { ok, err, type Result } from "neverthrow";
-import { exOrderEvent, exFill, type Db } from "@agentic-mm-bot/db";
+import { ok, err } from "neverthrow";
+import type { Result } from "neverthrow";
+import { exOrderEvent, exFill } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import type {
@@ -38,7 +40,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
 
     try {
       // #region agent log (debug)
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
+      void fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -47,7 +49,10 @@ export function createPostgresEventRepository(db: Db): EventRepository {
           hypothesisId: "H2",
           location: "packages/repositories/src/postgres/event-repository.ts:doFlush",
           message: "doFlush begin",
-          data: { eventsToFlush: eventsToFlush.length, fillsToFlush: fillsToFlush.length },
+          data: {
+            eventsToFlush: eventsToFlush.length,
+            fillsToFlush: fillsToFlush.length,
+          },
           timestamp: Date.now(),
         }),
       }).catch(() => {});
@@ -108,7 +113,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
       fillQueue.push(...fillsToFlush);
 
       // #region agent log (debug)
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
+      void fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,7 +143,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
     queueOrderEvent(event: OrderEventRecord): void {
       orderEventQueue.push(event);
       // #region agent log (debug)
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
+      void fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -147,7 +152,10 @@ export function createPostgresEventRepository(db: Db): EventRepository {
           hypothesisId: "H2",
           location: "packages/repositories/src/postgres/event-repository.ts:queueOrderEvent",
           message: "queued order event",
-          data: { orderEventQueue: orderEventQueue.length, eventType: event.eventType },
+          data: {
+            orderEventQueue: orderEventQueue.length,
+            eventType: event.eventType,
+          },
           timestamp: Date.now(),
         }),
       }).catch(() => {});
@@ -157,7 +165,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
     queueFill(fill: FillRecord): void {
       fillQueue.push(fill);
       // #region agent log (debug)
-      fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
+      void fetch("http://127.0.0.1:7247/ingest/3d58f168-0a7e-4968-9928-76ef44de0352", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -196,7 +204,7 @@ export function createPostgresEventRepository(db: Db): EventRepository {
               logger.error("Periodic flush failed", result.error);
             }
           })
-          .catch(error => {
+          .catch((error: unknown) => {
             // Defensive: unexpected error outside doFlush's try/catch.
             logger.error("Periodic flush crashed", error);
           });

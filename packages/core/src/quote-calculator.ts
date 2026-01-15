@@ -24,12 +24,12 @@ import type { Features, Position, PriceStr, QuoteIntent, ReasonCode, StrategyPar
  * @returns Half spread in bps
  */
 export function calculateHalfSpreadBps(params: StrategyParams, features: Features): number {
-  const baseSpread = parseFloat(params.baseHalfSpreadBps);
-  const volGain = parseFloat(params.volSpreadGain);
-  const toxGain = parseFloat(params.toxSpreadGain);
+  const baseSpread = Number.parseFloat(params.baseHalfSpreadBps);
+  const volGain = Number.parseFloat(params.volSpreadGain);
+  const toxGain = Number.parseFloat(params.toxSpreadGain);
 
-  const vol = parseFloat(features.realizedVol10s);
-  const tox = Math.abs(parseFloat(features.tradeImbalance1s));
+  const vol = Number.parseFloat(features.realizedVol10s);
+  const tox = Math.abs(Number.parseFloat(features.tradeImbalance1s));
 
   return baseSpread + volGain * vol + toxGain * tox;
 }
@@ -48,8 +48,8 @@ export function calculateHalfSpreadBps(params: StrategyParams, features: Feature
  * @returns Skew in bps
  */
 export function calculateSkewBps(params: StrategyParams, position: Position): number {
-  const skewGain = parseFloat(params.inventorySkewGain);
-  const inventory = parseFloat(position.size);
+  const skewGain = Number.parseFloat(params.inventorySkewGain);
+  const inventory = Number.parseFloat(position.size);
 
   return skewGain * inventory;
 }
@@ -80,8 +80,8 @@ function formatPrice(price: number, precision = 8): PriceStr {
  * Convert USD notional to base size using mid price
  */
 function usdToBaseSize(quoteSizeUsd: string, midPx: PriceStr, precision = 6): string {
-  const usd = parseFloat(quoteSizeUsd);
-  const mid = parseFloat(midPx);
+  const usd = Number.parseFloat(quoteSizeUsd);
+  const mid = Number.parseFloat(midPx);
 
   if (!Number.isFinite(usd) || usd <= 0) return "0";
   if (!Number.isFinite(mid) || mid <= 0) return "0";
@@ -106,9 +106,9 @@ export function priceExceedsThreshold(
   midPx: PriceStr,
   thresholdBps: number,
 ): boolean {
-  const current = parseFloat(currentPx);
-  const target = parseFloat(targetPx);
-  const mid = parseFloat(midPx);
+  const current = Number.parseFloat(currentPx);
+  const target = Number.parseFloat(targetPx);
+  const mid = Number.parseFloat(midPx);
 
   if (mid === 0) return true;
 
@@ -135,7 +135,7 @@ export function calculateQuotePrices(
   features: Features,
   position: Position,
 ): { bidPx: PriceStr; askPx: PriceStr } {
-  const mid = parseFloat(features.midPx);
+  const mid = Number.parseFloat(features.midPx);
   const halfSpreadBps = calculateHalfSpreadBps(params, features);
   const skewBps = calculateSkewBps(params, position);
 

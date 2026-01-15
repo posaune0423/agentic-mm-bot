@@ -25,33 +25,31 @@ export type StyleToken =
 
 const ANSI: Record<StyleToken, string> = {
   // Reset & text decorations
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bold: "\x1b[1m",
-  underline: "\x1b[4m",
-  inverse: "\x1b[7m",
+  reset: "\x1B[0m",
+  dim: "\x1B[2m",
+  bold: "\x1B[1m",
+  underline: "\x1B[4m",
+  inverse: "\x1B[7m",
   // Foreground colors
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  green: "\x1b[32m",
-  cyan: "\x1b[36m",
-  blue: "\x1b[34m",
-  magenta: "\x1b[35m",
-  gray: "\x1b[90m",
-  white: "\x1b[97m",
+  red: "\x1B[31m",
+  yellow: "\x1B[33m",
+  green: "\x1B[32m",
+  cyan: "\x1B[36m",
+  blue: "\x1B[34m",
+  magenta: "\x1B[35m",
+  gray: "\x1B[90m",
+  white: "\x1B[97m",
   // Background colors
-  bgRed: "\x1b[41m",
-  bgYellow: "\x1b[43m",
-  bgGreen: "\x1b[42m",
-  bgBlue: "\x1b[44m",
-  bgCyan: "\x1b[46m",
-  bgMagenta: "\x1b[45m",
-  bgGray: "\x1b[100m",
+  bgRed: "\x1B[41m",
+  bgYellow: "\x1B[43m",
+  bgGreen: "\x1B[42m",
+  bgBlue: "\x1B[44m",
+  bgCyan: "\x1B[46m",
+  bgMagenta: "\x1B[45m",
+  bgGray: "\x1B[100m",
 };
 
 export class Style {
-  constructor() {}
-
   enabled(): boolean {
     return true;
   }

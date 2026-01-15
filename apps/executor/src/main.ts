@@ -8,7 +8,8 @@
  * - Non-blocking event logging (4.10)
  */
 
-import { createInitialState, type StrategyParams, type StrategyState, ALLOWED_PARAM_KEYS } from "@agentic-mm-bot/core";
+import { createInitialState, ALLOWED_PARAM_KEYS } from "@agentic-mm-bot/core";
+import type { StrategyParams, StrategyState } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter, initWasm } from "@agentic-mm-bot/adapters";
 import type { StrategyParams as DbStrategyParams } from "@agentic-mm-bot/db";
 import { getDb } from "@agentic-mm-bot/db";
@@ -43,7 +44,10 @@ async function main(): Promise<void> {
     refreshMs: env.EXECUTOR_DASHBOARD_REFRESH_MS,
   });
   dashboard.start();
-  dashboard.pushEvent(LogLevel.INFO, "executor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  dashboard.pushEvent(LogLevel.INFO, "executor started", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+  });
 
   // Initialize WASM first
   try {
@@ -51,10 +55,13 @@ async function main(): Promise<void> {
     logger.info("WASM initialized successfully (signer)");
   } catch (error) {
     logger.error("Failed to initialize WASM", error);
-    process.exit(1);
+    throw new Error("WASM initialization failed");
   }
 
-  logger.info("Starting executor", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  logger.info("Starting executor", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+  });
 
   // Initialize database connection
   const db = getDb(env.DATABASE_URL);
@@ -113,7 +120,7 @@ async function main(): Promise<void> {
 
       dashboard.pushEvent(
         LogLevel.INFO,
-        `[${context}] synced open orders: ${orders.length} (buy: ${buyOrders.length}, sell: ${sellOrders.length})`,
+        `[${context}] synced open orders: ${String(orders.length)} (buy: ${String(buyOrders.length)}, sell: ${String(sellOrders.length)})`,
       );
       logger.info(`[${context}] Synced open orders`, {
         count: orders.length,
@@ -183,7 +190,7 @@ async function main(): Promise<void> {
     baseHalfSpreadBps: "10",
     volSpreadGain: "1",
     toxSpreadGain: "1",
-    quoteSizeUsd: "10", // $10 per order (fallback)
+    quoteSizeUsd: "50", // $50 per order (fallback)
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
     maxInventory: "1",
@@ -200,7 +207,9 @@ async function main(): Promise<void> {
       params = toCoreParams(dbParamsResult.value);
       currentParamsSetId = dbParamsResult.value.id;
       dashboard.pushEvent(LogLevel.INFO, `loaded current params from DB: id=${currentParamsSetId}`);
-      logger.info("Loaded current params from DB", { paramsSetId: currentParamsSetId });
+      logger.info("Loaded current params from DB", {
+        paramsSetId: currentParamsSetId,
+      });
     } else {
       dashboard.pushEvent(LogLevel.WARN, "failed to load params from DB; using defaults", dbParamsResult.error);
       logger.warn("Failed to load params from DB; using defaults", dbParamsResult.error);
@@ -338,7 +347,7 @@ async function main(): Promise<void> {
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
     logger.error("Failed to connect to market data", connectResult.error);
-    process.exit(1);
+    throw new Error("Market data connection failed");
   }
   dashboard.pushEvent(LogLevel.INFO, "market data connected");
 
@@ -399,7 +408,9 @@ async function main(): Promise<void> {
           positionTracker,
           executionPort: executionAdapter,
           params: effectiveParams, // Use effective params for order calculation
-          onPhase: phase => dashboard.enterPhase(phase, nowMs),
+          onPhase: phase => {
+            dashboard.enterPhase(phase, nowMs);
+          },
           onTickDebug: ({
             nowMs,
             snapshot,
@@ -452,7 +463,8 @@ async function main(): Promise<void> {
                 liqCount10s: debug.liqCount10s,
                 positionSize: debug.positionSize,
                 activeOrders: debug.activeOrders,
-                pauseRemainingMs: nextState.pauseUntilMs ? Math.max(0, nextState.pauseUntilMs - nowMs) : null,
+                pauseRemainingMs:
+                  nextState.pauseUntilMs !== undefined ? Math.max(0, nextState.pauseUntilMs - nowMs) : null,
                 modeForMs: nowMs - state.modeSinceMs,
               },
             );
@@ -489,9 +501,9 @@ async function main(): Promise<void> {
           mode: state.mode,
           positionSize: positionTracker.getPosition().size,
           activeOrders: orderTracker.getActiveOrders().length,
-          lastQuoteAgeMs: state.lastQuoteMs ? nowMs - state.lastQuoteMs : null,
-          dataAgeMs: snapshot.lastUpdateMs ? nowMs - snapshot.lastUpdateMs : null,
-          pauseRemainingMs: state.pauseUntilMs ? Math.max(0, state.pauseUntilMs - nowMs) : null,
+          lastQuoteAgeMs: state.lastQuoteMs !== undefined ? nowMs - state.lastQuoteMs : null,
+          dataAgeMs: snapshot.lastUpdateMs > 0 ? nowMs - snapshot.lastUpdateMs : null,
+          pauseRemainingMs: state.pauseUntilMs !== undefined ? Math.max(0, state.pauseUntilMs - nowMs) : null,
           modeForMs: nowMs - state.modeSinceMs,
         });
       }
@@ -514,8 +526,8 @@ async function main(): Promise<void> {
         exchange: env.EXCHANGE,
         symbol: env.SYMBOL,
         mode: state.mode,
-        modeSince: state.modeSinceMs ? new Date(state.modeSinceMs) : null,
-        pauseUntil: state.pauseUntilMs ? new Date(state.pauseUntilMs) : null,
+        modeSince: new Date(state.modeSinceMs),
+        pauseUntil: state.pauseUntilMs !== undefined ? new Date(state.pauseUntilMs) : null,
         paramsSetId: currentParamsSetId,
       });
 
@@ -715,7 +727,7 @@ async function main(): Promise<void> {
 
     dashboard.stop();
     logger.info("Shutdown complete");
-    process.exit(0);
+    process.exitCode = 0;
   };
 
   process.on("SIGINT", () => {
@@ -729,7 +741,7 @@ async function main(): Promise<void> {
 }
 
 // Run
-main().catch(error => {
+main().catch((error: unknown) => {
   logger.error("Fatal error", error);
-  process.exit(1);
+  process.exitCode = 1;
 });

@@ -7,7 +7,8 @@
  */
 
 import { eq, and, gte, lte, sql, asc, count } from "drizzle-orm";
-import { mdBbo, mdTrade, type Db } from "@agentic-mm-bot/db";
+import { mdBbo, mdTrade } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 
 /** Small epsilon to avoid division by zero */
 const EPS = 1e-10;
@@ -40,7 +41,7 @@ export async function calculateTradeImbalance1s(
   t0: Date,
   midT0: string | null,
 ): Promise<string | null> {
-  if (!midT0) return null;
+  if (midT0 === null) return null;
 
   const windowStart = new Date(t0.getTime() - 1000);
 
@@ -62,14 +63,14 @@ export async function calculateTradeImbalance1s(
 
   if (trades.length === 0) return null;
 
-  const mid = parseFloat(midT0);
+  const mid = Number.parseFloat(midT0);
   let buyVol = 0;
   let sellVol = 0;
 
   for (const trade of trades) {
-    const sz = parseFloat(trade.sz);
+    const sz = Number.parseFloat(trade.sz);
     // Use explicit side if available, otherwise infer from price vs mid
-    const isBuy = trade.side ? trade.side.toLowerCase() === "buy" : parseFloat(trade.px) >= mid;
+    const isBuy = trade.side !== null ? trade.side.toLowerCase() === "buy" : Number.parseFloat(trade.px) >= mid;
 
     if (isBuy) {
       buyVol += sz;
@@ -126,11 +127,11 @@ export function calculateMarkIndexDivBps(
   indexPx: string | null,
   midT0: string | null,
 ): string | null {
-  if (!markPx || !indexPx || !midT0) return null;
+  if (markPx === null || indexPx === null || midT0 === null) return null;
 
-  const mark = parseFloat(markPx);
-  const index = parseFloat(indexPx);
-  const mid = parseFloat(midT0);
+  const mark = Number.parseFloat(markPx);
+  const index = Number.parseFloat(indexPx);
+  const mid = Number.parseFloat(midT0);
 
   if (mid === 0) return null;
 
@@ -171,8 +172,8 @@ export async function calculateRealizedVol10s(
   // Calculate log returns
   const logReturns: number[] = [];
   for (let i = 1; i < bbos.length; i++) {
-    const prevMid = parseFloat(bbos[i - 1].midPx);
-    const curMid = parseFloat(bbos[i].midPx);
+    const prevMid = Number.parseFloat(bbos[i - 1].midPx);
+    const curMid = Number.parseFloat(bbos[i].midPx);
 
     if (prevMid > 0 && curMid > 0) {
       logReturns.push(Math.log(curMid / prevMid));

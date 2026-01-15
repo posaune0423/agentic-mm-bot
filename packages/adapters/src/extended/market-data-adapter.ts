@@ -10,11 +10,14 @@
  * API Docs: https://api.docs.extended.exchange/
  */
 
-import { TESTNET_CONFIG, MAINNET_CONFIG, type EndpointConfig } from "extended-typescript-sdk";
-import { err, ok, type Result } from "neverthrow";
+import { TESTNET_CONFIG, MAINNET_CONFIG } from "extended-typescript-sdk";
+import type { EndpointConfig } from "extended-typescript-sdk";
+import { err, ok } from "neverthrow";
+import type { Result } from "neverthrow";
 import { logger } from "@agentic-mm-bot/utils";
 
-import { WsConnection, ExtendedStreamPaths, type WsConnectionFactory, type IWsConnection } from "./ws-connection";
+import { WsConnection, ExtendedStreamPaths } from "./ws-connection";
+import type { WsConnectionFactory, IWsConnection } from "./ws-connection";
 
 import type {
   BboEvent,
@@ -187,7 +190,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   private isConnected_ = false;
   private isReconnecting_ = false;
 
-  static initialize(): Promise<void> {
+  static async initialize(): Promise<void> {
     // NOTE:
     // Market-data streaming does not require WASM signing.
     // We keep this method for call-site compatibility, but it's intentionally a no-op.
@@ -313,7 +316,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         try {
           await this.startStream(symbol, streamType);
         } catch (error) {
-          log.warn(`Failed to start ${streamType} stream for ${symbol}`, { error });
+          log.warn(`Failed to start ${streamType} stream for ${symbol}`, {
+            error,
+          });
           this.scheduleReconnect("start_stream_failed", {
             symbol,
             streamType,
@@ -416,7 +421,11 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         if (!sawFirstNormalized) {
           sawFirstNormalized = true;
           const types = Array.from(new Set(events.map(e => e.type))).slice(0, 8);
-          log.info("First normalized market data events received", { symbol, streamType, types });
+          log.info("First normalized market data events received", {
+            symbol,
+            streamType,
+            types,
+          });
         }
 
         for (const event of events) {
@@ -541,10 +550,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       type: "reconnecting",
       ts: new Date(),
       exchange: EXCHANGE_NAME,
-      reason: `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}) - ${reason ?? "unknown"}`,
+      reason: `Reconnecting in ${String(delay)}ms (attempt ${String(this.reconnectAttempt)}) - ${reason ?? "unknown"}`,
     });
 
-    log.info(`Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempt})`, { reason, meta });
+    log.info(`Scheduling reconnect in ${String(delay)}ms (attempt ${String(this.reconnectAttempt)})`, { reason, meta });
 
     this.reconnectTimeoutId = setTimeout(() => {
       this.reconnectTimeoutId = null;
@@ -596,7 +605,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   // ============================================================================
 
   private normalizeMessage(data: unknown, streamType: StreamType, symbol: string): NormalizedMarketDataEvent[] {
-    if (!data || typeof data !== "object") return [];
+    if (data === null || data === undefined || typeof data !== "object") return [];
 
     switch (streamType) {
       case "orderbook":
@@ -635,7 +644,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
 
     const isPositive = (q: string): boolean => {
-      const n = parseFloat(q);
+      const n = Number.parseFloat(q);
       return Number.isFinite(n) && n > 0;
     };
 
@@ -667,7 +676,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       const m = side === "bids" ? book.bids : book.asks;
       if (m.size <= MAX_LEVELS) return;
       const prices = Array.from(m.keys())
-        .map(p => ({ p, n: parseFloat(p) }))
+        .map(p => ({ p, n: Number.parseFloat(p) }))
         .filter(x => Number.isFinite(x.n));
       prices.sort((a, b) => (side === "bids" ? b.n - a.n : a.n - b.n));
       const keep = new Set(prices.slice(0, MAX_LEVELS).map(x => x.p));
@@ -680,12 +689,12 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
 
     const bestBidPx =
       Array.from(book.bids.keys())
-        .map(p => ({ p, n: parseFloat(p) }))
+        .map(p => ({ p, n: Number.parseFloat(p) }))
         .filter(x => Number.isFinite(x.n))
         .sort((a, b) => b.n - a.n)[0]?.p ?? null;
     const bestAskPx =
       Array.from(book.asks.keys())
-        .map(p => ({ p, n: parseFloat(p) }))
+        .map(p => ({ p, n: Number.parseFloat(p) }))
         .filter(x => Number.isFinite(x.n))
         .sort((a, b) => a.n - b.n)[0]?.p ?? null;
 
@@ -700,13 +709,13 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     // Guard: if book becomes crossed (bid >= ask), do not emit a corrupted BBO.
     // Prefer previous non-crossed top-of-book if available.
     if (bidFinal && askFinal) {
-      const bidNum = parseFloat(bidFinal.p);
-      const askNum = parseFloat(askFinal.p);
+      const bidNum = Number.parseFloat(bidFinal.p);
+      const askNum = Number.parseFloat(askFinal.p);
       if (Number.isFinite(bidNum) && Number.isFinite(askNum) && bidNum >= askNum) {
         // If previous is sane, use it; otherwise drop this event.
         if (prev.bid && prev.ask) {
-          const pb = parseFloat(prev.bid.p);
-          const pa = parseFloat(prev.ask.p);
+          const pb = Number.parseFloat(prev.bid.p);
+          const pa = Number.parseFloat(prev.ask.p);
           if (Number.isFinite(pb) && Number.isFinite(pa) && pb < pa) {
             // Keep cache sane by restoring previous.
             this.lastTopOfBook.set(symbol, { bid: prev.bid, ask: prev.ask });
@@ -774,6 +783,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         case "DELEVERAGE":
           tradeType = "delev";
           break;
+        case "TRADE":
         default:
           tradeType = "normal";
       }

@@ -8,13 +8,8 @@
  * - Throttle BBO writes by time and mid change
  */
 
-import {
-  ExtendedMarketDataAdapter,
-  type BboEvent,
-  type FundingRateEvent,
-  type PriceEvent,
-  type TradeEvent,
-} from "@agentic-mm-bot/adapters";
+import { ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
 import { LogLevel, logger } from "@agentic-mm-bot/utils";
 
@@ -50,7 +45,10 @@ async function main(): Promise<void> {
   });
   dashboard.start();
   dashboard.enterPhase("CONNECTING");
-  dashboard.pushEvent(LogLevel.INFO, "ingestor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });
+  dashboard.pushEvent(LogLevel.INFO, "ingestor started", {
+    exchange: env.EXCHANGE,
+    symbol: env.SYMBOL,
+  });
 
   // Market-data streaming does not require signing, so we intentionally skip signer WASM init.
   try {
@@ -58,7 +56,7 @@ async function main(): Promise<void> {
     logger.info("WASM init skipped (market data only)");
   } catch (error) {
     logger.error("Failed to initialize WASM", error);
-    process.exit(1);
+    throw new Error("WASM initialization failed");
   }
 
   logger.info("Starting ingestor", {
@@ -94,7 +92,12 @@ async function main(): Promise<void> {
   const watchdogThresholdMs = Math.max(env.INGESTOR_DASHBOARD_STALE_MS * 2, 6000);
   const watchdogCooldownMs = 15_000;
   let lastMetricsAtMs = Date.now();
-  let lastMetrics = { bboReceived: 0, tradeReceived: 0, priceReceived: 0, fundingReceived: 0 };
+  let lastMetrics = {
+    bboReceived: 0,
+    tradeReceived: 0,
+    priceReceived: 0,
+    fundingReceived: 0,
+  };
 
   // ============================================================================
   // Event Handlers
@@ -104,7 +107,7 @@ async function main(): Promise<void> {
     metrics.bboReceived++;
     dashboard.enterPhase("RECEIVING");
 
-    const mid = (parseFloat(event.bestBidPx) + parseFloat(event.bestAskPx)) / 2;
+    const mid = (Number.parseFloat(event.bestBidPx) + Number.parseFloat(event.bestAskPx)) / 2;
     const midStr = mid.toString();
 
     // Update latest state (always)
@@ -175,10 +178,10 @@ async function main(): Promise<void> {
     });
 
     // Update latest state with mark/index
-    if (event.priceType === "mark" && event.markPx) {
+    if (event.priceType === "mark" && event.markPx !== undefined) {
       latestStateManager.updateMarkPrice(event.markPx);
     }
-    if (event.priceType === "index" && event.indexPx) {
+    if (event.priceType === "index" && event.indexPx !== undefined) {
       latestStateManager.updateIndexPrice(event.indexPx);
     }
   };
@@ -264,7 +267,7 @@ async function main(): Promise<void> {
     if (!watchdogInFlight && cooldownOk && quietMs >= watchdogThresholdMs) {
       watchdogInFlight = true;
       watchdogLastKickAtMs = now;
-      dashboard.setConnectionStatus("reconnecting", `stale_watchdog quiet=${quietMs}ms`);
+      dashboard.setConnectionStatus("reconnecting", `stale_watchdog quiet=${String(quietMs)}ms`);
       logger.warn("Stale watchdog: forcing market-data reconnect", {
         quietMs,
         watchdogThresholdMs,
@@ -320,7 +323,10 @@ async function main(): Promise<void> {
     metrics.tradeBufferSize = bufferSizes.trade;
     metrics.priceBufferSize = bufferSizes.price;
     dashboard.setMetrics(metrics);
-    dashboard.setBuffers({ bufferSizes, deadLetterSize: eventWriter.getDeadLetterSize() });
+    dashboard.setBuffers({
+      bufferSizes,
+      deadLetterSize: eventWriter.getDeadLetterSize(),
+    });
   }, 1000);
 
   // ============================================================================
@@ -331,7 +337,7 @@ async function main(): Promise<void> {
   const connectResult = await marketDataAdapter.connect();
   if (connectResult.isErr()) {
     logger.error("Failed to connect to market data", connectResult.error);
-    process.exit(1);
+    throw new Error("Market data connection failed");
   }
 
   // Subscribe to all channels
@@ -372,7 +378,7 @@ async function main(): Promise<void> {
       priceReceived: metrics.priceReceived,
       fundingReceived: metrics.fundingReceived,
     });
-    process.exit(0);
+    process.exitCode = 0;
   };
 
   process.on("SIGINT", () => {
@@ -385,7 +391,7 @@ async function main(): Promise<void> {
   logger.info("Ingestor running");
 }
 
-main().catch(error => {
+main().catch((error: unknown) => {
   logger.error("Fatal error", error);
-  process.exit(1);
+  process.exitCode = 1;
 });

@@ -1,20 +1,32 @@
-import { nodeConfig } from "@agentic-mm-bot/eslint-config";
-import type { Linter } from "eslint";
+import posaune0423 from "@posaune0423/eslint-config";
 
-const config: Linter.Config[] = [
-  ...nodeConfig,
+export default posaune0423(
+  {
+    typescript: true,
+    node: true,
+  },
   {
     languageOptions: {
       parserOptions: {
-        tsconfigRootDir: import.meta.dirname,
         project: true,
+        tsconfigRootDir: import.meta.dirname,
       },
     },
   },
-  // Package-specific ignores
   {
     ignores: ["eslint.config.ts", "tests/**"],
   },
-];
-
-export default config;
+  {
+    rules: {
+      "n/no-missing-import": "off",
+      "@typescript-eslint/strict-boolean-expressions": "off",
+      // Bun runtime supports fetch natively
+      "n/no-unsupported-features/node-builtins": [
+        "error",
+        {
+          ignores: ["fetch"],
+        },
+      ],
+    },
+  },
+);

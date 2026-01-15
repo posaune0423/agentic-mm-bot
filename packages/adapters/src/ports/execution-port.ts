@@ -130,40 +130,40 @@ export interface ExecutionPort {
   /**
    * Place a new order
    */
-  placeOrder(request: PlaceOrderRequest): ResultAsync<OrderResponse, ExecutionError>;
+  placeOrder: (request: PlaceOrderRequest) => ResultAsync<OrderResponse, ExecutionError>;
 
   /**
    * Cancel an order
    */
-  cancelOrder(request: CancelOrderRequest): ResultAsync<OrderResponse, ExecutionError>;
+  cancelOrder: (request: CancelOrderRequest) => ResultAsync<OrderResponse, ExecutionError>;
 
   /**
    * Cancel all orders for a symbol
    */
-  cancelAllOrders(symbol: string): ResultAsync<void, ExecutionError>;
+  cancelAllOrders: (symbol: string) => ResultAsync<void, ExecutionError>;
 
   /**
    * Get open orders
    */
-  getOpenOrders(symbol: string): ResultAsync<OpenOrder[], ExecutionError>;
+  getOpenOrders: (symbol: string) => ResultAsync<OpenOrder[], ExecutionError>;
 
   /**
    * Get current position
    */
-  getPosition(symbol: string): ResultAsync<PositionInfo | null, ExecutionError>;
+  getPosition: (symbol: string) => ResultAsync<PositionInfo | null, ExecutionError>;
 
   /**
    * Register event handler for fills and order updates
    */
-  onEvent(handler: (event: ExecutionEvent) => void): void;
+  onEvent: (handler: (event: ExecutionEvent) => void) => void;
 
   /**
    * Connect to private stream (if available)
    */
-  connectPrivateStream(): ResultAsync<void, ExecutionError>;
+  connectPrivateStream: () => ResultAsync<void, ExecutionError>;
 
   /**
    * Disconnect from private stream
    */
-  disconnectPrivateStream(): ResultAsync<void, ExecutionError>;
+  disconnectPrivateStream: () => ResultAsync<void, ExecutionError>;
 }

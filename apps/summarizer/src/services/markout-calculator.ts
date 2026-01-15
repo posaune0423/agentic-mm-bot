@@ -24,11 +24,11 @@
  * @returns Markout in bps as string, or null if calculation not possible
  */
 export function calculateMarkoutBps(side: string, fillPx: string, midT0: string, midT1: string | null): string | null {
-  if (!midT1) return null;
+  if (midT1 === null) return null;
 
-  const fill = parseFloat(fillPx);
-  const t0 = parseFloat(midT0);
-  const t1 = parseFloat(midT1);
+  const fill = Number.parseFloat(fillPx);
+  const t0 = Number.parseFloat(midT0);
+  const t1 = Number.parseFloat(midT1);
 
   if (t0 === 0) return null;
 
@@ -55,8 +55,8 @@ export function calculateAllMarkouts(
   midT60s: string | null,
 ): MarkoutResult {
   return {
-    markout1sBps: midT0 && midT1s ? calculateMarkoutBps(side, fillPx, midT0, midT1s) : null,
-    markout10sBps: midT0 && midT10s ? calculateMarkoutBps(side, fillPx, midT0, midT10s) : null,
-    markout60sBps: midT0 && midT60s ? calculateMarkoutBps(side, fillPx, midT0, midT60s) : null,
+    markout1sBps: midT0 !== null && midT1s !== null ? calculateMarkoutBps(side, fillPx, midT0, midT1s) : null,
+    markout10sBps: midT0 !== null && midT10s !== null ? calculateMarkoutBps(side, fillPx, midT0, midT10s) : null,
+    markout60sBps: midT0 !== null && midT60s !== null ? calculateMarkoutBps(side, fillPx, midT0, midT60s) : null,
   };
 }

@@ -39,7 +39,10 @@ const createDefaultPosition = (): Position => ({
 describe("evaluateRisk", () => {
   describe("PAUSE conditions (highest priority)", () => {
     test("should return shouldPause=true when data is stale", () => {
-      const features: Features = { ...createDefaultFeatures(), dataStale: true };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        dataStale: true,
+      };
       const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
 
       expect(result.shouldPause).toBe(true);
@@ -47,7 +50,10 @@ describe("evaluateRisk", () => {
     });
 
     test("should return shouldPause=true when mark-index divergence exceeds threshold", () => {
-      const features: Features = { ...createDefaultFeatures(), markIndexDivBps: "60" };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        markIndexDivBps: "60",
+      };
       const params = createDefaultParams();
       const result = evaluateRisk(features, createDefaultPosition(), params);
 
@@ -85,7 +91,10 @@ describe("evaluateRisk", () => {
 
   describe("DEFENSIVE conditions", () => {
     test("should return shouldDefensive=true when volatility is high", () => {
-      const features: Features = { ...createDefaultFeatures(), realizedVol10s: "60" };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        realizedVol10s: "60",
+      };
       const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
 
       expect(result.shouldPause).toBe(false);
@@ -94,7 +103,10 @@ describe("evaluateRisk", () => {
     });
 
     test("should return shouldDefensive=true when toxicity is high", () => {
-      const features: Features = { ...createDefaultFeatures(), tradeImbalance1s: "0.8" };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        tradeImbalance1s: "0.8",
+      };
       const result = evaluateRisk(features, createDefaultPosition(), createDefaultParams());
 
       expect(result.shouldPause).toBe(false);

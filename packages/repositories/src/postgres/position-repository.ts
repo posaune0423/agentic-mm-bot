@@ -6,7 +6,8 @@
  */
 
 import { ResultAsync } from "neverthrow";
-import { latestPosition, type Db } from "@agentic-mm-bot/db";
+import { latestPosition } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 
 import type {
   PositionRepository,

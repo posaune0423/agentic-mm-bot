@@ -1,12 +1,12 @@
-type RenderFrame = ReadonlyArray<string>;
-
 import { LayoutPolicy } from "./layout-policy";
+
+type RenderFrame = ReadonlyArray<string>;
 
 const ANSI = {
   // Cursor position: CUP row;col
-  cup: (row: number, col: number) => `\x1b[${row};${col}H`,
+  cup: (row: number, col: number) => `\x1B[${String(row)};${String(col)}H`,
   // Erase entire line
-  eraseLine: "\x1b[2K",
+  eraseLine: "\x1B[2K",
 } as const;
 
 /**

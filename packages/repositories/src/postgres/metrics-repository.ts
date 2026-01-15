@@ -8,7 +8,8 @@
 import { eq, and, gte, lte, asc, count, sql } from "drizzle-orm";
 import { ResultAsync } from "neverthrow";
 
-import { fillsEnriched, exOrderEvent, strategyState, strategyParams, type Db } from "@agentic-mm-bot/db";
+import { fillsEnriched, exOrderEvent, strategyState, strategyParams } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import type { MetricsRepository, MetricsRepositoryError } from "../interfaces/metrics-repository";
@@ -87,9 +88,9 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
           `);
 
           const percentiles = percentilesResult.rows[0];
-          const markout10sP10 = percentiles.p10 ? parseFloat(percentiles.p10) : null;
-          const markout10sP50 = percentiles.p50 ? parseFloat(percentiles.p50) : null;
-          const markout10sP90 = percentiles.p90 ? parseFloat(percentiles.p90) : null;
+          const markout10sP10 = percentiles.p10 !== null ? Number.parseFloat(percentiles.p10) : null;
+          const markout10sP50 = percentiles.p50 !== null ? Number.parseFloat(percentiles.p50) : null;
+          const markout10sP90 = percentiles.p90 !== null ? Number.parseFloat(percentiles.p90) : null;
 
           // Get worst fills
           const worstFillsResult = await db
@@ -119,7 +120,7 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             side: row.side,
             fillPx: row.fillPx,
             fillSz: row.fillSz,
-            markout10sBps: row.markout10sBps ? parseFloat(row.markout10sBps) : null,
+            markout10sBps: row.markout10sBps !== null ? Number.parseFloat(row.markout10sBps) : null,
           }));
 
           return {
@@ -238,7 +239,7 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
           side: row.side,
           fillPx: row.fillPx,
           fillSz: row.fillSz,
-          markout10sBps: row.markout10sBps ? parseFloat(row.markout10sBps) : null,
+          markout10sBps: row.markout10sBps !== null ? Number.parseFloat(row.markout10sBps) : null,
         })),
       );
     },

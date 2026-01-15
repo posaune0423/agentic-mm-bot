@@ -7,16 +7,13 @@
  * - Handles idempotency (skip if already processed)
  */
 
-import { type ResultAsync, okAsync } from "neverthrow";
+import { okAsync } from "neverthrow";
+import type { ResultAsync } from "neverthrow";
 
 import { logger } from "@agentic-mm-bot/utils";
 
-import {
-  executeReflectionWorkflow,
-  type WorkflowDeps,
-  type WorkflowError,
-  type WorkflowResult,
-} from "../../mastra/workflows/reflection-workflow";
+import { executeReflectionWorkflow } from "../../mastra/workflows/reflection-workflow";
+import type { WorkflowDeps, WorkflowError, WorkflowResult } from "../../mastra/workflows/reflection-workflow";
 
 export interface RunHourlyReflectionDeps extends WorkflowDeps {
   exchange: string;
@@ -99,7 +96,10 @@ export function runHourlyReflection(
     end = window.end;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid windowMinutes parameter";
-    logger.error("Validation error in runHourlyReflection", { error: message, windowMinutes });
+    logger.error("Validation error in runHourlyReflection", {
+      error: message,
+      windowMinutes,
+    });
     return okAsync({
       type: "ERROR",
       error: { type: "VALIDATION_ERROR", message },
@@ -134,7 +134,9 @@ export function runHourlyReflection(
     .orElse((error): ResultAsync<RunResult, never> => {
       if (error.type === "ALREADY_EXISTS") {
         windowGuard.markProcessed(end);
-        logger.info("Reflection skipped - already exists", { message: error.message });
+        logger.info("Reflection skipped - already exists", {
+          message: error.message,
+        });
         return okAsync({ type: "SKIPPED", reason: error.message });
       }
 
@@ -142,7 +144,9 @@ export function runHourlyReflection(
         // Gate rejection is an expected outcome (LLM may propose invalid changes).
         // Treat as a skip for this hour to avoid retry loops and noisy error logs.
         windowGuard.markProcessed(end);
-        logger.warn("Reflection skipped - proposal rejected by gate", { error });
+        logger.warn("Reflection skipped - proposal rejected by gate", {
+          error,
+        });
         return okAsync({
           type: "SKIPPED",
           reason: `Proposal rejected by gate: ${error.error.type}`,

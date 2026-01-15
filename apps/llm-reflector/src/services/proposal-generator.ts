@@ -114,7 +114,8 @@ function buildUserPrompt(input: LlmInputSummary): string {
 
   const worstFillsText = aggregation.worstFills
     .map(
-      (f, i) => `  ${i + 1}. ${f.side} @ ${f.fillPx} (size: ${f.fillSz}, markout10s: ${f.markout10sBps ?? "N/A"} bps)`,
+      (f, i) =>
+        `  ${String(i + 1)}. ${f.side} @ ${f.fillPx} (size: ${f.fillSz}, markout10s: ${f.markout10sBps !== null ? String(f.markout10sBps) : "N/A"} bps)`,
     )
     .join("\n");
 
@@ -122,9 +123,9 @@ function buildUserPrompt(input: LlmInputSummary): string {
 
 ## Last Hour Summary (${aggregation.windowStart.toISOString()} to ${aggregation.windowEnd.toISOString()})
 
-- Fills: ${aggregation.fillsCount}
-- Cancels: ${aggregation.cancelCount}
-- PAUSEs: ${aggregation.pauseCount}
+- Fills: ${String(aggregation.fillsCount)}
+- Cancels: ${String(aggregation.cancelCount)}
+- PAUSEs: ${String(aggregation.pauseCount)}
 - Markout 10s (P10/P50/P90): ${aggregation.markout10sP10?.toFixed(2) ?? "N/A"} / ${aggregation.markout10sP50?.toFixed(2) ?? "N/A"} / ${aggregation.markout10sP90?.toFixed(2) ?? "N/A"} bps
 
 ## Worst Fills (by markout)
@@ -135,12 +136,12 @@ ${worstFillsText || "  No fills in this period"}
 - volSpreadGain: ${currentParams.volSpreadGain}
 - toxSpreadGain: ${currentParams.toxSpreadGain}
 - quoteSizeUsd: ${currentParams.quoteSizeUsd}
-- refreshIntervalMs: ${currentParams.refreshIntervalMs}
-- staleCancelMs: ${currentParams.staleCancelMs}
+- refreshIntervalMs: ${String(currentParams.refreshIntervalMs)}
+- staleCancelMs: ${String(currentParams.staleCancelMs)}
 - maxInventory: ${currentParams.maxInventory}
 - inventorySkewGain: ${currentParams.inventorySkewGain}
 - pauseMarkIndexBps: ${currentParams.pauseMarkIndexBps}
-- pauseLiqCount10s: ${currentParams.pauseLiqCount10s}
+- pauseLiqCount10s: ${String(currentParams.pauseLiqCount10s)}
 
 Based on this analysis, suggest parameter changes (max 2) with clear reasoning.
 Keep changes small and realistic; avoid big jumps or extreme numbers.`;
@@ -180,7 +181,7 @@ export function generateProposal(
   )
     .andThen(result => {
       const jsonText = extractFirstJsonObject(result.text);
-      if (!jsonText) {
+      if (jsonText === null || jsonText === "") {
         return errAsync({
           type: "INVALID_RESPONSE" as const,
           message: `JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`,

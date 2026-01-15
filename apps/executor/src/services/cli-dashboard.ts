@@ -20,8 +20,8 @@ import {
   Style,
   TTYRenderer,
   TTYScreen,
-  type LogRecord,
 } from "@agentic-mm-bot/utils";
+import type { LogRecord } from "@agentic-mm-bot/utils";
 
 import type { TrackedOrder } from "./order-tracker";
 import type { ExecutionAction } from "./execution-planner";
@@ -31,14 +31,14 @@ type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnec
 type ExecutorPhase = "IDLE" | "READ" | "DECIDE" | "PLAN" | "EXECUTE" | "PERSIST";
 
 /** Position data for realtime display (updated on fills) */
-export type PositionData = {
+export interface PositionData {
   size: string;
   entryPrice?: string;
   unrealizedPnl?: string;
   lastUpdateMs: number;
-};
+}
 
-export type TickDebug = {
+export interface TickDebug {
   nowMs: number;
   snapshot: Snapshot;
   features: Features;
@@ -52,13 +52,18 @@ export type TickDebug = {
   effectiveParams: StrategyParams;
   /** Overlay state for display */
   overlayState: OverlayState;
-  position: { size: string; entryPrice?: string; unrealizedPnl?: string; lastUpdateMs: number };
+  position: {
+    size: string;
+    entryPrice?: string;
+    unrealizedPnl?: string;
+    lastUpdateMs: number;
+  };
   orders: TrackedOrder[];
   targetQuote?: { bidPx: string; askPx: string; size: string };
   plannedActions: ExecutionAction[];
   /** Funding rate for display */
   funding?: { rate?: string; tsMs?: number };
-};
+}
 
 /** Format number with optional digits, "-" for missing values */
 function fmtNum(n: number | null | undefined, digits = 2): string {
@@ -68,24 +73,24 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
 
 /** Format price with consistent width */
 function fmtPrice(px: string | null | undefined, width = 10): string {
-  if (!px) return "-".padStart(width);
+  if (px === null || px === undefined || px === "") return "-".padStart(width);
   return px.padStart(width);
 }
 
 /** Format size with consistent width */
 function fmtSize(sz: string | null | undefined, width = 8): string {
-  if (!sz) return "-".padStart(width);
+  if (sz === null || sz === undefined || sz === "") return "-".padStart(width);
   return sz.padStart(width);
 }
 
 /** Params change notification for display */
-export type ParamsChangeNotification = {
+export interface ParamsChangeNotification {
   source: "db_refresh" | "proposal_apply" | "proposal_reject";
   changedAt: number;
   paramsSetId?: string;
   changedKeys?: string[];
   rejectReason?: string;
-};
+}
 
 export class ExecutorCliDashboard {
   private readonly enabled: boolean;
@@ -120,7 +125,7 @@ export class ExecutorCliDashboard {
     const control = createDashboardControl({
       enabled: args.enabled,
       refreshMs: args.refreshMs ?? 250,
-      isTTY: Boolean(process.stdout.isTTY),
+      isTTY: process.stdout.isTTY,
     });
     const cfg = control.config();
 
@@ -133,7 +138,10 @@ export class ExecutorCliDashboard {
     this.style = new Style();
     this.layout = new LayoutPolicy();
     this.renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
-    this.screen = new TTYScreen({ enabled: this.enabled, write: chunk => process.stdout.write(chunk) });
+    this.screen = new TTYScreen({
+      enabled: this.enabled,
+      write: chunk => process.stdout.write(chunk),
+    });
     this.logs = new LogBuffer(args.maxLogs ?? 300);
     this.flow = new FlowStatusTracker<ExecutorPhase>("IDLE", Date.now());
   }
@@ -146,9 +154,15 @@ export class ExecutorCliDashboard {
     if (!this.enabled || this.interval) return;
     this.screen.start();
     this.renderer.reset();
-    logger.setSink({ write: r => this.logs.push(r) });
+    logger.setSink({
+      write: r => {
+        this.logs.push(r);
+      },
+    });
 
-    this.interval = setInterval(() => this.render(), this.refreshMs);
+    this.interval = setInterval(() => {
+      this.render();
+    }, this.refreshMs);
   }
 
   stop(): void {
@@ -163,7 +177,7 @@ export class ExecutorCliDashboard {
     this.conn = status;
     this.connReason = reason;
     const level = status === "disconnected" ? LogLevel.WARN : LogLevel.INFO;
-    this.pushEvent(level, `market data: ${status}`, reason ? { reason } : undefined);
+    this.pushEvent(level, `market data: ${status}`, reason !== undefined && reason !== "" ? { reason } : undefined);
   }
 
   enterPhase(phase: ExecutorPhase, nowMs = Date.now()): void {
@@ -198,13 +212,13 @@ export class ExecutorCliDashboard {
       : "proposal reject";
 
     let message = `PARAMS ${sourceLabel}`;
-    if (notification.paramsSetId) {
+    if (notification.paramsSetId !== undefined && notification.paramsSetId !== "") {
       message += ` id=${notification.paramsSetId.slice(0, 8)}...`;
     }
-    if (notification.changedKeys && notification.changedKeys.length > 0) {
+    if (notification.changedKeys !== undefined && notification.changedKeys.length > 0) {
       message += ` keys=[${notification.changedKeys.join(",")}]`;
     }
-    if (notification.rejectReason) {
+    if (notification.rejectReason !== undefined && notification.rejectReason !== "") {
       message += ` reason=${notification.rejectReason}`;
     }
 
@@ -224,7 +238,7 @@ export class ExecutorCliDashboard {
     }
     this.pushEvent(
       event.status === "rejected" ? LogLevel.WARN : LogLevel.INFO,
-      `ORDER ${event.status} clientId=${event.clientOrderId}${event.reason ? ` reason=${event.reason}` : ""}`,
+      `ORDER ${event.status} clientId=${event.clientOrderId}${event.reason !== undefined && event.reason !== "" ? ` reason=${event.reason}` : ""}`,
       { exchangeOrderId: event.exchangeOrderId },
     );
   }
@@ -240,7 +254,7 @@ export class ExecutorCliDashboard {
 
   pushEvent(level: LogLevel, message: string, data?: unknown): void {
     const fields =
-      data && typeof data === "object" ?
+      data !== null && data !== undefined && typeof data === "object" ?
         Object.fromEntries(Object.entries(data as Record<string, unknown>).map(([k, v]) => [k, JSON.stringify(v)]))
       : undefined;
     const r: LogRecord = { tsMs: Date.now(), level, message, fields };
@@ -309,7 +323,7 @@ export class ExecutorCliDashboard {
     const phaseBadge = this.renderPhaseBadge(flowSnap.phase);
     const phaseDur =
       flowSnap.lastDurationMs !== undefined ?
-        `${this.style.token("dim")}${flowSnap.lastDurationMs}ms${this.style.token("reset")}`
+        `${this.style.token("dim")}${String(flowSnap.lastDurationMs)}ms${this.style.token("reset")}`
       : "";
 
     // Top border
@@ -352,6 +366,8 @@ export class ExecutorCliDashboard {
         return this.style.wrap(phase, "bold", "yellow");
       case "PERSIST":
         return this.style.wrap(phase, "bold", "blue");
+      case "IDLE":
+        return this.style.wrap(phase, "dim");
       case "READ":
         return this.style.wrap(phase, "bold", "green");
       default:
@@ -376,8 +392,8 @@ export class ExecutorCliDashboard {
       return lines;
     }
 
-    const bid = parseFloat(t.snapshot.bestBidPx);
-    const ask = parseFloat(t.snapshot.bestAskPx);
+    const bid = Number.parseFloat(t.snapshot.bestBidPx);
+    const ask = Number.parseFloat(t.snapshot.bestAskPx);
     const mid = (bid + ask) / 2;
     const spreadBps = mid > 0 ? ((ask - bid) / mid) * 10000 : null;
     const dataAge = this.layout.formatAgeMs(t.nowMs, t.snapshot.lastUpdateMs);
@@ -421,7 +437,7 @@ export class ExecutorCliDashboard {
     // Funding Rate Row (displayed as % with color coding)
     const fundingLabel = `${this.style.token("dim")}Funding:${this.style.token("reset")}`;
     if (t.funding?.rate != null) {
-      const rateNum = parseFloat(t.funding.rate);
+      const rateNum = Number.parseFloat(t.funding.rate);
       // Convert to percentage (e.g., 0.0001 -> 0.01%)
       const ratePct = rateNum * 100;
       const rateStr = `${ratePct >= 0 ? "+" : ""}${ratePct.toFixed(4)}%`;
@@ -430,7 +446,7 @@ export class ExecutorCliDashboard {
         : rateNum < 0 ? ["bold", "red"]
         : ["dim"];
       const rateVal = this.style.wrap(rateStr, ...rateColor);
-      const fundingAge = t.funding.tsMs ? this.layout.formatAgeMs(t.nowMs, t.funding.tsMs) : "-";
+      const fundingAge = t.funding.tsMs !== undefined ? this.layout.formatAgeMs(t.nowMs, t.funding.tsMs) : "-";
       const fundingAgeLabel = `${this.style.token("dim")}age:${this.style.token("reset")}`;
       const fundingRow = `${fundingLabel} ${rateVal}    ${fundingAgeLabel} ${fundingAge}`;
       lines.push(this.boxRow(fundingRow, width));
@@ -462,10 +478,10 @@ export class ExecutorCliDashboard {
     // Mode badge
     const mode = t.stateAfter.mode;
     const modeBadge = this.renderModeBadge(mode);
-    const pauseMs = t.stateAfter.pauseUntilMs ? Math.max(0, t.stateAfter.pauseUntilMs - t.nowMs) : 0;
+    const pauseMs = t.stateAfter.pauseUntilMs !== undefined ? Math.max(0, t.stateAfter.pauseUntilMs - t.nowMs) : 0;
     const pauseInfo =
       pauseMs > 0 ?
-        `${this.style.token("dim")}pause:${this.style.token("reset")} ${this.style.wrap(`${pauseMs}ms`, "yellow")}`
+        `${this.style.token("dim")}pause:${this.style.token("reset")} ${this.style.wrap(`${String(pauseMs)}ms`, "yellow")}`
       : "";
 
     const modeRow = `${this.style.token("dim")}Mode:${this.style.token("reset")} ${modeBadge}  ${pauseInfo}`;
@@ -508,7 +524,7 @@ export class ExecutorCliDashboard {
       if (this.lastParamsChange.changedKeys && this.lastParamsChange.changedKeys.length > 0) {
         changeInfo += ` ${this.style.token("dim")}keys:${this.style.token("reset")}${this.style.wrap(this.lastParamsChange.changedKeys.join(","), "yellow")}`;
       }
-      if (this.lastParamsChange.rejectReason) {
+      if (this.lastParamsChange.rejectReason !== undefined && this.lastParamsChange.rejectReason !== "") {
         const shortReason =
           this.lastParamsChange.rejectReason.length > 30 ?
             this.lastParamsChange.rejectReason.slice(0, 27) + "..."
@@ -569,7 +585,7 @@ export class ExecutorCliDashboard {
       `${this.style.token("dim")}vol10s:${this.style.token("reset")}${t.features.realizedVol10s}`,
       `${this.style.token("dim")}tox1s:${this.style.token("reset")}${t.features.tradeImbalance1s}`,
       `${this.style.token("dim")}mrkIdx:${this.style.token("reset")}${t.features.markIndexDivBps}`,
-      `${this.style.token("dim")}liq10s:${this.style.token("reset")}${t.features.liqCount10s}`,
+      `${this.style.token("dim")}liq10s:${this.style.token("reset")}${String(t.features.liqCount10s)}`,
     ].join("  ");
     lines.push(this.boxRow(featRow, width));
 
@@ -580,9 +596,9 @@ export class ExecutorCliDashboard {
 
     // Use realtime position if available (updated on fills), fallback to tick position
     const pos = this.realtimePosition ?? t.position;
-    const posSize = parseFloat(pos.size);
-    const maxInventory = parseFloat(t.effectiveParams.maxInventory);
-    const inventorySkewGain = parseFloat(t.effectiveParams.inventorySkewGain);
+    const posSize = Number.parseFloat(pos.size);
+    const maxInventory = Number.parseFloat(t.effectiveParams.maxInventory);
+    const inventorySkewGain = Number.parseFloat(t.effectiveParams.inventorySkewGain);
 
     // Inventory direction
     const invDir =
@@ -625,12 +641,12 @@ export class ExecutorCliDashboard {
     // Entry and PnL
     const posEntry = pos.entryPrice ?? "-";
     const posPnl = pos.unrealizedPnl;
-    const pnlVal = posPnl ? parseFloat(posPnl) : null;
+    const pnlVal = posPnl !== undefined && posPnl !== "" ? Number.parseFloat(posPnl) : null;
     const pnlStyle: Parameters<Style["wrap"]>[1][] =
-      pnlVal && pnlVal > 0 ? ["bold", "green"]
-      : pnlVal && pnlVal < 0 ? ["bold", "red"]
+      pnlVal !== null && pnlVal > 0 ? ["bold", "green"]
+      : pnlVal !== null && pnlVal < 0 ? ["bold", "red"]
       : ["dim"];
-    const pnlStr = posPnl ? this.style.wrap(posPnl, ...pnlStyle) : "-";
+    const pnlStr = posPnl !== undefined && posPnl !== "" ? this.style.wrap(posPnl, ...pnlStyle) : "-";
 
     // Position row 1: Size, Direction, Utilization, Max
     const posRow1 = `${this.style.token("dim")}Size:${this.style.token("reset")} ${posSizeStr}  ${this.style.token("dim")}Dir:${this.style.token("reset")} ${invDirStr}  ${this.style.token("dim")}Util:${this.style.token("reset")} ${utilStr}  ${this.style.token("dim")}Max:${this.style.token("reset")} ${t.effectiveParams.maxInventory}`;
@@ -680,13 +696,17 @@ export class ExecutorCliDashboard {
     if (orders.length === 0) {
       lines.push(this.boxRow(`${this.style.token("dim")}No active orders${this.style.token("reset")}`, width));
     } else {
-      const buys = orders.filter(o => o.side === "buy").sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
-      const sells = orders.filter(o => o.side === "sell").sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+      const buys = orders
+        .filter(o => o.side === "buy")
+        .sort((a, b) => Number.parseFloat(b.price) - Number.parseFloat(a.price));
+      const sells = orders
+        .filter(o => o.side === "sell")
+        .sort((a, b) => Number.parseFloat(a.price) - Number.parseFloat(b.price));
 
       // Summary line
-      const totalBadge = this.style.wrap(`${orders.length}`, "bold", "white");
-      const buyCount = this.style.wrap(`${buys.length}`, "green");
-      const sellCount = this.style.wrap(`${sells.length}`, "red");
+      const totalBadge = this.style.wrap(String(orders.length), "bold", "white");
+      const buyCount = this.style.wrap(String(buys.length), "green");
+      const sellCount = this.style.wrap(String(sells.length), "red");
       lines.push(
         this.boxRow(
           `${this.style.token("dim")}Active:${this.style.token("reset")} ${totalBadge}  ${this.style.token("dim")}Buy:${this.style.token("reset")} ${buyCount}  ${this.style.token("dim")}Sell:${this.style.token("reset")} ${sellCount}`,
@@ -748,7 +768,9 @@ export class ExecutorCliDashboard {
 
       if (buys.length > 3 || sells.length > 3) {
         const moreCount = Math.max(0, buys.length - 3) + Math.max(0, sells.length - 3);
-        lines.push(this.boxRow(`${this.style.token("dim")}... +${moreCount} more${this.style.token("reset")}`, width));
+        lines.push(
+          this.boxRow(`${this.style.token("dim")}... +${String(moreCount)} more${this.style.token("reset")}`, width),
+        );
       }
     }
 
@@ -774,7 +796,8 @@ export class ExecutorCliDashboard {
         })
         .join(` ${this.style.token("dim")}→${this.style.token("reset")} `);
 
-      const moreActions = t.plannedActions.length > maxActions ? ` +${t.plannedActions.length - maxActions}` : "";
+      const moreActions =
+        t.plannedActions.length > maxActions ? ` +${String(t.plannedActions.length - maxActions)}` : "";
       lines.push(this.boxRow(`${planLabel} ${actionsStr}${moreActions}`, width));
     }
 
@@ -820,8 +843,9 @@ export class ExecutorCliDashboard {
             levelBadge = this.style.wrap("DBG", "dim");
             msgStyle = ["dim"];
             break;
-          default:
-            levelBadge = r.level;
+          case LogLevel.LOG:
+            levelBadge = this.style.wrap("LOG", "dim");
+            break;
         }
 
         const msgContent = msgStyle.length > 0 ? this.style.wrap(r.message, ...msgStyle) : r.message;

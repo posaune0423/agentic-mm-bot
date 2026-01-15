@@ -101,7 +101,8 @@ export function createIntervalWorker(options: WorkerOptions): void {
     }
 
     logger.info(`${name} shutdown complete`);
-    process.exit(0);
+    // Set exit code and let event loop drain naturally after cleanup
+    process.exitCode = 0;
   };
 
   process.on("SIGINT", () => {

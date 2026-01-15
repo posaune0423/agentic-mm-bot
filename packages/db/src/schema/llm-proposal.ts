@@ -13,8 +13,14 @@ export const llmProposal = pgTable("llm_proposal", {
   exchange: text("exchange").notNull(),
   symbol: text("symbol").notNull(),
   ts: timestamp("ts", { withTimezone: true, mode: "date" }).notNull(),
-  inputWindowStart: timestamp("input_window_start", { withTimezone: true, mode: "date" }).notNull(),
-  inputWindowEnd: timestamp("input_window_end", { withTimezone: true, mode: "date" }).notNull(),
+  inputWindowStart: timestamp("input_window_start", {
+    withTimezone: true,
+    mode: "date",
+  }).notNull(),
+  inputWindowEnd: timestamp("input_window_end", {
+    withTimezone: true,
+    mode: "date",
+  }).notNull(),
   currentParamsSetId: uuid("current_params_set_id").notNull(),
   proposalJson: jsonb("proposal_json").notNull(), // max 2 changes
   rollbackJson: jsonb("rollback_json").notNull(), // conditions

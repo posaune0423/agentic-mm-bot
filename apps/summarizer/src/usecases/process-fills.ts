@@ -9,7 +9,8 @@
  */
 
 import { eq, and, lte, isNull } from "drizzle-orm";
-import { exFill, fillsEnriched, type Db, type ExFill } from "@agentic-mm-bot/db";
+import { exFill, fillsEnriched } from "@agentic-mm-bot/db";
+import type { Db, ExFill } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 import {

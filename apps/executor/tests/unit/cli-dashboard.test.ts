@@ -8,7 +8,11 @@ describe("ExecutorCliDashboard", () => {
   test("start/stop writes alternate-screen sequences when enabled", () => {
     withPatchedStdout(writes =>
       withPatchedIntervals(() => {
-        const dash = new ExecutorCliDashboard({ enabled: true, exchange: "extended", symbol: "BTC-USD" });
+        const dash = new ExecutorCliDashboard({
+          enabled: true,
+          exchange: "extended",
+          symbol: "BTC-USD",
+        });
 
         dash.start();
         expect(writes.length).toBeGreaterThan(0);
@@ -25,7 +29,11 @@ describe("ExecutorCliDashboard", () => {
   test("render outputs a stable frame even without tick data", () => {
     withPatchedStdout(writes =>
       withPatchedIntervals(() => {
-        const dash = new ExecutorCliDashboard({ enabled: true, exchange: "extended", symbol: "BTC-USD" });
+        const dash = new ExecutorCliDashboard({
+          enabled: true,
+          exchange: "extended",
+          symbol: "BTC-USD",
+        });
 
         // Access private render for test verification.
         // @ts-expect-error - private method access for unit test

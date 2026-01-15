@@ -166,7 +166,15 @@ describe("ExtendedMarketDataAdapter", () => {
       const message: TradesMessage = {
         ts: 1704067200000,
         data: [
-          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+          {
+            m: "BTC-USD",
+            S: "BUY" as const,
+            tT: "TRADE" as const,
+            T: 1704067199999,
+            p: "50000",
+            q: "0.1",
+            i: 1001,
+          },
         ],
         seq: 12346,
       };
@@ -208,7 +216,15 @@ describe("ExtendedMarketDataAdapter", () => {
       const message: TradesMessage = {
         ts: 1704067200000,
         data: [
-          { m: "BTC-USD", S: "BUY" as const, tT: "TRADE" as const, T: 1704067199999, p: "50000", q: "0.1", i: 1001 },
+          {
+            m: "BTC-USD",
+            S: "BUY" as const,
+            tT: "TRADE" as const,
+            T: 1704067199999,
+            p: "50000",
+            q: "0.1",
+            i: 1001,
+          },
           {
             m: "BTC-USD",
             S: "SELL" as const,
@@ -476,7 +492,11 @@ describe("ExtendedMarketDataAdapter", () => {
         const lastSeqValue = lastSeq.get(key);
 
         if (lastSeqValue !== undefined && event.seq !== lastSeqValue + 1) {
-          return { hasBreak: true, expected: lastSeqValue + 1, actual: event.seq };
+          return {
+            hasBreak: true,
+            expected: lastSeqValue + 1,
+            actual: event.seq,
+          };
         }
 
         lastSeq.set(key, event.seq);
@@ -507,7 +527,11 @@ describe("ExtendedMarketDataAdapter", () => {
         const lastSeqValue = lastSeq.get(key);
 
         if (lastSeqValue !== undefined && event.seq !== lastSeqValue + 1) {
-          return { hasBreak: true, expected: lastSeqValue + 1, actual: event.seq };
+          return {
+            hasBreak: true,
+            expected: lastSeqValue + 1,
+            actual: event.seq,
+          };
         }
 
         lastSeq.set(key, event.seq);
@@ -625,7 +649,11 @@ describe("ExtendedMarketDataAdapter", () => {
 
   describe("Subscription management", () => {
     test("should track subscriptions", () => {
-      const subscriptions: { exchange: string; symbol: string; channels: string[] }[] = [];
+      const subscriptions: {
+        exchange: string;
+        symbol: string;
+        channels: string[];
+      }[] = [];
 
       const subscribe = (sub: { exchange: string; symbol: string; channels: string[] }) => {
         subscriptions.push(sub);

@@ -9,11 +9,13 @@
  * IMPORTANT: This validates the NEW format (object-based changes, structured rollback).
  */
 
-import { type Result, err, ok } from "neverthrow";
+import { err, ok } from "neverthrow";
+import type { Result } from "neverthrow";
 
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
-import { type ParamName, ProposalOutputSchema, type RollbackConditions } from "../types/schemas";
+import { ProposalOutputSchema } from "../types/schemas";
+import type { ParamName, RollbackConditions } from "../types/schemas";
 
 export type ParamGateError =
   | { type: "INVALID_PROPOSAL_SHAPE"; message: string }
@@ -43,7 +45,7 @@ const ALLOWED_PARAMS: readonly ParamName[] = [
   "pauseLiqCount10s",
 ];
 
-type ChangeRule = {
+interface ChangeRule {
   /** Minimum allowed ratio (proposed/current) when current != 0 */
   minRatio: number;
   /** Maximum allowed ratio (proposed/current) when current != 0 */
@@ -55,7 +57,7 @@ type ChangeRule = {
    * This is intentionally very loose; relative ratio is the main guard.
    */
   absMax: number;
-};
+}
 
 /**
  * "Excessive" change guardrails.
@@ -64,16 +66,66 @@ type ChangeRule = {
  * while catching clearly unreasonable LLM outputs (orders of magnitude, sign flips).
  */
 const CHANGE_RULES: Record<ParamName, ChangeRule> = {
-  baseHalfSpreadBps: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  volSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  toxSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  quoteSizeUsd: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  refreshIntervalMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
-  staleCancelMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
-  maxInventory: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  inventorySkewGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  pauseMarkIndexBps: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  pauseLiqCount10s: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  baseHalfSpreadBps: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  volSpreadGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  toxSpreadGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  quoteSizeUsd: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  refreshIntervalMs: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  staleCancelMs: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  maxInventory: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  inventorySkewGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  pauseMarkIndexBps: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  pauseLiqCount10s: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
 };
 
 /**
@@ -87,8 +139,20 @@ function getCurrentValue(params: CurrentParamsSummary, param: ParamName): number
       return params.staleCancelMs;
     case "pauseLiqCount10s":
       return params.pauseLiqCount10s;
-    default:
-      return parseFloat(params[param]);
+    case "baseHalfSpreadBps":
+      return Number.parseFloat(params.baseHalfSpreadBps);
+    case "volSpreadGain":
+      return Number.parseFloat(params.volSpreadGain);
+    case "toxSpreadGain":
+      return Number.parseFloat(params.toxSpreadGain);
+    case "quoteSizeUsd":
+      return Number.parseFloat(params.quoteSizeUsd);
+    case "maxInventory":
+      return Number.parseFloat(params.maxInventory);
+    case "inventorySkewGain":
+      return Number.parseFloat(params.inventorySkewGain);
+    case "pauseMarkIndexBps":
+      return Number.parseFloat(params.pauseMarkIndexBps);
   }
 }
 
@@ -106,7 +170,7 @@ function hasRollbackConditions(conditions: RollbackConditions): boolean {
 function parseNumber(
   value: string | number,
 ): { ok: true; value: number } | { ok: false; reason: "NAN" | "NON_FINITE" } {
-  const n = typeof value === "string" ? parseFloat(value) : value;
+  const n = typeof value === "string" ? Number.parseFloat(value) : value;
   if (Number.isNaN(n)) return { ok: false, reason: "NAN" };
   if (!Number.isFinite(n)) return { ok: false, reason: "NON_FINITE" };
   return { ok: true, value: n };

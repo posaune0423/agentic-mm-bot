@@ -1,8 +1,8 @@
 const ANSI = {
-  altScreenOn: "\x1b[?1049h",
-  altScreenOff: "\x1b[?1049l",
-  hideCursor: "\x1b[?25l",
-  showCursor: "\x1b[?25h",
+  altScreenOn: "\x1B[?1049h",
+  altScreenOff: "\x1B[?1049l",
+  hideCursor: "\x1B[?25l",
+  showCursor: "\x1B[?25h",
 } as const;
 
 type RegisterOnce = (event: "SIGINT" | "SIGTERM" | "exit", handler: () => void) => void;
@@ -35,7 +35,9 @@ export class TTYScreen {
     // Alternate screen buffer avoids corrupting scrollback.
     this.write(ANSI.altScreenOn + ANSI.hideCursor);
 
-    const restore = () => this.stop();
+    const restore = () => {
+      this.stop();
+    };
     this.once("SIGINT", restore);
     this.once("SIGTERM", restore);
     this.once("exit", restore);

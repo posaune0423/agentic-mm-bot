@@ -117,7 +117,7 @@ export function verifyLogIntegrity(filePath: string): ResultAsync<boolean, FileS
     const storedHash = parsed.integrity.sha256;
 
     // Recalculate hash without integrity field
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     const { integrity, ...withoutIntegrity } = parsed;
     const contentWithoutHash = JSON.stringify(withoutIntegrity, null, 2);
     const calculatedHash = calculateSha256(contentWithoutHash);
