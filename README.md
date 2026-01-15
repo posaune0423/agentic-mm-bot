@@ -14,7 +14,7 @@
 
 ## ドキュメント
 
-- **用語集**: `docs/taxonomy.md`
+- **用語集 / パラメータ**: `docs/taxonomy.md`（`quote` / `skew` / `baseHalf` / `rollbackConditions` など、repo内の用語と略語の対応）
 
 ## 技術スタック
 
@@ -68,26 +68,42 @@ bun install
 docker-compose up -d postgres
 ```
 
-### 3) スキーマ反映（Drizzle）
+### 3) 環境変数（dotenvx）
+
+このリポジトリでは [dotenvx](https://dotenvx.com/) を使用して暗号化された dotenv ファイルで環境変数を管理します。
+
+- **ローカル開発**: `.encrypted.local`
+- **本番**: 実行環境の env（推奨）または別ファイル（例: `.encrypted` / `.encrypted.prod`）を運用ポリシーに合わせて用意してください。
+
+#### 新規参加者
+
+1. 管理者から復号鍵（`DOTENV_PRIVATE_KEY`）を受け取る
+2. リポジトリルートに `.env.keys` ファイルを作成し、鍵を記載する:
+
+```ini
+# .env.keys（絶対にコミットしない）
+DOTENV_PRIVATE_KEY="受け取った鍵"
+```
+
+これで `bun run dev` 等のコマンドが自動的に `.encrypted.local` を復号して実行します（デフォルト）。
+
+#### 環境変数の更新（管理者向け）
+
+```bash
+# 値を追加・更新
+dotenvx set KEY value -f .encrypted.local
+
+# 暗号化を再適用（平文で編集した後）
+dotenvx encrypt -f .encrypted.local
+
+# 変更をコミット
+git add .encrypted.local && git commit -m "chore: update env vars"
+```
+
+### 4) スキーマ反映（Drizzle）
 
 ```bash
 bun run db:push
-```
-
-### 4) 環境変数を設定
-
-各ディレクトリの `.env.example` から `.env` を生成します。
-
-```bash
-bun run setup-env
-```
-
-生成後、秘匿情報（API キー等）を適切な値に置き換えてください。
-
-既存の `.env` を上書きする場合:
-
-```bash
-bun run setup-env --force
 ```
 
 ### 5) 各プロセスを起動
@@ -111,11 +127,6 @@ bun --cwd apps/executor run dev
 ## よく使うコマンド
 
 ```bash
-# Setup
-bun run setup-env           # 各 app/package に .env を生成
-bun run setup-env --force   # 既存の .env を上書き
-bun run setup-env --dry-run # 実行内容を確認（書き込みなし）
-
 # Code Quality
 bun run format:fix
 bun run lint:fix
@@ -123,7 +134,20 @@ bun run typecheck
 
 # Tests
 bun run test
+
+# 環境変数（dotenvx）
+dotenvx set KEY value -f .encrypted.local  # 暗号化して値を設定
+dotenvx encrypt -f .encrypted.local        # .encrypted.local を暗号化
+dotenvx decrypt -f .encrypted.local        # .encrypted.local を復号（確認用）
 ```
+
+## まず読むと迷いにくいポイント（用語・略語）
+
+- **quote（クオート）**: 板に出す指値の提示（bid/ask の注文）。repo内では `QUOTE` intent や “差し替え（update）” を指すこともあります。
+- **skew**: 在庫（ポジション）に応じて quote 全体を平行移動させるシフト量（bps）。
+- **baseHalf**: `baseHalfSpreadBps` の CLI 表示上の略称。
+
+詳しい定義と数式、CLI ダッシュボード上の `DB/Eff/Tighten/overlay` などの表示語は `docs/taxonomy.md` を参照してください。
 
 ## Extended（ストリーム / SDK）注意点
 
@@ -133,38 +157,28 @@ bun run test
 
 ## 環境変数
 
-### 構成
+### 構成（dotenvx）
 
 ```
 .
-├── .env.example          # グローバル変数テンプレート
-├── .env                  # グローバル変数（turbo が全タスクで読み込み）
+├── .encrypted.local      # 暗号化済み環境変数（ローカル用）
+├── .env.keys             # 復号鍵（Git 管理外、.gitignore 済み）
 └── apps/
-    ├── executor/
-    │   ├── .env.example  # executor 固有変数テンプレート
-    │   └── .env          # executor 固有変数
-    └── ...
+    └── <app>/src/env.ts  # 各アプリのバリデーション定義
 ```
 
-### グローバル変数（`root/.env`）
+### 主な環境変数
 
-| 変数           | 説明                | 例                                              |
-| -------------- | ------------------- | ----------------------------------------------- |
-| `DATABASE_URL` | PostgreSQL 接続 URL | `postgresql://dev:insecure@localhost:5432/main` |
+| 変数                         | 説明                     | 使用アプリ         |
+| ---------------------------- | ------------------------ | ------------------ |
+| `DATABASE_URL`               | PostgreSQL 接続 URL      | 全アプリ           |
+| `EXTENDED_NETWORK`           | testnet / mainnet        | ingestor, executor |
+| `EXTENDED_API_KEY`           | Extended 取引所 API キー | ingestor, executor |
+| `EXTENDED_STARK_PRIVATE_KEY` | Stark 署名用秘密鍵       | ingestor, executor |
+| `OPENAI_API_KEY`             | OpenAI API キー          | llm-reflector      |
+| `ANTHROPIC_API_KEY`          | Anthropic API キー       | llm-reflector      |
 
-`turbo.json` の `globalDotEnv` により、全タスクで自動的に読み込まれます。
-
-### アプリ固有変数
-
-各 `apps/*/.env.example` を参照してください。主な変数:
-
-| アプリ               | 主な変数                                                                     |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `apps/ingestor`      | `EXTENDED_*`, `BBO_*`, `INGESTOR_DASHBOARD_*`                                |
-| `apps/executor`      | `EXTENDED_*`, `TICK_INTERVAL_MS`, `PROPOSAL_APPLY_*`, `EXECUTOR_DASHBOARD_*` |
-| `apps/llm-reflector` | `MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `REFLECTION_WINDOW_MINUTES`  |
-| `apps/summarizer`    | `RUN_INTERVAL_MS`                                                            |
-| `apps/backtest`      | `TICK_INTERVAL_MS`                                                           |
+詳細は各 `apps/<app>/src/env.ts` のスキーマ定義を参照してください。
 
 ### バリデーション
 
@@ -172,6 +186,24 @@ bun run test
 
 - 原則: **`process.env` を直接参照しない**（`env` / `loadEnv()` を使う）
 - `apps/llm-reflector` は Zod による `safeParse` を使っており、検証失敗時は例外で停止します
+
+### 鍵のローテーション
+
+```bash
+# 新しい鍵ペアで再暗号化
+dotenvx encrypt -f .encrypted.local --rotate
+
+# 新しい .env.keys を安全に配布し、古い鍵を無効化する
+```
+
+### 実行時に参照する暗号化ファイルの切り替え（本番/別環境）
+
+スクリプトはローカル向けに `.encrypted.local` を固定参照します。別環境では、必要なコマンドを明示的に `-f` で指定して実行してください。
+
+```bash
+# 例: 本番用ファイルを参照して起動（手動で dotenvx run を使う）
+dotenvx run -f ../../.encrypted -fk ../../.env.keys -- bun --cwd apps/executor run dev
+```
 
 ## 開発フロー（AI-DLC）
 

@@ -50,19 +50,13 @@ const ANSI: Record<StyleToken, string> = {
 };
 
 export class Style {
-  private readonly noColor: boolean;
-
-  constructor(args: { noColor: boolean }) {
-    // Respect the de-facto standard env var, in addition to app config.
-    this.noColor = args.noColor || process.env.NO_COLOR !== undefined;
-  }
+  constructor() {}
 
   enabled(): boolean {
-    return !this.noColor;
+    return true;
   }
 
   token(t: StyleToken): string {
-    if (this.noColor) return "";
     return ANSI[t];
   }
 
@@ -71,7 +65,6 @@ export class Style {
    * e.g. style.combine("bold", "red") => "\x1b[1m\x1b[31m"
    */
   combine(...tokens: StyleToken[]): string {
-    if (this.noColor) return "";
     return tokens.map(t => ANSI[t]).join("");
   }
 
@@ -80,7 +73,6 @@ export class Style {
    * e.g. style.wrap("ERROR", "bold", "bgRed", "white") => "\x1b[1m\x1b[41m\x1b[97mERROR\x1b[0m"
    */
   wrap(text: string, ...tokens: StyleToken[]): string {
-    if (this.noColor) return text;
     return this.combine(...tokens) + text + ANSI.reset;
   }
 

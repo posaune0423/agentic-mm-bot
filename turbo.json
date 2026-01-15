@@ -1,23 +1,23 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
-  "globalDependencies": [".env"],
+  "globalDependencies": [".encrypted.local", ".encrypted"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
       "outputs": ["dist/**"]
     },
     "db:generate": {
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["drizzle/**"]
+      "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
+      "outputs": ["migrations/**"]
     },
     "db:push": {
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
       "cache": false
     },
     "db:studio": {
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", ".encrypted.local", ".encrypted"],
       "cache": false,
       "persistent": true
     },

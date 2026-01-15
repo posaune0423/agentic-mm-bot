@@ -6,8 +6,9 @@
  * - Simulated execution (touch fill)
  * - Output metrics and CSV
  *
- * 環境変数のテンプレートは .env.example を参照してください。
- * bun run setup-env で .env ファイルを自動生成できます。
+ * 環境変数は dotenvx で暗号化されたファイルで管理されています。
+ * - ローカル: `.encrypted.local`（デフォルト）
+ * - 本番: 実行環境の env、または別ファイル（例: `.encrypted`）
  */
 
 import { createEnv } from "@t3-oss/env-core";
@@ -27,7 +28,7 @@ export const env = createEnv({
      * 形式: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
      * 例: postgresql://postgres:password@localhost:5432/mm_bot
      *
-     * .env.example の DATABASE_URL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の DATABASE_URL を参照
      */
     DATABASE_URL: z.url(),
 
@@ -41,7 +42,7 @@ export const env = createEnv({
      * - INFO: 情報レベル以上 (デフォルト)
      * - DEBUG: 全ログ出力
      *
-     * .env.example の LOG_LEVEL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の LOG_LEVEL を参照
      */
     LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
 
@@ -50,7 +51,7 @@ export const env = createEnv({
      *
      * 有効値: extended (現在は extended のみサポート)
      *
-     * .env.example の EXCHANGE を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXCHANGE を参照
      */
     EXCHANGE: z.string().default("extended"),
 
@@ -60,7 +61,7 @@ export const env = createEnv({
      * 形式: BASE-QUOTE
      * 例: BTC-USD, ETH-USD
      *
-     * .env.example の SYMBOL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の SYMBOL を参照
      */
     SYMBOL: z.string(),
 
@@ -90,7 +91,7 @@ export const env = createEnv({
      * バックテストでは固定間隔でデータを再生します (11.2)
      * 小さいほど細かい粒度でシミュレーションしますが処理時間が増加
      *
-     * .env.example の TICK_INTERVAL_MS を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の TICK_INTERVAL_MS を参照
      * デフォルト: 200ms
      */
     TICK_INTERVAL_MS: z.coerce.number().default(200),

@@ -8,12 +8,6 @@
  * - Throttle BBO writes by time and mid change
  */
 
-import { config } from "dotenv";
-import { resolve } from "path";
-
-// Load .env from project root (three levels up from apps/ingestor)
-config({ path: resolve(process.cwd(), "../../.env") });
-
 import {
   ExtendedMarketDataAdapter,
   type BboEvent,
@@ -52,7 +46,6 @@ async function main(): Promise<void> {
     symbol: env.SYMBOL,
     initialMetrics: metrics,
     refreshMs: env.INGESTOR_DASHBOARD_REFRESH_MS,
-    noColor: env.INGESTOR_DASHBOARD_NO_COLOR,
     staleMs: env.INGESTOR_DASHBOARD_STALE_MS,
   });
   dashboard.start();

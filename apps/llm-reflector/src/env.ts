@@ -9,8 +9,9 @@
  * マーケットメイキングのパフォーマンスを分析し、
  * LLM を使用して戦略パラメータの調整提案を生成するサービスの設定。
  *
- * 環境変数のテンプレートは .env.example を参照してください。
- * bun run setup-env で .env ファイルを自動生成できます。
+ * 環境変数は dotenvx で暗号化されたファイルで管理されています。
+ * - ローカル: `.encrypted.local`（デフォルト）
+ * - 本番: 実行環境の env、または別ファイル（例: `.encrypted`）
  *
  */
 
@@ -32,7 +33,7 @@ const EnvSchema = z.object({
    * 形式: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
    * 例: postgresql://postgres:password@localhost:5432/mm_bot
    *
-   * .env.example の DATABASE_URL を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の DATABASE_URL を参照
    */
   DATABASE_URL: z.url(),
 
@@ -50,7 +51,7 @@ const EnvSchema = z.object({
    * - INFO: 情報レベル以上 (デフォルト)
    * - DEBUG: 全ログ出力（LLM プロンプト・レスポンス詳細等）
    *
-   * .env.example の LOG_LEVEL を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の LOG_LEVEL を参照
    */
   LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
 
@@ -66,7 +67,7 @@ const EnvSchema = z.object({
    * - test: テスト実行時
    * - production: 本番環境（コスト最適化、厳格なエラー処理）
    *
-   * .env.example の APP_ENV を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の APP_ENV を参照
    */
   APP_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -79,7 +80,7 @@ const EnvSchema = z.object({
    *
    * 有効値: extended (現在は extended のみサポート)
    *
-   * .env.example の EXCHANGE を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の EXCHANGE を参照
    */
   EXCHANGE: z.string().default("extended"),
 
@@ -89,7 +90,7 @@ const EnvSchema = z.object({
    * 形式: BASE-QUOTE
    * 例: BTC-USD, ETH-USD
    *
-   * .env.example の SYMBOL を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の SYMBOL を参照
    */
   SYMBOL: z.string().default("BTC-USD"),
 
@@ -107,7 +108,7 @@ const EnvSchema = z.object({
    * - anthropic/claude-3-opus (代替)
    * - anthropic/claude-3-sonnet (コスト重視代替)
    *
-   * .env.example の MODEL を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の MODEL を参照
    * デフォルト: openai/gpt-4o
    */
   MODEL: z.string().default("openai/gpt-4o"),
@@ -119,7 +120,7 @@ const EnvSchema = z.object({
    * https://platform.openai.com/api-keys から取得
    *
    * Mastra が自動検出するため環境変数名は固定
-   * .env.example の OPENAI_API_KEY を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の OPENAI_API_KEY を参照
    *
    * 注意: 起動時は optional。実行時に provider エラーとして表面化
    */
@@ -132,7 +133,7 @@ const EnvSchema = z.object({
    * https://console.anthropic.com/settings/keys から取得
    *
    * Mastra が自動検出するため環境変数名は固定
-   * .env.example の ANTHROPIC_API_KEY を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の ANTHROPIC_API_KEY を参照
    *
    * 注意: 起動時は optional。実行時に provider エラーとして表面化
    */
@@ -148,7 +149,7 @@ const EnvSchema = z.object({
    * 相対パスの場合は llm-reflector ルートからの相対位置
    * reasoning ログ（LLM の思考過程）を JSON で保存
    *
-   * .env.example の LOG_DIR を参照
+   * `.encrypted.local`（または指定された暗号化ファイル）の LOG_DIR を参照
    * デフォルト: ./logs
    */
   LOG_DIR: z.string().default("./logs"),

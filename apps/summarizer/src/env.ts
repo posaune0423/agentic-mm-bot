@@ -4,8 +4,9 @@
  * マーケットデータと約定履歴を集計し、
  * 統計サマリー（markout、P&L 等）を生成するサービスの設定。
  *
- * 環境変数のテンプレートは .env.example を参照してください。
- * bun run setup-env で .env ファイルを自動生成できます。
+ * 環境変数は dotenvx で暗号化されたファイルで管理されています。
+ * - ローカル: `.encrypted.local`（デフォルト）
+ * - 本番: 実行環境の env、または別ファイル（例: `.encrypted`）
  *
  */
 
@@ -30,7 +31,7 @@ export const env = createEnv({
      * 形式: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
      * 例: postgresql://postgres:password@localhost:5432/mm_bot
      *
-     * .env.example の DATABASE_URL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の DATABASE_URL を参照
      */
     DATABASE_URL: z.url(),
 
@@ -48,7 +49,7 @@ export const env = createEnv({
      * - INFO: 情報レベル以上 (デフォルト)
      * - DEBUG: 全ログ出力（集計詳細等）
      *
-     * .env.example の LOG_LEVEL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の LOG_LEVEL を参照
      */
     LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
 
@@ -64,7 +65,7 @@ export const env = createEnv({
      * - test: テスト実行時
      * - production: 本番環境（最適化）
      *
-     * .env.example の APP_ENV を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の APP_ENV を参照
      */
     APP_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -77,7 +78,7 @@ export const env = createEnv({
      *
      * 有効値: extended (現在は extended のみサポート)
      *
-     * .env.example の EXCHANGE を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXCHANGE を参照
      */
     EXCHANGE: z.string().default("extended"),
 
@@ -87,7 +88,7 @@ export const env = createEnv({
      * 形式: BASE-QUOTE
      * 例: BTC-USD, ETH-USD
      *
-     * .env.example の SYMBOL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の SYMBOL を参照
      */
     SYMBOL: z.string().default("BTC-USD"),
 

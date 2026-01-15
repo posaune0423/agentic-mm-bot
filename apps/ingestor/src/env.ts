@@ -4,8 +4,9 @@
  * WebSocket 経由で取引所からマーケットデータを取得し、
  * データベースに永続化するサービスの設定。
  *
- * 環境変数のテンプレートは .env.example を参照してください。
- * bun run setup-env で .env ファイルを自動生成できます。
+ * 環境変数は dotenvx で暗号化されたファイルで管理されています。
+ * - ローカル: `.encrypted.local`（デフォルト）
+ * - 本番: 実行環境の env、または別ファイル（例: `.encrypted`）
  *
  */
 
@@ -30,7 +31,7 @@ export const env = createEnv({
      * 形式: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
      * 例: postgresql://postgres:password@localhost:5432/mm_bot
      *
-     * .env.example の DATABASE_URL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の DATABASE_URL を参照
      */
     DATABASE_URL: z.url(),
 
@@ -48,7 +49,7 @@ export const env = createEnv({
      * - INFO: 情報レベル以上 (デフォルト)
      * - DEBUG: 全ログ出力（WebSocket メッセージ等も含む）
      *
-     * .env.example の LOG_LEVEL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の LOG_LEVEL を参照
      */
     LOG_LEVEL: z.enum(["ERROR", "WARN", "LOG", "INFO", "DEBUG"]).default("INFO"),
 
@@ -64,7 +65,7 @@ export const env = createEnv({
      * - test: テスト実行時
      * - production: 本番環境（最適化、厳格なエラー処理）
      *
-     * .env.example の APP_ENV を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の APP_ENV を参照
      */
     APP_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -77,7 +78,7 @@ export const env = createEnv({
      *
      * 有効値: extended (現在は extended のみサポート)
      *
-     * .env.example の EXCHANGE を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXCHANGE を参照
      */
     EXCHANGE: z.string().default("extended"),
 
@@ -87,7 +88,7 @@ export const env = createEnv({
      * 形式: BASE-QUOTE
      * 例: BTC-USD, ETH-USD
      *
-     * .env.example の SYMBOL を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の SYMBOL を参照
      */
     SYMBOL: z.string(),
 
@@ -102,7 +103,7 @@ export const env = createEnv({
      * - testnet: テストネット（開発・検証用、実資金なし）
      * - mainnet: メインネット（本番取引、実資金）
      *
-     * .env.example の EXTENDED_NETWORK を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXTENDED_NETWORK を参照
      */
     EXTENDED_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
 
@@ -112,7 +113,7 @@ export const env = createEnv({
      * Extended 取引所のダッシュボードから発行
      * WebSocket 接続の認証に使用
      *
-     * .env.example の EXTENDED_API_KEY を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXTENDED_API_KEY を参照
      */
     EXTENDED_API_KEY: z.string(),
 
@@ -122,7 +123,7 @@ export const env = createEnv({
      * 例: 0x1234...abcd
      * 注意: 絶対に外部に公開しないこと
      *
-     * .env.example の EXTENDED_STARK_PRIVATE_KEY を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXTENDED_STARK_PRIVATE_KEY を参照
      */
     EXTENDED_STARK_PRIVATE_KEY: z.string(),
 
@@ -132,7 +133,7 @@ export const env = createEnv({
      * 例: 0xabcd...1234
      * 秘密鍵から導出された公開鍵
      *
-     * .env.example の EXTENDED_STARK_PUBLIC_KEY を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXTENDED_STARK_PUBLIC_KEY を参照
      */
     EXTENDED_STARK_PUBLIC_KEY: z.string(),
 
@@ -142,7 +143,7 @@ export const env = createEnv({
      * Extended 取引所で割り当てられた vault の識別子
      * 資金管理に使用
      *
-     * .env.example の EXTENDED_VAULT_ID を参照
+     * `.encrypted.local`（または指定された暗号化ファイル）の EXTENDED_VAULT_ID を参照
      */
     EXTENDED_VAULT_ID: z.coerce.number(),
 
@@ -207,17 +208,6 @@ export const env = createEnv({
      * デフォルト: 250ms
      */
     INGESTOR_DASHBOARD_REFRESH_MS: z.coerce.number().default(250),
-
-    /**
-     * ダッシュボードのカラー表示無効化
-     *
-     * true: モノクロ出力（CI 環境等で使用）
-     * false: カラー出力
-     *
-     * ingestor 専用
-     * デフォルト: false
-     */
-    INGESTOR_DASHBOARD_NO_COLOR: z.coerce.boolean().default(false),
 
     /**
      * データの stale (古い) 判定閾値 (ミリ秒)

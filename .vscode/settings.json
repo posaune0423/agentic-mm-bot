@@ -1,5 +1,7 @@
 {
   "files.associations": {
-    ".env.global": "dotenv"
+    ".encrypted.local": "dotenv",
+    ".encrypted": "dotenv",
+    ".env.keys": "dotenv"
   }
 }
