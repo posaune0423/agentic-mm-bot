@@ -16,6 +16,7 @@
     },
     "catalogs": {
       "tooling": {
+        "@dotenvx/dotenvx": "latest",
         "@prettier/plugin-oxc": "latest",
         "@types/node": "latest",
         "@types/bun": "latest",
@@ -51,7 +52,7 @@
     "@agentic-mm-bot/adapters": "workspace:*",
     "@agentic-mm-bot/db": "workspace:*",
     "@agentic-mm-bot/prettier-config": "workspace:*",
-    "@dotenvx/dotenvx": "^1.51.4",
+    "@dotenvx/dotenvx": "catalog:tooling",
     "@prettier/plugin-oxc": "^0.1.3",
     "@types/bun": "^1.3.6",
     "@types/node": "^25.0.8",

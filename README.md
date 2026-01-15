@@ -157,7 +157,7 @@ dotenvx decrypt -f .encrypted.local        # .encrypted.local を復号（確認
 
 ### 構成（dotenvx）
 
-```
+```text
 .
 ├── .encrypted.local      # 暗号化済み環境変数（ローカル用）
 ├── .env.keys             # 復号鍵（Git 管理外、.gitignore 済み）
