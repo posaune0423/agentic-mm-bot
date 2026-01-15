@@ -1,0 +1,187 @@
+#/-------------------[DOTENV_PUBLIC_KEY]--------------------/
+#/            public-key encryption for .env files          /
+#/       [how it works](https://dotenvx.com/encryption)     /
+#/----------------------------------------------------------/
+DOTENV_PUBLIC_KEY_LOCAL="024cad532c329d02215d1f0dfca04c9694d910cf050a44e3160138d62a5dc77de5"
+
+# .encrypted.local
+# .encrypted.local
+#/-------------------[DOTENV_PUBLIC_KEY]--------------------/
+#/            public-key encryption for .env files          /
+#/       [how it works](https://dotenvx.com/encryption)     /
+#/----------------------------------------------------------/
+DOTENV_PUBLIC_KEY="024cad532c329d02215d1f0dfca04c9694d910cf050a44e3160138d62a5dc77de5"
+
+# .env
+# =============================================================================
+# agentic-mm-bot 環境変数
+# =============================================================================
+# このファイルは dotenvx で暗号化されます。
+# 秘匿情報（🔐マーク）は dotenvx set で暗号化してください。
+#
+# 暗号化: dotenvx encrypt
+# 復号化: dotenvx decrypt
+# 値設定: dotenvx set KEY value
+# =============================================================================
+
+# =============================================================================
+# Database
+# =============================================================================
+
+# PostgreSQL 接続 URL
+DATABASE_URL=postgresql://dev:insecure@localhost:5432/main
+
+# =============================================================================
+# Common
+# =============================================================================
+
+# ログ出力レベル: ERROR | WARN | LOG | INFO | DEBUG
+LOG_LEVEL=INFO
+
+# 実行環境: development | test | production
+APP_ENV=development
+
+# 取引所識別子
+EXCHANGE=extended
+
+# 取引対象シンボル
+SYMBOL=BTC-USD
+
+# =============================================================================
+# Extended Exchange Credentials
+# =============================================================================
+
+# ネットワーク: testnet | mainnet
+EXTENDED_NETWORK=mainnet
+
+# 🔐 API キー（秘匿）
+EXTENDED_API_KEY=encrypted:BHaRM9n6ji38dt0fP4E5rCB7ZvF66LsGBq2ekIDxc1ETdPsvfWHp08yYlQ8S5vbEk8ONDD6TbaIkmN1fETMIBjP6wZuwsPPAyRaxRdL2Mx9jx1KAygTfEuPO5h3EIizjPch04zq0Cbn3dbGIpbQJk8O/He9PC0NG00UzDxmhdT0t
+
+# 🔐 Stark 署名用秘密鍵（秘匿）
+EXTENDED_STARK_PRIVATE_KEY=encrypted:BNA30V+l0XsL5fNewUKZdSNQznAdUzOIZEJ9anOkepPyJXSq3idWlZxukx+rK0bjNz2GvfhM2StmC2QlrPB/o9jgm76ufZSgP9QrZytEPp0cRK4yfPbQGVcb9a8i9c6e6r5AC59ZWjv58izPyYKrhdUtz28eMQSQR8hzrCtR+LEvAWqSVWBkytbd00DGLas7QfPCcF/0Osx+PZE2oLOjrbk=
+
+# Stark 署名用公開鍵
+EXTENDED_STARK_PUBLIC_KEY=encrypted:BAsbb0LSoz7ZjDmKGHZn8bv6ZawTaof5iHzWgo8ofHApgb8X7Atd7rHoMEnTFf0MmX7+ThpRsDa9ug10gQur19y8xzqsgQJP+OIxnT3dFiKxrba28PlnXGAmx0eNKCEMdCVNWQfwAmCMRAkJfUIMQOlt9RPAURNpYEhO2jRGYxL9FwgmGpj8Y5m2brtw0RB7oTcdzdxVRmfr6o3rjq/mVSM1
+
+# Vault ID
+EXTENDED_VAULT_ID=encrypted:BKfBuoKYt3jc+muMxSe7OhNyYB+rteBXUKs1BAlhJXUWGBMXGST7NXWaHxFD6kbYvHbAWSDsURRior/DAPzdUu9CQPQkkWUqX4mQj7RUWaK6HcENL8k15xr9ZNUsxwxdqs8Bk3FegA==
+
+# =============================================================================
+# LLM Configuration (llm-reflector)
+# =============================================================================
+
+# LLM モデル: openai/gpt-4o | openai/gpt-4o-mini | anthropic/claude-3-opus
+MODEL=openai/gpt-4o
+
+# 🔐 OpenAI API キー（秘匿）
+OPENAI_API_KEY=encrypted:BJl3Kp6ouG/cMan0x5yNsVfYRNQoRpPR1IzPoiOWybUwewu+4qaqt8mdUZxUJAEZ3BwihbtGw4TdpjWy4zcmZxPflDciBYnNVo61eq5IQFaTAKUO5UQlpHzbroMXmeJll7dM0RJt9LglfZMFg1fV6lOnhylIdp5xIq+t+4dO7h3votF1oy0AR4wrFL6cuZ1is3FE0cZlE5QklqQhAH7q12PFTZB1nPppxJ7JgE+UuANQc56yaPDlXqFsjCxQMF7okWAHHjlV09g0ICpIj+0TwA0j0yuRg7s9/2ajTbiNrLD8tJ8P8akahKpjXVquAUrwOAbn/YBohkwlOQMlXSylOhJ/w/b5
+
+# Anthropic API キー（使用時のみ）
+# ANTHROPIC_API_KEY=sk-ant-your_anthropic_api_key
+
+# =============================================================================
+# Ingestor Configuration
+# =============================================================================
+
+# BBO 書き込みスロットル間隔 (ms)
+BBO_THROTTLE_MS=100
+
+# BBO 最小変動幅 (bps)
+BBO_MIN_CHANGE_BPS=1
+
+# latest_top upsert 間隔 (ms)
+LATEST_TOP_UPSERT_INTERVAL_MS=1000
+
+# CLI ダッシュボード有効化
+INGESTOR_DASHBOARD=true
+
+# ダッシュボード更新間隔 (ms)
+INGESTOR_DASHBOARD_REFRESH_MS=250
+
+# ダッシュボードカラー無効化
+INGESTOR_DASHBOARD_NO_COLOR=false
+
+# データ stale 判定閾値 (ms)
+INGESTOR_DASHBOARD_STALE_MS=3000
+
+# =============================================================================
+# Executor Configuration
+# =============================================================================
+
+# ログ出力ディレクトリ
+LOG_DIR=./logs
+
+# メインループ tick 間隔 (ms)
+TICK_INTERVAL_MS=200
+
+# 状態永続化間隔 (ms)
+STATE_PERSIST_INTERVAL_MS=10000
+
+# イベントフラッシュ間隔 (ms)
+EVENT_FLUSH_INTERVAL_MS=1000
+
+# パラメータ自動更新
+PARAMS_REFRESH_ENABLED=true
+
+# パラメータ更新チェック間隔 (ms)
+PARAMS_REFRESH_INTERVAL_MS=5000
+
+# LLM 提案自動適用
+PROPOSAL_APPLY_ENABLED=true
+
+# 提案ポーリング間隔 (ms)
+PROPOSAL_APPLY_POLL_INTERVAL_MS=1000
+
+# 提案適用境界時刻 (分)
+PROPOSAL_APPLY_BOUNDARY_MINUTES=1
+
+# 境界時刻猶予 (秒)
+PROPOSAL_APPLY_BOUNDARY_GRACE_SECONDS=30
+
+# データ鮮度閾値 (ms)
+PROPOSAL_APPLY_DATA_STALE_MS=10000
+
+# 最大一時停止回数/時
+PROPOSAL_APPLY_MAX_PAUSE_COUNT_LAST_HOUR=20
+
+# markout P50 下限 (bps)
+PROPOSAL_APPLY_MIN_MARKOUT10S_P50_BPS=-1000000000
+
+# CLI ダッシュボード有効化
+EXECUTOR_DASHBOARD=true
+
+# ダッシュボード更新間隔 (ms)
+EXECUTOR_DASHBOARD_REFRESH_MS=250
+
+# ダッシュボードカラー無効化
+EXECUTOR_DASHBOARD_NO_COLOR=false
+
+# =============================================================================
+# Summarizer Configuration
+# =============================================================================
+
+# サマリー生成間隔 (ms) - summarizer 用
+# RUN_INTERVAL_MS=10000
+
+# =============================================================================
+# LLM Reflector Configuration
+# =============================================================================
+
+# リフレクション実行間隔 (ms)
+RUN_INTERVAL_MS=60000
+
+# リフレクション対象時間窓 (分)
+REFLECTION_WINDOW_MINUTES=5
+
+# =============================================================================
+# Backtest Configuration (実行時に指定)
+# =============================================================================
+
+# バックテスト開始時刻 (ISO 8601)
+# START_TIME=2024-01-01T00:00:00Z
+
+# バックテスト終了時刻 (ISO 8601)
+# END_TIME=2024-01-02T00:00:00Z
+
+# CSV 出力先
+# BACKTEST_OUT_CSV=./output/backtest-results.csv

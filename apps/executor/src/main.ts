@@ -8,12 +8,6 @@
  * - Non-blocking event logging (4.10)
  */
 
-import { config } from "dotenv";
-import { resolve } from "path";
-
-// Load .env from project root (three levels up from apps/executor)
-config({ path: resolve(process.cwd(), "../../.env") });
-
 import { createInitialState, type StrategyParams, type StrategyState, ALLOWED_PARAM_KEYS } from "@agentic-mm-bot/core";
 import { ExtendedExecutionAdapter, ExtendedMarketDataAdapter, initWasm } from "@agentic-mm-bot/adapters";
 import type { StrategyParams as DbStrategyParams } from "@agentic-mm-bot/db";
@@ -47,7 +41,6 @@ async function main(): Promise<void> {
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
     refreshMs: env.EXECUTOR_DASHBOARD_REFRESH_MS,
-    noColor: env.EXECUTOR_DASHBOARD_NO_COLOR,
   });
   dashboard.start();
   dashboard.pushEvent(LogLevel.INFO, "executor started", { exchange: env.EXCHANGE, symbol: env.SYMBOL });

@@ -84,13 +84,11 @@ export class IngestorCliDashboard {
     initialMetrics: IngestorMetrics;
     refreshMs?: number;
     staleMs?: number;
-    noColor?: boolean;
     maxLogs?: number;
   }) {
     const control = createDashboardControl({
       enabled: args.enabled,
       refreshMs: args.refreshMs ?? 250,
-      noColor: args.noColor ?? false,
       isTTY: Boolean(process.stdout.isTTY),
     });
     const cfg = control.config();
@@ -101,7 +99,7 @@ export class IngestorCliDashboard {
     this.refreshMs = cfg.refreshMs;
     this.staleMs = args.staleMs ?? 3_000;
 
-    this.style = new Style({ noColor: cfg.noColor });
+    this.style = new Style();
     this.layout = new LayoutPolicy();
     this.renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
     this.screen = new TTYScreen({ enabled: this.enabled, write: chunk => process.stdout.write(chunk) });

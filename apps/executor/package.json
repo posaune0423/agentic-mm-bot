@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/main.ts",
-    "start": "bun run src/main.ts",
+    "dev": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun run --hot src/main.ts",
+    "start": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun run src/main.ts",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",
     "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
-    "test": "bun test"
+    "test": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun test"
   },
   "dependencies": {
     "@agentic-mm-bot/adapters": "workspace:*",

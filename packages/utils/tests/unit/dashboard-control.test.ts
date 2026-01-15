@@ -7,7 +7,6 @@ describe("createDashboardControl", () => {
     const ctrl = createDashboardControl({
       enabled: true,
       refreshMs: 250,
-      noColor: false,
       isTTY: false,
     });
 

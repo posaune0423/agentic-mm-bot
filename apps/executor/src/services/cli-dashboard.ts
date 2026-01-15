@@ -116,18 +116,10 @@ export class ExecutorCliDashboard {
   private readonly logs: LogBuffer;
   private readonly flow: FlowStatusTracker<ExecutorPhase>;
 
-  constructor(args: {
-    enabled: boolean;
-    exchange: string;
-    symbol: string;
-    refreshMs?: number;
-    noColor?: boolean;
-    maxLogs?: number;
-  }) {
+  constructor(args: { enabled: boolean; exchange: string; symbol: string; refreshMs?: number; maxLogs?: number }) {
     const control = createDashboardControl({
       enabled: args.enabled,
       refreshMs: args.refreshMs ?? 250,
-      noColor: args.noColor ?? false,
       isTTY: Boolean(process.stdout.isTTY),
     });
     const cfg = control.config();
@@ -138,7 +130,7 @@ export class ExecutorCliDashboard {
 
     this.refreshMs = cfg.refreshMs;
 
-    this.style = new Style({ noColor: cfg.noColor });
+    this.style = new Style();
     this.layout = new LayoutPolicy();
     this.renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
     this.screen = new TTYScreen({ enabled: this.enabled, write: chunk => process.stdout.write(chunk) });

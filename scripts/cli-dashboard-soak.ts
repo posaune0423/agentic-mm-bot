@@ -33,7 +33,7 @@ if (!process.stdout.isTTY) {
   process.exit(1);
 }
 
-const style = new Style({ noColor: false });
+const style = new Style();
 const layout = new LayoutPolicy();
 const logs = new LogBuffer(200);
 

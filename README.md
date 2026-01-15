@@ -1,5 +1,3 @@
----
-
 # agentic-mm-bot（Agentic Market Making Bot）
 
 このリポジトリは、**複数プロセス（`apps/*`）**で動くマーケットメイク・ボットのモノレポです。中核ロジックは `packages/core` に閉じ込め（純関数）、DB・取引所接続・集計・LLM提案などの I/O は周辺へ分離します。
@@ -14,7 +12,7 @@
 
 ## ドキュメント
 
-- **用語集**: `docs/taxonomy.md`
+- **用語集 / パラメータ**: `docs/taxonomy.md`（`quote` / `skew` / `baseHalf` / `rollbackConditions` など、repo内の用語と略語の対応）
 
 ## 技術スタック
 
@@ -68,13 +66,55 @@ bun install
 docker-compose up -d postgres
 ```
 
-### 3) スキーマ反映（Drizzle）
+### 3) 環境変数（dotenvx）
+
+このリポジトリでは [dotenvx](https://dotenvx.com/) を使用して暗号化された dotenv ファイルで環境変数を管理します。
+
+- **ローカル開発**: `.encrypted.local`
+- **本番**: 実行環境の env（推奨）または別ファイル（例: `.encrypted` / `.encrypted.prod`）を運用ポリシーに合わせて用意してください。
+
+#### 新規参加者
+
+1. 管理者から復号鍵（`DOTENV_PRIVATE_KEY`）を受け取る
+2. リポジトリルートに `.env.keys` ファイルを作成し、鍵を記載する:
+
+```ini
+# .env.keys（絶対にコミットしない）
+DOTENV_PRIVATE_KEY="受け取った鍵"
+```
+
+`dotenvx` は **`.env.keys` を置いただけでは `bun run dev` 実行時に自動復号されません**。`.encrypted.local` を復号して環境変数を読み込ませるには、次のいずれかが必要です。
+
+- **(1) runtime import（Bun のエントリポイントで読み込む）**: 各アプリの Bun エントリポイントに `import '@dotenvx/dotenvx/config'` を追加する
+- **(2) CLI ラッパー（dotenvx 経由で実行する）**: `dotenvx run -f .encrypted.local -- bun run dev` のように `dotenvx run` でコマンドをラップする
+
+このリポジトリは **方式 (2)** を採用しています。コントリビューターは、`bun run dev` を実行する際に必ず `dotenvx run` のラッパーを使う（または方式 (1) の import を追加する）ことで、`.encrypted.local` が実際に復号された状態で起動するようにしてください。
+
+```bash
+# 例: dotenvx で復号してから dev を実行（推奨 / 本リポジトリの方式）
+dotenvx run -f .encrypted.local -- bun run dev
+```
+
+#### 環境変数の更新（管理者向け）
+
+```bash
+# 値を追加・更新
+dotenvx set KEY value -f .encrypted.local
+
+# 暗号化を再適用（平文で編集した後）
+dotenvx encrypt -f .encrypted.local
+
+# 変更をコミット
+git add .encrypted.local && git commit -m "chore: update env vars"
+```
+
+### 4) スキーマ反映（Drizzle）
 
 ```bash
 bun run db:push
 ```
 
-### 4) 各プロセスを起動
+### 5) 各プロセスを起動
 
 - **Turborepo 経由**（推奨）:
 
@@ -102,7 +142,20 @@ bun run typecheck
 
 # Tests
 bun run test
+
+# 環境変数（dotenvx）
+dotenvx set KEY value -f .encrypted.local  # 暗号化して値を設定
+dotenvx encrypt -f .encrypted.local        # .encrypted.local を暗号化
+dotenvx decrypt -f .encrypted.local        # .encrypted.local を復号（確認用）
 ```
+
+## まず読むと迷いにくいポイント（用語・略語）
+
+- **quote（クオート）**: 板に出す指値の提示（bid/ask の注文）。repo内では `QUOTE` intent や “差し替え（update）” を指すこともあります。
+- **skew**: 在庫（ポジション）に応じて quote 全体を平行移動させるシフト量（bps）。
+- **baseHalf**: `baseHalfSpreadBps` の CLI 表示上の略称。
+
+詳しい定義と数式、CLI ダッシュボード上の `DB/Eff/Tighten/overlay` などの表示語は `docs/taxonomy.md` を参照してください。
 
 ## Extended（ストリーム / SDK）注意点
 
@@ -110,18 +163,55 @@ bun run test
 - そのため `packages/adapters/src/extended/market-data-adapter.ts` は **feature-detect** し、未対応の場合は該当ストリームを **自動で無効化**して（warn を出して）他の購読を継続します。
 - `markPrice` / `indexPrice` が必要な場合は、利用している `extended-typescript-sdk` の版を見直してください。
 
-## 環境変数（重要）
+## 環境変数
+
+### 構成（dotenvx）
+
+```text
+.
+├── .encrypted.local      # 暗号化済み環境変数（ローカル用）
+├── .env.keys             # 復号鍵（Git 管理外、.gitignore 済み）
+└── apps/
+    └── <app>/src/env.ts  # 各アプリのバリデーション定義
+```
+
+### 主な環境変数
+
+| 変数                         | 説明                     | 使用アプリ         |
+| ---------------------------- | ------------------------ | ------------------ |
+| `DATABASE_URL`               | PostgreSQL 接続 URL      | 全アプリ           |
+| `EXTENDED_NETWORK`           | testnet / mainnet        | ingestor, executor |
+| `EXTENDED_API_KEY`           | Extended 取引所 API キー | ingestor, executor |
+| `EXTENDED_STARK_PRIVATE_KEY` | Stark 署名用秘密鍵       | ingestor, executor |
+| `OPENAI_API_KEY`             | OpenAI API キー          | llm-reflector      |
+| `ANTHROPIC_API_KEY`          | Anthropic API キー       | llm-reflector      |
+
+詳細は各 `apps/<app>/src/env.ts` のスキーマ定義を参照してください。
+
+### バリデーション
 
 各 app は `apps/<app>/src/env.ts` で **起動時にバリデーション**します。
 
 - 原則: **`process.env` を直接参照しない**（`env` / `loadEnv()` を使う）
 - `apps/llm-reflector` は Zod による `safeParse` を使っており、検証失敗時は例外で停止します
 
-最低限よく使うもの（例）:
+### 鍵のローテーション
 
-- **共通**: `DATABASE_URL`, `EXCHANGE`, `SYMBOL`, `LOG_LEVEL`
-- **extended 接続**: `EXTENDED_NETWORK`, `EXTENDED_API_KEY`, `EXTENDED_STARK_PRIVATE_KEY`, `EXTENDED_STARK_PUBLIC_KEY`, `EXTENDED_VAULT_ID`
-- **LLM**（`apps/llm-reflector`）: `OPENAI_API_KEY`, `OPENAI_MODEL`, `LOG_DIR`
+```bash
+# 新しい鍵ペアで再暗号化（ローテーション）
+dotenvx rotate -f .encrypted.local
+
+# 新しい .env.keys を安全に配布し、古い鍵を無効化する
+```
+
+### 実行時に参照する暗号化ファイルの切り替え（本番/別環境）
+
+スクリプトはローカル向けに `.encrypted.local` を固定参照します。別環境では、必要なコマンドを明示的に `-f` で指定して実行してください。
+
+```bash
+# 例: 本番用ファイルを参照して起動（手動で dotenvx run を使う）
+dotenvx run -f ../../.encrypted -fk ../../.env.keys -- bun --cwd apps/executor run dev
+```
 
 ## 開発フロー（AI-DLC）
 
