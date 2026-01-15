@@ -206,7 +206,7 @@ async function main(): Promise<void> {
     baseHalfSpreadBps: "10",
     volSpreadGain: "1",
     toxSpreadGain: "1",
-    quoteSizeUsd: "50", // $50 per order (fallback)
+    quoteSizeUsd: "20", // $20 per order (fallback)
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
     maxInventory: "1",
