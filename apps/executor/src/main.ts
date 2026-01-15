@@ -144,30 +144,46 @@ async function main(): Promise<void> {
   // Initial sync of open orders on startup
   await syncOpenOrders("startup");
 
+  // Helper function to sync position (reusable for startup and periodic/fill-after sync)
+  const syncPosition = async (context: string): Promise<boolean> => {
+    const result = await executionAdapter.getPosition(env.SYMBOL);
+    if (result.isOk()) {
+      positionTracker.syncFromPosition(result.value);
+      const pos = result.value;
+
+      // Update dashboard immediately
+      dashboard.setPosition({
+        size: positionTracker.getPosition().size,
+        entryPrice: positionTracker.getEntryPrice(),
+        unrealizedPnl: positionTracker.getUnrealizedPnl(),
+        lastUpdateMs: positionTracker.getLastUpdateMs(),
+      });
+
+      if (pos) {
+        dashboard.pushEvent(
+          LogLevel.INFO,
+          `[${context}] position synced: size=${pos.size} entry=${pos.entryPrice ?? "-"} uPnL=${pos.unrealizedPnl ?? "-"}`,
+        );
+        logger.info(`[${context}] Synced position`, {
+          size: pos.size,
+          entryPrice: pos.entryPrice,
+          unrealizedPnl: pos.unrealizedPnl,
+        });
+      } else {
+        dashboard.pushEvent(LogLevel.INFO, `[${context}] position synced: no open position`);
+        logger.info(`[${context}] Synced position: no open position`);
+      }
+      return true;
+    } else {
+      dashboard.pushEvent(LogLevel.WARN, `[${context}] failed to sync position`, result.error);
+      logger.warn(`[${context}] Failed to sync position`, result.error);
+      return false;
+    }
+  };
+
   // Sync current position on startup
   logger.info("Syncing current position...");
-  const positionResult = await executionAdapter.getPosition(env.SYMBOL);
-  if (positionResult.isOk()) {
-    positionTracker.syncFromPosition(positionResult.value);
-    const pos = positionResult.value;
-    if (pos) {
-      dashboard.pushEvent(
-        LogLevel.INFO,
-        `position synced: size=${pos.size} entry=${pos.entryPrice ?? "-"} uPnL=${pos.unrealizedPnl ?? "-"}`,
-      );
-      logger.info("Synced position", {
-        size: pos.size,
-        entryPrice: pos.entryPrice,
-        unrealizedPnl: pos.unrealizedPnl,
-      });
-    } else {
-      dashboard.pushEvent(LogLevel.INFO, "position synced: no open position");
-      logger.info("Synced position: no open position");
-    }
-  } else {
-    dashboard.pushEvent(LogLevel.WARN, "failed to sync position; proceeding with zero position", positionResult.error);
-    logger.warn("Failed to sync position, proceeding with zero position", positionResult.error);
-  }
+  await syncPosition("startup");
 
   const toCoreParams = (p: DbStrategyParams): StrategyParams => ({
     baseHalfSpreadBps: p.baseHalfSpreadBps,
@@ -274,6 +290,9 @@ async function main(): Promise<void> {
     }
   });
 
+  // Debounce timer for fill-after position sync
+  let fillSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Set up execution event handlers
   executionAdapter.onEvent(event => {
     switch (event.type) {
@@ -282,7 +301,7 @@ async function main(): Promise<void> {
         positionTracker.updateFromFill(event);
         dashboard.onExecutionEvent(event);
 
-        // Update dashboard position immediately for realtime display
+        // Update dashboard position immediately for realtime display (size is accurate)
         dashboard.setPosition({
           size: positionTracker.getPosition().size,
           entryPrice: positionTracker.getEntryPrice(),
@@ -309,6 +328,15 @@ async function main(): Promise<void> {
           paramsSetId: currentParamsSetId,
           rawJson: null,
         });
+
+        // Schedule debounced REST sync to restore entry/uPnL (cleared by updateFromFill)
+        if (fillSyncDebounceTimer !== null) {
+          clearTimeout(fillSyncDebounceTimer);
+        }
+        fillSyncDebounceTimer = setTimeout(() => {
+          fillSyncDebounceTimer = null;
+          void syncPosition("fill");
+        }, env.POSITION_SYNC_AFTER_FILL_DELAY_MS);
 
         logger.info("Fill received", {
           side: event.side,
@@ -517,6 +545,11 @@ async function main(): Promise<void> {
     void tickLoop();
   }, env.TICK_INTERVAL_MS);
 
+  // Periodic position sync loop (keeps entry/uPnL fresh even without fills)
+  const positionSyncInterval = setInterval(() => {
+    void syncPosition("periodic");
+  }, env.POSITION_SYNC_INTERVAL_MS);
+
   // State persistence loop (Requirement 4.11)
   const persistInterval = setInterval(() => {
     void (async () => {
@@ -706,9 +739,13 @@ async function main(): Promise<void> {
     logger.info("Shutting down...");
 
     clearInterval(tickInterval);
+    clearInterval(positionSyncInterval);
     clearInterval(persistInterval);
     clearInterval(paramsRefreshInterval);
     clearInterval(proposalApplyInterval);
+    if (fillSyncDebounceTimer !== null) {
+      clearTimeout(fillSyncDebounceTimer);
+    }
 
     // Cancel all orders before shutdown
     await executionAdapter.cancelAllOrders(env.SYMBOL);

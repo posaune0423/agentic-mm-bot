@@ -327,6 +327,32 @@ export const env = createEnv({
      * デフォルト: 250ms
      */
     EXECUTOR_DASHBOARD_REFRESH_MS: z.coerce.number().default(250),
+
+    // =========================================================================
+    // Position Sync
+    // =========================================================================
+
+    /**
+     * ポジション定期同期間隔 (ミリ秒)
+     *
+     * REST API からポジション情報を再取得する周期
+     * entry価格/unrealizedPnLの更新に必要
+     *
+     * executor 専用
+     * デフォルト: 30,000ms (30秒)
+     */
+    POSITION_SYNC_INTERVAL_MS: z.coerce.number().default(30_000),
+
+    /**
+     * fill後のポジション同期遅延 (ミリ秒)
+     *
+     * fill受信後、この時間待ってからREST同期を実行
+     * 複数fillが短時間に来る場合のデバウンス
+     *
+     * executor 専用
+     * デフォルト: 500ms
+     */
+    POSITION_SYNC_AFTER_FILL_DELAY_MS: z.coerce.number().default(500),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

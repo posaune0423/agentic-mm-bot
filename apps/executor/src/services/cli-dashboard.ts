@@ -114,6 +114,12 @@ export class ExecutorCliDashboard {
   /** How long to highlight params change (ms) */
   private readonly paramsChangeHighlightMs = 30_000;
 
+  /** Position age threshold for stale warning (ms) - yellow after this */
+  private readonly positionStaleWarnMs = 60_000;
+
+  /** Position age threshold for stale error (ms) - red after this */
+  private readonly positionStaleErrorMs = 120_000;
+
   private readonly style: Style;
   private readonly layout: LayoutPolicy;
   private readonly screen: TTYScreen;
@@ -600,6 +606,26 @@ export class ExecutorCliDashboard {
     const maxInventory = Number.parseFloat(t.effectiveParams.maxInventory);
     const inventorySkewGain = Number.parseFloat(t.effectiveParams.inventorySkewGain);
 
+    // Position age and stale detection
+    const posAgeMs = pos.lastUpdateMs > 0 ? nowMs - pos.lastUpdateMs : null;
+    const posIsStaleError = posAgeMs !== null && posAgeMs >= this.positionStaleErrorMs;
+    const posIsStaleWarn = posAgeMs !== null && posAgeMs >= this.positionStaleWarnMs;
+
+    // Age display with stale coloring
+    const posAgeStr = posAgeMs !== null ? this.layout.formatAgeMs(nowMs, pos.lastUpdateMs) : "-";
+    const posAgeStyle: Parameters<Style["wrap"]>[1][] =
+      posIsStaleError ? ["bold", "red"]
+      : posIsStaleWarn ? ["bold", "yellow"]
+      : ["green"];
+    const posAgeLabel = `${this.style.token("dim")}Age:${this.style.token("reset")}`;
+    const posAgeVal = posAgeMs !== null ? this.style.wrap(posAgeStr, ...posAgeStyle) : this.style.wrap("-", "dim");
+
+    // Stale badge (shown when position data is too old)
+    const staleBadge =
+      posIsStaleError ? ` ${this.style.badge("STALE", "bgRed", "white", "bold")}`
+      : posIsStaleWarn ? ` ${this.style.badge("STALE", "bgYellow", "white")}`
+      : "";
+
     // Inventory direction
     const invDir =
       posSize > 0 ? "LONG"
@@ -648,12 +674,12 @@ export class ExecutorCliDashboard {
       : ["dim"];
     const pnlStr = posPnl !== undefined && posPnl !== "" ? this.style.wrap(posPnl, ...pnlStyle) : "-";
 
-    // Position row 1: Size, Direction, Utilization, Max
-    const posRow1 = `${this.style.token("dim")}Size:${this.style.token("reset")} ${posSizeStr}  ${this.style.token("dim")}Dir:${this.style.token("reset")} ${invDirStr}  ${this.style.token("dim")}Util:${this.style.token("reset")} ${utilStr}  ${this.style.token("dim")}Max:${this.style.token("reset")} ${t.effectiveParams.maxInventory}`;
+    // Position row 1: Size, Direction, Utilization, Max, Age
+    const posRow1 = `${this.style.token("dim")}Size:${this.style.token("reset")} ${posSizeStr}  ${this.style.token("dim")}Dir:${this.style.token("reset")} ${invDirStr}  ${this.style.token("dim")}Util:${this.style.token("reset")} ${utilStr}  ${posAgeLabel} ${posAgeVal}${staleBadge}`;
     lines.push(this.boxRow(posRow1, width));
 
-    // Position row 2: Skew, Entry, uPnL
-    const posRow2 = `${this.style.token("dim")}Skew:${this.style.token("reset")} ${skewStr}  ${this.style.token("dim")}Entry:${this.style.token("reset")} ${posEntry}  ${this.style.token("dim")}uPnL:${this.style.token("reset")} ${pnlStr}`;
+    // Position row 2: Skew, Entry, uPnL, Max
+    const posRow2 = `${this.style.token("dim")}Skew:${this.style.token("reset")} ${skewStr}  ${this.style.token("dim")}Entry:${this.style.token("reset")} ${posEntry}  ${this.style.token("dim")}uPnL:${this.style.token("reset")} ${pnlStr}  ${this.style.token("dim")}Max:${this.style.token("reset")} ${t.effectiveParams.maxInventory}`;
     lines.push(this.boxRow(posRow2, width));
 
     lines.push(this.layout.boxLine(width, "middle"));
