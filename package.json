@@ -45,6 +45,7 @@
     "db:push": "turbo run db:push",
     "db:studio": "turbo run db:studio",
     "clean": "bun scripts/clean.ts",
+    "setup-env": "bun run scripts/setup-env.ts",
     "cancel:all-orders": "bun run scripts/cancel-all-orders.ts",
     "migrate:llm-proposals-v2": "bun run scripts/migrate-llm-proposals-v2.ts"
   },

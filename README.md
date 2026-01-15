@@ -74,7 +74,23 @@ docker-compose up -d postgres
 bun run db:push
 ```
 
-### 4) 各プロセスを起動
+### 4) 環境変数を設定
+
+各ディレクトリの `.env.example` から `.env` を生成します。
+
+```bash
+bun run setup-env
+```
+
+生成後、秘匿情報（API キー等）を適切な値に置き換えてください。
+
+既存の `.env` を上書きする場合:
+
+```bash
+bun run setup-env --force
+```
+
+### 5) 各プロセスを起動
 
 - **Turborepo 経由**（推奨）:
 
@@ -95,6 +111,11 @@ bun --cwd apps/executor run dev
 ## よく使うコマンド
 
 ```bash
+# Setup
+bun run setup-env           # 各 app/package に .env を生成
+bun run setup-env --force   # 既存の .env を上書き
+bun run setup-env --dry-run # 実行内容を確認（書き込みなし）
+
 # Code Quality
 bun run format:fix
 bun run lint:fix
@@ -110,18 +131,47 @@ bun run test
 - そのため `packages/adapters/src/extended/market-data-adapter.ts` は **feature-detect** し、未対応の場合は該当ストリームを **自動で無効化**して（warn を出して）他の購読を継続します。
 - `markPrice` / `indexPrice` が必要な場合は、利用している `extended-typescript-sdk` の版を見直してください。
 
-## 環境変数（重要）
+## 環境変数
+
+### 構成
+
+```
+.
+├── .env.example          # グローバル変数テンプレート
+├── .env                  # グローバル変数（turbo が全タスクで読み込み）
+└── apps/
+    ├── executor/
+    │   ├── .env.example  # executor 固有変数テンプレート
+    │   └── .env          # executor 固有変数
+    └── ...
+```
+
+### グローバル変数（`root/.env`）
+
+| 変数           | 説明                | 例                                              |
+| -------------- | ------------------- | ----------------------------------------------- |
+| `DATABASE_URL` | PostgreSQL 接続 URL | `postgresql://dev:insecure@localhost:5432/main` |
+
+`turbo.json` の `globalDotEnv` により、全タスクで自動的に読み込まれます。
+
+### アプリ固有変数
+
+各 `apps/*/.env.example` を参照してください。主な変数:
+
+| アプリ               | 主な変数                                                                     |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `apps/ingestor`      | `EXTENDED_*`, `BBO_*`, `INGESTOR_DASHBOARD_*`                                |
+| `apps/executor`      | `EXTENDED_*`, `TICK_INTERVAL_MS`, `PROPOSAL_APPLY_*`, `EXECUTOR_DASHBOARD_*` |
+| `apps/llm-reflector` | `MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `REFLECTION_WINDOW_MINUTES`  |
+| `apps/summarizer`    | `RUN_INTERVAL_MS`                                                            |
+| `apps/backtest`      | `TICK_INTERVAL_MS`                                                           |
+
+### バリデーション
 
 各 app は `apps/<app>/src/env.ts` で **起動時にバリデーション**します。
 
 - 原則: **`process.env` を直接参照しない**（`env` / `loadEnv()` を使う）
 - `apps/llm-reflector` は Zod による `safeParse` を使っており、検証失敗時は例外で停止します
-
-最低限よく使うもの（例）:
-
-- **共通**: `DATABASE_URL`, `EXCHANGE`, `SYMBOL`, `LOG_LEVEL`
-- **extended 接続**: `EXTENDED_NETWORK`, `EXTENDED_API_KEY`, `EXTENDED_STARK_PRIVATE_KEY`, `EXTENDED_STARK_PUBLIC_KEY`, `EXTENDED_VAULT_ID`
-- **LLM**（`apps/llm-reflector`）: `OPENAI_API_KEY`, `OPENAI_MODEL`, `LOG_DIR`
 
 ## 開発フロー（AI-DLC）
 
