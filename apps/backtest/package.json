@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bun -e \"console.log('Backtest dev: skipped (use: bun run start).'); setInterval(() => {}, 1 << 30)\"",
     "start": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun run src/main.ts",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
     "test": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun test"

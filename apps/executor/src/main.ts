@@ -502,7 +502,7 @@ async function main(): Promise<void> {
           positionSize: positionTracker.getPosition().size,
           activeOrders: orderTracker.getActiveOrders().length,
           lastQuoteAgeMs: state.lastQuoteMs !== undefined ? nowMs - state.lastQuoteMs : null,
-          dataAgeMs: nowMs - snapshot.lastUpdateMs,
+          dataAgeMs: snapshot.lastUpdateMs > 0 ? nowMs - snapshot.lastUpdateMs : null,
           pauseRemainingMs: state.pauseUntilMs !== undefined ? Math.max(0, state.pauseUntilMs - nowMs) : null,
           modeForMs: nowMs - state.modeSinceMs,
         });

@@ -83,7 +83,7 @@ export interface DecisionCycleDeps {
     reasonCodes: string[];
     intents: DecideOutput["intents"];
     debug: {
-      dataAgeMs: number;
+      dataAgeMs: number | null;
       lastUpdateMs: number;
       midPx: string;
       spreadBps: string;
@@ -249,7 +249,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
       reasonCodes: output.reasonCodes,
       intents: output.intents,
       debug: {
-        dataAgeMs: nowMs - snapshot.lastUpdateMs,
+        dataAgeMs: snapshot.lastUpdateMs > 0 ? nowMs - snapshot.lastUpdateMs : null,
         lastUpdateMs: snapshot.lastUpdateMs,
         midPx: features.midPx,
         spreadBps: features.spreadBps,
