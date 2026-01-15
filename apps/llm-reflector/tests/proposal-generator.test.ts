@@ -17,6 +17,7 @@ mock.module("ai", () => ({
 }));
 
 import { generateProposal } from "../src/services/proposal-generator";
+import { extractFirstJsonObject } from "../src/services/llm-output-parser";
 
 describe("proposal-generator", () => {
   it("returns proposal when AI returns structured `output`", async () => {
@@ -59,5 +60,15 @@ describe("proposal-generator", () => {
       expect("volSpreadGain" in result.value.proposal.changes).toBe(false);
       expect(result.value.reasoningTrace.length).toBeGreaterThan(0);
     }
+  });
+
+  it("extracts JSON from fenced output", () => {
+    const out = extractFirstJsonObject('```json\n{"a":1}\n```');
+    expect(out).toBe('{"a":1}');
+  });
+
+  it("extracts first JSON object from noisy output", () => {
+    const out = extractFirstJsonObject('note:\n{"a": {"b": 2}} trailing');
+    expect(out).toBe('{"a": {"b": 2}}');
   });
 });

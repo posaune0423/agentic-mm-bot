@@ -13,6 +13,7 @@ import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { z } from "zod";
 
 import type { LlmInputSummary, LlmProposalOutput } from "../types";
+import { extractFirstJsonObject, snippet } from "./llm-output-parser";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -50,59 +51,6 @@ const LlmResponseSchema = z.object({
   rollbackConditions: RollbackConditionsSchema,
   reasoningTrace: z.array(z.string()),
 });
-
-function extractFirstJsonObject(text: string): string | null {
-  const trimmed = text.trim();
-  const withoutFences = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  const start = withoutFences.indexOf("{");
-  if (start === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < withoutFences.length; i++) {
-    const ch = withoutFences[i];
-
-    if (inString) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (ch === "{") depth++;
-    if (ch === "}") depth--;
-
-    if (depth === 0) {
-      return withoutFences.slice(start, i + 1);
-    }
-  }
-
-  return null;
-}
-
-function snippet(text: string, max = 160): string {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}...` : oneLine;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt Generation

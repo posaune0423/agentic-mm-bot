@@ -22,6 +22,7 @@ import type {
 import { ProposalOutputSchema, type ProposalOutput } from "../../types/schemas";
 import type { FileSinkPort } from "../../ports/file-sink-port";
 import { validateProposal, type ParamGateError } from "../../services/param-gate";
+import { extractFirstJsonObject, snippet } from "../../services/llm-output-parser";
 import { REFLECTOR_INSTRUCTIONS } from "../agents/reflector-agent";
 
 export type WorkflowError =
@@ -124,61 +125,6 @@ function getOpenAiModelName(model: string): string {
     throw new Error(`Unsupported model string: ${model}. Expected "openai/<model>"`);
   }
   return rest.join("/");
-}
-
-function extractFirstJsonObject(text: string): string | null {
-  const trimmed = text.trim();
-
-  // Strip common Markdown fences if present (best-effort)
-  const withoutFences = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  const start = withoutFences.indexOf("{");
-  if (start === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < withoutFences.length; i++) {
-    const ch = withoutFences[i];
-
-    if (inString) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (ch === "{") depth++;
-    if (ch === "}") depth--;
-
-    if (depth === 0) {
-      return withoutFences.slice(start, i + 1);
-    }
-  }
-
-  return null;
-}
-
-function snippet(text: string, max = 160): string {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max - 3)}...` : oneLine;
 }
 
 /**

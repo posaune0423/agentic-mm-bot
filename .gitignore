@@ -28,6 +28,8 @@ out/
 build
 dist
 
+# WASM artifacts (SDK ships its own; local copies are not needed)
+apps/executor/wasm/
 
 # Debug
 npm-debug.log*
