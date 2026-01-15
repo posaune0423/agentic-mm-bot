@@ -18,14 +18,14 @@
 
 import { MAINNET_CONFIG, PerpetualStreamClient, TESTNET_CONFIG, initWasm } from "extended-typescript-sdk";
 
-type Opts = {
+interface Opts {
   env: "testnet" | "mainnet";
   marketName: string;
   streams: string;
   maxMessages: number;
   timeoutMs: number;
   initWasm: boolean;
-};
+}
 
 function usage(): string {
   return [
@@ -61,7 +61,7 @@ function asInt(v: unknown, fallback: number): number {
   const n =
     typeof v === "number" ? v
     : typeof v === "string" ? Number(v)
-    : NaN;
+    : Number.NaN;
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
@@ -72,9 +72,14 @@ function nowIso(): string {
 function summarizeMsg(msg: unknown): unknown {
   if (!msg || typeof msg !== "object") return msg;
   const m = msg as Record<string, unknown>;
-  const data = m["data"];
+  const data = m.data;
   if (Array.isArray(data) && data.length > 5) {
-    return { ...m, data: data.slice(0, 5), dataTruncated: true, dataLen: data.length };
+    return {
+      ...m,
+      data: data.slice(0, 5),
+      dataTruncated: true,
+      dataLen: data.length,
+    };
   }
   return msg;
 }

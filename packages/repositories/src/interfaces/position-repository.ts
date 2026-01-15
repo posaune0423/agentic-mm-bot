@@ -7,10 +7,10 @@
 
 import type { ResultAsync } from "neverthrow";
 
-export type PositionRepositoryError = {
+export interface PositionRepositoryError {
   type: "DB_ERROR";
   message: string;
-};
+}
 
 export interface LatestPositionState {
   exchange: string;
@@ -23,5 +23,5 @@ export interface LatestPositionState {
 }
 
 export interface PositionRepository {
-  upsertLatestPosition(state: LatestPositionState): ResultAsync<void, PositionRepositoryError>;
+  upsertLatestPosition: (state: LatestPositionState) => ResultAsync<void, PositionRepositoryError>;
 }

@@ -128,7 +128,7 @@ export class WsConnection<T = unknown> implements AsyncIterable<T> {
   /**
    * Close the WebSocket connection
    */
-  close(): Promise<void> {
+  async close(): Promise<void> {
     if (this.closed) return Promise.resolve();
 
     this.closed = true;
@@ -171,7 +171,10 @@ export class WsConnection<T = unknown> implements AsyncIterable<T> {
       next: async (): Promise<IteratorResult<T>> => {
         // Return queued messages first
         if (this.queue.length > 0) {
-          return { value: this.queue.shift()!, done: false };
+          const value = this.queue.shift();
+          if (value !== undefined) {
+            return { value, done: false };
+          }
         }
 
         // If closed, end iteration
@@ -287,7 +290,7 @@ export function createPrivateStreamConnection<T = unknown>(
   config: ExtendedStreamConfig,
   label?: string,
 ): WsConnection<T> {
-  if (!config.apiKey) {
+  if (config.apiKey === undefined || config.apiKey === "") {
     throw new Error("API key is required for private stream connection");
   }
 
@@ -308,9 +311,9 @@ export function createPrivateStreamConnection<T = unknown>(
  * Both WsConnection and test mocks should implement this interface.
  */
 export interface IWsConnection<T> extends AsyncIterable<T> {
-  connect(): Promise<void>;
-  close(): Promise<void>;
-  isClosed(): boolean;
+  connect: () => Promise<void>;
+  close: () => Promise<void>;
+  isClosed: () => boolean;
 }
 
 /**

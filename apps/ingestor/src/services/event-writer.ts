@@ -110,7 +110,10 @@ export class EventWriter {
    * Flush all buffers to DB
    */
   async flush(): Promise<void> {
-    if (this.flushInFlight) return await this.flushInFlight;
+    if (this.flushInFlight) {
+      await this.flushInFlight;
+      return;
+    }
 
     this.flushInFlight = this.flushOnce();
     try {
@@ -260,6 +263,6 @@ function getTableName(table: MdTable): DeadLetterEntry["table"] {
   return "mdPrice";
 }
 
-function sleep(ms: number): Promise<void> {
+async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }

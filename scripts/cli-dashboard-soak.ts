@@ -39,7 +39,10 @@ const logs = new LogBuffer(200);
 
 logger.setSink({ write: r => logs.push(r) });
 
-const screen = new TTYScreen({ enabled: true, write: chunk => process.stdout.write(chunk) });
+const screen = new TTYScreen({
+  enabled: true,
+  write: chunk => process.stdout.write(chunk),
+});
 const renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
 
 screen.start();

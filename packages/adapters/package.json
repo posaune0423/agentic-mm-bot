@@ -23,9 +23,9 @@
     "zod": "^3.25.51"
   },
   "devDependencies": {
-    "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@posaune0423/eslint-config": "catalog:tooling",
     "@types/bun": "catalog:tooling",
     "@types/ws": "^8.18.1",
     "@typescript/native-preview": "catalog:tooling",

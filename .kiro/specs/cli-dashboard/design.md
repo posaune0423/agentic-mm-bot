@@ -331,7 +331,14 @@ type IngestorSnapshot = CommonHeader & {
   lastTradeTs?: number;
   lastPriceTs?: number;
   lastFundingTs?: number;
-  bbo?: { bidPx: string; bidSz: string; askPx: string; askSz: string; midPx: string; spreadBps?: string };
+  bbo?: {
+    bidPx: string;
+    bidSz: string;
+    askPx: string;
+    askSz: string;
+    midPx: string;
+    spreadBps?: string;
+  };
   price?: { markPx?: string; indexPx?: string };
   metrics: {
     bboReceived: number;
@@ -348,7 +355,12 @@ type IngestorSnapshot = CommonHeader & {
 
 type ExecutorSnapshot = CommonHeader & {
   flow: PhaseStatus<ExecutorPhase>;
-  strategy: { mode: "NORMAL" | "DEFENSIVE" | "PAUSE"; reasons: string[]; intents: string[]; pauseRemainMs?: number };
+  strategy: {
+    mode: "NORMAL" | "DEFENSIVE" | "PAUSE";
+    reasons: string[];
+    intents: string[];
+    pauseRemainMs?: number;
+  };
   market: {
     bestBidPx: string;
     bestBidSz: string;
@@ -358,7 +370,12 @@ type ExecutorSnapshot = CommonHeader & {
     indexPx?: string;
     lastUpdateMs?: number;
   };
-  position: { size: string; entryPrice?: string; unrealizedPnl?: string; lastUpdateMs?: number };
+  position: {
+    size: string;
+    entryPrice?: string;
+    unrealizedPnl?: string;
+    lastUpdateMs?: number;
+  };
   targetQuote?: { bidPx: string; askPx: string; size: string };
   orders: ReadonlyArray<{
     side: "buy" | "sell";
@@ -434,7 +451,12 @@ interface DashboardControlService {
 ```typescript
 interface FlowStatusState<TPhase extends string> {
   enterPhase(phase: TPhase, nowMs: number): void;
-  snapshot(): { phase: TPhase; sinceMs: number; lastTransitionMs: number; lastDurationMs?: number };
+  snapshot(): {
+    phase: TPhase;
+    sinceMs: number;
+    lastTransitionMs: number;
+    lastDurationMs?: number;
+  };
 }
 ```
 

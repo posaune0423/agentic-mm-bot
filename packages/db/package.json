@@ -10,7 +10,6 @@
     "./get-db": "./src/get-db.ts"
   },
   "scripts": {
-    "build": "tsdown",
     "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
@@ -18,7 +17,7 @@
     "db:studio": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit studio",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",
     "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
@@ -27,14 +26,13 @@
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@posaune0423/eslint-config": "catalog:tooling",
     "@types/node": "catalog:tooling",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.8",
     "eslint": "catalog:tooling",
-    "tsdown": "^0.16.0",
     "typescript": "catalog:tooling"
   }
 }

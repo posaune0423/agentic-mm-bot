@@ -7,8 +7,7 @@
  * - No DB dependency for hot path
  */
 
-import type { Ms, PriceStr, Snapshot, SizeStr } from "@agentic-mm-bot/core";
-import type { MidSnapshot, TradeData } from "@agentic-mm-bot/core";
+import type { Ms, PriceStr, Snapshot, SizeStr, MidSnapshot, TradeData } from "@agentic-mm-bot/core";
 import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
@@ -45,8 +44,8 @@ export class MarketDataCache {
    * Update from BBO event
    */
   updateBbo(event: BboEvent): void {
-    const bid = parseFloat(event.bestBidPx);
-    const ask = parseFloat(event.bestAskPx);
+    const bid = Number.parseFloat(event.bestBidPx);
+    const ask = Number.parseFloat(event.bestAskPx);
 
     // Guard: ignore crossed/invalid BBO (bid >= ask), keep last good prices but still refresh age.
     if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid >= ask) {
@@ -151,7 +150,7 @@ export class MarketDataCache {
    * Check if we have valid data
    */
   hasValidData(): boolean {
-    return this.lastUpdateMs > 0 && parseFloat(this.bestBidPx) > 0 && parseFloat(this.bestAskPx) > 0;
+    return this.lastUpdateMs > 0 && Number.parseFloat(this.bestBidPx) > 0 && Number.parseFloat(this.bestAskPx) > 0;
   }
 
   /**

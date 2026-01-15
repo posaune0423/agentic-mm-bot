@@ -15,12 +15,8 @@
 
 import type { ResultAsync } from "neverthrow";
 import { ok, err } from "neverthrow";
-import {
-  validateProposal,
-  type ParamProposal,
-  type RollbackConditions,
-  type StrategyParams as CoreStrategyParams,
-} from "@agentic-mm-bot/core";
+import { validateProposal } from "@agentic-mm-bot/core";
+import type { ParamProposal, RollbackConditions, StrategyParams as CoreStrategyParams } from "@agentic-mm-bot/core";
 import type { LlmProposal, StrategyParams, NewStrategyParams } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
@@ -228,14 +224,14 @@ function checkOperationalGates(
   if (context.pauseCountLastHour > options.maxPauseCountForApply) {
     return {
       pass: false,
-      reason: `PAUSE count (${context.pauseCountLastHour}) exceeds limit (${options.maxPauseCountForApply})`,
+      reason: `PAUSE count (${String(context.pauseCountLastHour)}) exceeds limit (${String(options.maxPauseCountForApply)})`,
     };
   }
 
   if (context.markout10sP50 !== undefined && context.markout10sP50 < options.minMarkout10sP50ForApply) {
     return {
       pass: false,
-      reason: `Markout P50 (${context.markout10sP50}) below threshold (${options.minMarkout10sP50ForApply})`,
+      reason: `Markout P50 (${String(context.markout10sP50)}) below threshold (${String(options.minMarkout10sP50ForApply)})`,
     };
   }
 
@@ -316,7 +312,12 @@ export async function tryApplyProposal(
   // Step 2: Operational gates (10.5)
   const gateResult = checkOperationalGates(context, options);
   if (!gateResult.pass) {
-    await repo.updateProposalStatus(proposal.id, "rejected", "executor", `Operational gate: ${gateResult.reason}`);
+    await repo.updateProposalStatus(
+      proposal.id,
+      "rejected",
+      "executor",
+      `Operational gate: ${gateResult.reason ?? "unknown"}`,
+    );
 
     await repo.saveParamRollout({
       ts: new Date(),
@@ -326,7 +327,7 @@ export async function tryApplyProposal(
       fromParamsSetId: currentParams.id,
       toParamsSetId: null,
       action: "reject",
-      reason: `Operational: ${gateResult.reason}`,
+      reason: `Operational: ${gateResult.reason ?? "unknown"}`,
     });
 
     logger.warn("Proposal rejected: operational gate", {
@@ -398,7 +399,10 @@ export async function processPendingProposals(
   options: ProposalApplierOptions,
   context: OperationalContext,
   nowMs: number,
-  timing: { boundaryMinutes: number; graceSeconds: number } = { boundaryMinutes: 5, graceSeconds: 30 },
+  timing: { boundaryMinutes: number; graceSeconds: number } = {
+    boundaryMinutes: 5,
+    graceSeconds: 30,
+  },
 ): Promise<ProcessProposalResult> {
   // Only process at configured boundaries
   if (!isAtTimeBoundary(nowMs, timing)) {
@@ -416,7 +420,9 @@ export async function processPendingProposals(
   // Get pending proposals
   const proposalsResult = await repo.getPendingProposals(options.exchange, options.symbol);
   if (proposalsResult.isErr()) {
-    logger.error("Failed to get pending proposals", { error: proposalsResult.error });
+    logger.error("Failed to get pending proposals", {
+      error: proposalsResult.error,
+    });
     return { type: "error", message: proposalsResult.error.message };
   }
   const proposals = proposalsResult.value;

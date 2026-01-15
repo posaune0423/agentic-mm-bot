@@ -1,10 +1,10 @@
-export type DashboardConfig = {
+export interface DashboardConfig {
   enabled: boolean;
   refreshMs: number;
-};
+}
 
 export interface DashboardControl {
-  config(): DashboardConfig;
+  config: () => DashboardConfig;
 }
 
 export function createDashboardControl(args: {
@@ -13,7 +13,7 @@ export function createDashboardControl(args: {
   isTTY: boolean;
 }): DashboardControl {
   const refreshMs = Math.min(1000, Math.max(100, Math.floor(args.refreshMs)));
-  const enabled = Boolean(args.enabled) && Boolean(args.isTTY);
+  const enabled = args.enabled && args.isTTY;
 
   const cfg: DashboardConfig = {
     enabled,

@@ -7,12 +7,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check . --experimental-cli --experimental-ternaries",
+    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {
-    "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@posaune0423/eslint-config": "catalog:tooling",
     "typescript": "catalog:tooling",
     "eslint": "catalog:tooling",
     "@typescript/native-preview": "catalog:tooling"

@@ -25,11 +25,8 @@ import {
   NotAuthorizedException,
   TradingFeeModel,
   DEFAULT_FEES,
-  type EndpointConfig,
-  type MarketModel,
-  type OpenOrderModel,
-  type PositionModel,
 } from "extended-typescript-sdk";
+import type { EndpointConfig, MarketModel, OpenOrderModel, PositionModel } from "extended-typescript-sdk";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { logger } from "@agentic-mm-bot/utils";
 
@@ -60,7 +57,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private tradingClient: PerpetualTradingClient;
 
   private eventHandlers: ((event: ExecutionEvent) => void)[] = [];
-  private accountStream: WsConnection<{ data?: ExtendedAccountStreamData }> | null = null;
+  private accountStream: WsConnection<{
+    data?: ExtendedAccountStreamData;
+  }> | null = null;
   private accountStreamRunning = false;
   private isWasmInitialized = false;
   private marketCache: Map<string, MarketModel> = new Map();
@@ -69,7 +68,11 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private feeCache: Map<string, TradingFeeModel> = new Map();
   private tradingConfigCache: Map<
     string,
-    { minQtyStep: Decimal | null; minQty: Decimal | null; priceStep: Decimal | null }
+    {
+      minQtyStep: Decimal | null;
+      minQty: Decimal | null;
+      priceStep: Decimal | null;
+    }
   > = new Map();
   /**
    * Some SDK/account-stream variants do not include per-trade updates, only order updates with filledQty/averagePrice.
@@ -96,7 +99,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       apiBaseUrl: this.endpointConfig.apiBaseUrl,
       streamUrl: this.endpointConfig.streamUrl,
       vaultId: this.config.vaultId,
-      starkPublicKeyPrefix: String(this.config.starkPublicKey).slice(0, 10),
+      starkPublicKeyPrefix: this.config.starkPublicKey.slice(0, 10),
       apiKeyPresent: Boolean(this.config.apiKey),
     });
   }
@@ -115,7 +118,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     if (cached) return cached;
 
     try {
-      const res = await this.tradingClient.marketsInfo.getMarkets({ marketNames: [symbol] });
+      const res = await this.tradingClient.marketsInfo.getMarkets({
+        marketNames: [symbol],
+      });
       const market = res.data?.[0] ?? null;
       if (market) this.marketCache.set(symbol, market);
       return market;
@@ -128,7 +133,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     if (value instanceof Decimal) return value;
     try {
       if (typeof value === "number" || typeof value === "string") return new Decimal(value);
-      if (value && typeof value === "object") {
+      if (value !== null && value !== undefined && typeof value === "object") {
         if ("toString" in value) {
           const maybeToString = (value as { toString?: unknown }).toString;
           if (typeof maybeToString === "function") {
@@ -145,7 +150,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   private getFirstDataItem(res: unknown): unknown {
-    if (!res || typeof res !== "object") return undefined;
+    if (res === null || res === undefined || typeof res !== "object") return undefined;
     if (!("data" in res)) return undefined;
     const data = (res as { data?: unknown }).data;
     if (!Array.isArray(data) || data.length === 0) return undefined;
@@ -153,7 +158,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   private getObjectProp(obj: unknown, key: string): unknown {
-    if (!obj || typeof obj !== "object") return undefined;
+    if (obj === null || obj === undefined || typeof obj !== "object") return undefined;
     if (!(key in obj)) return undefined;
     return (obj as Record<string, unknown>)[key];
   }
@@ -174,7 +179,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     }
 
     try {
-      const res: unknown = (await this.tradingClient.account.getFees({ marketNames: [symbol] })) as unknown;
+      const res: unknown = (await this.tradingClient.account.getFees({
+        marketNames: [symbol],
+      })) as unknown;
       const fee: unknown = this.getFirstDataItem(res);
 
       const defaultMaker = this.normalizeDecimal(this.getObjectProp(DEFAULT_FEES, "makerFeeRate"), "0").toString();
@@ -201,7 +208,10 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     }
   }
 
-  private async getAccountInfoCached(): Promise<{ vault: number | null; l2KeyPrefix: string | null }> {
+  private async getAccountInfoCached(): Promise<{
+    vault: number | null;
+    l2KeyPrefix: string | null;
+  }> {
     if (this.accountVaultCache !== null || this.accountL2KeyPrefixCache !== null) {
       return {
         vault: this.accountVaultCache,
@@ -220,7 +230,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         : typeof l2Key === "number" ? String(l2Key)
         : typeof l2Key === "bigint" ? l2Key.toString()
         : null;
-      const l2KeyPrefix = l2KeyHex ? l2KeyHex.slice(0, 10) : null;
+      const l2KeyPrefix = l2KeyHex !== null && l2KeyHex !== "" ? l2KeyHex.slice(0, 10) : null;
       this.accountL2KeyPrefixCache = l2KeyPrefix;
 
       const vaultNum = typeof l2Vault === "number" ? l2Vault : Number(l2Vault);
@@ -269,14 +279,20 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     try {
       amountOfSynthetic = new Decimal(request.size);
     } catch {
-      return errAsync({ type: "invalid_order" as const, message: `Invalid size: ${request.size}` });
+      return errAsync({
+        type: "invalid_order" as const,
+        message: `Invalid size: ${request.size}`,
+      });
     }
 
     // The quote calculator emits sizes with up to 6 decimals (base units).
     // Never truncate to 1 decimal: e.g. BTC sizes like 0.001 would become 0 and be rejected.
     amountOfSynthetic = amountOfSynthetic.toDecimalPlaces(6, Decimal.ROUND_DOWN);
     if (!amountOfSynthetic.isFinite() || amountOfSynthetic.lte(0)) {
-      return errAsync({ type: "invalid_order" as const, message: `Invalid size after rounding: ${request.size}` });
+      return errAsync({
+        type: "invalid_order" as const,
+        message: `Invalid size after rounding: ${request.size}`,
+      });
     }
 
     return ResultAsync.fromPromise(this.ensureWasmInitialized(), this.mapError).andThen(() =>
@@ -291,7 +307,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
           if (accountVault !== null && accountVault !== this.config.vaultId) {
             throw new Error(
-              `Vault mismatch: configured vaultId=${this.config.vaultId} but account l2Vault=${accountVault} (network=${this.config.network})`,
+              `Vault mismatch: configured vaultId=${String(this.config.vaultId)} but account l2Vault=${String(accountVault)} (network=${this.config.network})`,
             );
           }
 
@@ -365,8 +381,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   cancelOrder(request: CancelOrderRequest): ResultAsync<OrderResponse, ExecutionError> {
-    if (request.exchangeOrderId) {
-      const orderId = parseInt(request.exchangeOrderId, 10);
+    if (request.exchangeOrderId !== undefined && request.exchangeOrderId !== "") {
+      const orderId = Number.parseInt(request.exchangeOrderId, 10);
 
       return ResultAsync.fromPromise(this.tradingClient.orders.cancelOrder(orderId), this.mapError).map(() => ({
         clientOrderId: request.clientOrderId ?? "",
@@ -376,7 +392,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       }));
     }
 
-    if (request.clientOrderId) {
+    if (request.clientOrderId !== undefined && request.clientOrderId !== "") {
       return ResultAsync.fromPromise(
         this.tradingClient.orders.cancelOrderByExternalId(request.clientOrderId),
         this.mapError,
@@ -411,14 +427,15 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         // The SDK uses `externalId`, but API responses might use variations
         const raw = o as unknown as Record<string, unknown>;
         const externalId =
-          (raw["externalId"] as string | undefined) ??
-          (raw["externalID"] as string | undefined) ??
-          (raw["external_id"] as string | undefined) ??
-          (raw["clientOrderId"] as string | undefined);
+          (raw.externalId as string | undefined) ??
+          (raw.externalID as string | undefined) ??
+          (raw.external_id as string | undefined) ??
+          (raw.clientOrderId as string | undefined);
 
         // If no externalId found, generate a fallback key from exchangeOrderId
         // This prevents multiple orders collapsing to the same Map key in OrderTracker
-        const clientOrderId = externalId && externalId.trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
+        const clientOrderId =
+          externalId !== undefined && externalId.trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
 
         return {
           clientOrderId,
@@ -465,7 +482,9 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       (async () => {
         // Create WebSocket connection directly with X-Api-Key header
         const url = `${this.endpointConfig.streamUrl}${ExtendedStreamPaths.account()}`;
-        const connection = new WsConnection<{ data?: ExtendedAccountStreamData }>({
+        const connection = new WsConnection<{
+          data?: ExtendedAccountStreamData;
+        }>({
           url,
           headers: {
             "User-Agent": "agentic-mm-bot/1.0",
@@ -555,11 +574,11 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     // Cast to loose type to allow defensive fallback lookups.
     const raw = trade as unknown as Record<string, unknown>;
     const market =
-      (raw["market"] as string | undefined) ??
-      (raw["symbol"] as string | undefined) ??
-      (raw["marketName"] as string | undefined);
+      (raw.market as string | undefined) ??
+      (raw.symbol as string | undefined) ??
+      (raw.marketName as string | undefined);
 
-    const orderIdRaw = raw["orderId"] ?? raw["order_id"] ?? raw["orderID"];
+    const orderIdRaw = raw.orderId ?? raw.order_id ?? raw.orderID;
 
     const orderId =
       typeof orderIdRaw === "number" ? orderIdRaw.toString()
@@ -567,33 +586,34 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       : typeof orderIdRaw === "string" ? orderIdRaw
       : null;
 
-    const clientOrderId =
-      (raw["externalOrderId"] as string | undefined) ?? (raw["externalId"] as string | undefined) ?? "";
+    const clientOrderId = (raw.externalOrderId as string | undefined) ?? (raw.externalId as string | undefined) ?? "";
 
     const price =
-      (raw["price"] as string | undefined) ??
-      (raw["fillPrice"] as string | undefined) ??
-      (raw["avgPrice"] as string | undefined);
+      (raw.price as string | undefined) ??
+      (raw.fillPrice as string | undefined) ??
+      (raw.avgPrice as string | undefined);
 
     const qty =
-      (raw["qty"] as string | undefined) ??
-      (raw["size"] as string | undefined) ??
-      (raw["quantity"] as string | undefined);
+      (raw.qty as string | undefined) ?? (raw.size as string | undefined) ?? (raw.quantity as string | undefined);
 
     const fee =
-      (raw["fee"] as string | undefined) ??
-      (raw["payedFee"] as string | undefined) ??
-      (raw["paidFee"] as string | undefined);
+      (raw.fee as string | undefined) ?? (raw.payedFee as string | undefined) ?? (raw.paidFee as string | undefined);
 
-    const createdTimeRaw = raw["createdTime"] ?? raw["createdAt"] ?? raw["timestamp"];
+    const createdTimeRaw = raw.createdTime ?? raw.createdAt ?? raw.timestamp;
 
     const createdTimeMs =
       typeof createdTimeRaw === "number" ? createdTimeRaw
       : typeof createdTimeRaw === "bigint" ? Number(createdTimeRaw)
       : typeof createdTimeRaw === "string" ? Number(createdTimeRaw)
-      : NaN;
+      : Number.NaN;
 
-    if (!market || !orderId || !price || !qty || !Number.isFinite(createdTimeMs)) {
+    if (
+      market === undefined ||
+      orderId === null ||
+      price === undefined ||
+      qty === undefined ||
+      !Number.isFinite(createdTimeMs)
+    ) {
       logger.warn("Skipping trade update with missing fields (cannot emit fill)", {
         market,
         orderId,
@@ -605,23 +625,23 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       return;
     }
 
-    const sideVal = raw["side"];
+    const sideVal = raw.side;
     const sideRaw = (typeof sideVal === "string" ? sideVal : "").toUpperCase();
     const side =
       sideRaw === "BUY" ? "buy"
       : sideRaw === "SELL" ? "sell"
       : null;
     if (!side) {
-      logger.warn("Skipping trade update with unknown side (cannot emit fill)", { sideRaw: raw["side"], trade });
+      logger.warn("Skipping trade update with unknown side (cannot emit fill)", { sideRaw: raw.side, trade });
       return;
     }
 
     // Prefer explicit boolean when present.
-    const isTakerField = raw["isTaker"];
+    const isTakerField = raw.isTaker;
     const isTaker =
       typeof isTakerField === "boolean" ? isTakerField : (
         (() => {
-          const tradeTypeRaw = raw["tradeType"] ?? raw["type"];
+          const tradeTypeRaw = raw.tradeType ?? raw.type;
           const tradeTypeVal = (typeof tradeTypeRaw === "string" ? tradeTypeRaw : "").toUpperCase();
           if (tradeTypeVal === "MAKER") return false;
           if (tradeTypeVal === "TAKER") return true;
@@ -666,20 +686,23 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
       };
 
       // Always update cache (even if delta is 0 / negative due to resets).
-      this.lastFillByExchangeOrderId.set(exchangeOrderId, { filledQty: nextFilled, paidFee: nextFee });
+      this.lastFillByExchangeOrderId.set(exchangeOrderId, {
+        filledQty: nextFilled,
+        paidFee: nextFee,
+      });
 
       const deltaQty = nextFilled.sub(prev.filledQty);
       const deltaFee = nextFee.sub(prev.paidFee);
 
       // Only emit on positive deltas (ignore resets or unchanged).
       if (deltaQty.gt(0)) {
-        const sideRaw = String(order.side).toUpperCase();
+        const sideRaw = order.side.toUpperCase();
         const side =
           sideRaw === "BUY" ? ("buy" as const)
           : sideRaw === "SELL" ? ("sell" as const)
           : null;
 
-        const fillPx = order.averagePrice?.toString() ?? order.price.toString();
+        const fillPx = order.averagePrice ?? order.price;
 
         if (side && fillPx) {
           this.emitEvent({
@@ -723,7 +746,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private mapOrderStatus(
     status?: ExtendedOrderStatus | string,
   ): "pending" | "open" | "filled" | "cancelled" | "rejected" {
-    if (!status) return "pending";
+    if (status === undefined) return "pending";
 
     // Handle enum values
     if (typeof status === "object" || status in ExtendedOrderStatus) {
@@ -740,13 +763,14 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
           return "cancelled";
         case ExtendedOrderStatus.REJECTED:
           return "rejected";
+        case ExtendedOrderStatus.UNKNOWN:
         default:
           return "pending";
       }
     }
 
     // Handle string values
-    const statusStr = String(status).toUpperCase();
+    const statusStr = status.toUpperCase();
     if (statusStr === "NEW" || statusStr === "UNTRIGGERED") return "pending";
     if (statusStr === "PARTIALLY_FILLED") return "open";
     if (statusStr === "FILLED") return "filled";

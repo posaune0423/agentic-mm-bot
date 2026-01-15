@@ -8,7 +8,8 @@
  */
 
 import { eq, and, gte, lte, sql, asc, count } from "drizzle-orm";
-import { fillsEnriched, exOrderEvent, strategyState, type Db } from "@agentic-mm-bot/db";
+import { fillsEnriched, exOrderEvent, strategyState } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ export async function getWorstFills(
     side: row.side,
     fillPx: row.fillPx,
     fillSz: row.fillSz,
-    markout10sBps: row.markout10sBps ? parseFloat(row.markout10sBps) : null,
+    markout10sBps: row.markout10sBps !== null ? Number.parseFloat(row.markout10sBps) : null,
   }));
 }
 
@@ -170,9 +171,9 @@ export async function getAggregation(
   const p10 = percentiles.p10;
   const p50 = percentiles.p50;
   const p90 = percentiles.p90;
-  const markout10sP10 = p10 ? parseFloat(p10) : null;
-  const markout10sP50 = p50 ? parseFloat(p50) : null;
-  const markout10sP90 = p90 ? parseFloat(p90) : null;
+  const markout10sP10 = p10 !== null ? Number.parseFloat(p10) : null;
+  const markout10sP50 = p50 !== null ? Number.parseFloat(p50) : null;
+  const markout10sP90 = p90 !== null ? Number.parseFloat(p90) : null;
 
   // Get worst fills
   const worstFills = await getWorstFills(db, exchange, symbol, windowStart, windowEnd);
@@ -216,13 +217,19 @@ async function generateAggregationForWindow(
   return agg;
 }
 
-function getLastCompleteMinuteWindow(now: Date): { windowStart: Date; windowEnd: Date } {
+function getLastCompleteMinuteWindow(now: Date): {
+  windowStart: Date;
+  windowEnd: Date;
+} {
   const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0, 0);
   const windowStart = new Date(windowEnd.getTime() - 60_000);
   return { windowStart, windowEnd };
 }
 
-function getLastCompleteHourWindow(now: Date): { windowStart: Date; windowEnd: Date } {
+function getLastCompleteHourWindow(now: Date): {
+  windowStart: Date;
+  windowEnd: Date;
+} {
   const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
   const windowStart = new Date(windowEnd.getTime() - 3600_000);
   return { windowStart, windowEnd };

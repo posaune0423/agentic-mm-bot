@@ -24,9 +24,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@posaune0423/eslint-config": "catalog:tooling",
     "@dotenvx/dotenvx": "catalog:tooling",
     "@types/bun": "catalog:tooling",
     "@types/pg": "^8.16.0",

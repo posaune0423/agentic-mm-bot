@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "bun@1.3.6",
   "engines": {
-    "node": ">=24.0.0"
+    "bun": ">=1.3.6"
   },
   "workspaces": {
     "packages": [
@@ -26,13 +26,13 @@
         "prettier-plugin-organize-imports": "latest",
         "prettier-plugin-tailwindcss": "latest",
         "typescript": "latest",
-        "@t3-oss/env-core": "latest"
+        "@t3-oss/env-core": "latest",
+        "@posaune0423/eslint-config": "latest"
       }
     }
   },
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
     "start": "turbo run start",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",

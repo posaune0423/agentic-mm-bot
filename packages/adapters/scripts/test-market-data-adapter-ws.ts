@@ -12,12 +12,12 @@
 import { ExtendedMarketDataAdapter } from "../src/extended/market-data-adapter";
 import type { MarketDataEvent, MarketDataSubscription } from "../src/ports";
 
-type Opts = {
+interface Opts {
   market: string;
   channels: Array<"bbo" | "trades" | "prices" | "funding">;
   maxPerType: number;
   timeoutMs: number;
-};
+}
 
 function parseArgs(argv: string[]): Partial<Opts> & { help?: boolean } {
   const out: Partial<Opts> & { help?: boolean } = {};
@@ -41,7 +41,7 @@ function asInt(v: unknown, fallback: number): number {
   const n =
     typeof v === "number" ? v
     : typeof v === "string" ? Number(v)
-    : NaN;
+    : Number.NaN;
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
@@ -96,7 +96,12 @@ function summarize(event: MarketDataEvent): unknown {
       seq: event.seq,
     };
   }
-  return { type: event.type, exchange: event.exchange, ts: event.ts.toISOString(), reason: event.reason };
+  return {
+    type: event.type,
+    exchange: event.exchange,
+    ts: event.ts.toISOString(),
+    reason: event.reason,
+  };
 }
 
 async function main(): Promise<void> {
@@ -144,7 +149,11 @@ async function main(): Promise<void> {
     }
   });
 
-  const sub: MarketDataSubscription = { exchange: "extended", symbol: opts.market, channels: opts.channels };
+  const sub: MarketDataSubscription = {
+    exchange: "extended",
+    symbol: opts.market,
+    channels: opts.channels,
+  };
   const subRes = adapter.subscribe(sub);
   if (subRes.isErr()) {
     console.error(subRes.error);

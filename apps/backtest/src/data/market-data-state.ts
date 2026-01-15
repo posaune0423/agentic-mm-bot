@@ -7,8 +7,7 @@
  * - Provide Snapshot and feature calculation inputs
  */
 
-import type { Ms, PriceStr, Snapshot, SizeStr } from "@agentic-mm-bot/core";
-import type { MidSnapshot, TradeData } from "@agentic-mm-bot/core";
+import type { Ms, PriceStr, Snapshot, SizeStr , MidSnapshot, TradeData } from "@agentic-mm-bot/core";
 import type { MdBbo, MdPrice, MdTrade } from "@agentic-mm-bot/db";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
@@ -60,8 +59,8 @@ export class MarketDataState {
    * Update from price record (mark/index)
    */
   updatePrice(price: MdPrice): void {
-    if (price.markPx) this.markPx = price.markPx;
-    if (price.indexPx) this.indexPx = price.indexPx;
+    if (price.markPx !== null) this.markPx = price.markPx;
+    if (price.indexPx !== null) this.indexPx = price.indexPx;
     this.lastUpdateMs = Math.max(this.lastUpdateMs, price.ts.getTime());
   }
 
@@ -127,7 +126,7 @@ export class MarketDataState {
    * Check if we have valid data
    */
   hasValidData(): boolean {
-    return this.lastUpdateMs > 0 && parseFloat(this.bestBidPx) > 0 && parseFloat(this.bestAskPx) > 0;
+    return this.lastUpdateMs > 0 && Number.parseFloat(this.bestBidPx) > 0 && Number.parseFloat(this.bestAskPx) > 0;
   }
 
   /**
@@ -148,8 +147,8 @@ export class MarketDataState {
    * Get current mid price
    */
   getMidPx(): PriceStr {
-    const bid = parseFloat(this.bestBidPx);
-    const ask = parseFloat(this.bestAskPx);
+    const bid = Number.parseFloat(this.bestBidPx);
+    const ask = Number.parseFloat(this.bestAskPx);
     return ((bid + ask) / 2).toFixed(8);
   }
 }

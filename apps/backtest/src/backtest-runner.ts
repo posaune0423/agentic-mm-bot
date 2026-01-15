@@ -8,22 +8,18 @@
  * - Output metrics and CSV
  */
 
-import {
-  computeFeatures,
-  createInitialState,
-  decide,
-  type DecideInput,
-  type StrategyParams,
-  type StrategyState,
-} from "@agentic-mm-bot/core";
+import { computeFeatures, createInitialState, decide } from "@agentic-mm-bot/core";
+import type { DecideInput, StrategyParams, StrategyState } from "@agentic-mm-bot/core";
 import type { MarketDataRepository } from "@agentic-mm-bot/repositories";
 import { logger } from "@agentic-mm-bot/utils";
 
-import { loadMarketData, mergeToEventStream, type MarketEvent } from "./data/event-stream";
+import { loadMarketData, mergeToEventStream } from "./data/event-stream";
+import type { MarketEvent } from "./data/event-stream";
 import { MarketDataState } from "./data/market-data-state";
 import { SimExecution } from "./sim/sim-execution";
 import { executeSimActions, planSimActions } from "./sim/action-planner";
-import { calculateAverageMarkout, enrichFillsWithMarkout, type EnrichedFill } from "./report/markout";
+import { calculateAverageMarkout, enrichFillsWithMarkout } from "./report/markout";
+import type { EnrichedFill } from "./report/markout";
 import { writeFillsCsv } from "./report/csv-writer";
 
 /**
@@ -69,7 +65,12 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
     endTime: endTime.toISOString(),
   });
 
-  const marketData = await loadMarketData(repo, { exchange, symbol, startTime, endTime });
+  const marketData = await loadMarketData(repo, {
+    exchange,
+    symbol,
+    startTime,
+    endTime,
+  });
 
   logger.info("Data loaded", {
     bboCount: marketData.bboData.length,
@@ -173,7 +174,7 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   const avgMarkout = calculateAverageMarkout(enrichedFills);
 
   // Step 6: Output CSV if path specified
-  if (outputCsvPath) {
+  if (outputCsvPath !== undefined && outputCsvPath !== "") {
     logger.info("Writing fills to CSV", { path: outputCsvPath });
     writeFillsCsv(enrichedFills, outputCsvPath);
   }

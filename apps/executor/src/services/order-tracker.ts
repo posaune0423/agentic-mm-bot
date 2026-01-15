@@ -54,12 +54,12 @@ export class OrderTracker {
     const order = this.orders.get(event.clientOrderId);
     if (!order) return;
 
-    const currentFilled = parseFloat(order.filledSize);
-    const newFill = parseFloat(event.size);
+    const currentFilled = Number.parseFloat(order.filledSize);
+    const newFill = Number.parseFloat(event.size);
     order.filledSize = (currentFilled + newFill).toString();
 
     // Remove if fully filled
-    const totalSize = parseFloat(order.size);
+    const totalSize = Number.parseFloat(order.size);
     if (currentFilled + newFill >= totalSize) {
       this.orders.delete(event.clientOrderId);
     }

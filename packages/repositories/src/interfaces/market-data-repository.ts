@@ -118,22 +118,22 @@ export interface MarketDataRepository {
   /**
    * Batch insert BBO records
    */
-  insertBboBatch(records: BboInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertBboBatch: (records: BboInsert[]) => ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Batch insert Trade records
    */
-  insertTradeBatch(records: TradeInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertTradeBatch: (records: TradeInsert[]) => ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Batch insert Price records
    */
-  insertPriceBatch(records: PriceInsert[]): ResultAsync<void, MarketDataRepositoryError>;
+  insertPriceBatch: (records: PriceInsert[]) => ResultAsync<void, MarketDataRepositoryError>;
 
   /**
    * Upsert latest_top state
    */
-  upsertLatestTop(state: LatestTopState): ResultAsync<void, MarketDataRepositoryError>;
+  upsertLatestTop: (state: LatestTopState) => ResultAsync<void, MarketDataRepositoryError>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Lookup (Summarizer - markout calculation)
@@ -142,22 +142,22 @@ export interface MarketDataRepository {
   /**
    * Find closest BBO to a timestamp within tolerance
    */
-  findClosestBbo(
+  findClosestBbo: (
     exchange: string,
     symbol: string,
     targetTs: Date,
     toleranceMs: number,
-  ): Promise<Result<BboRef | null, MarketDataRepositoryError>>;
+  ) => Promise<Result<BboRef | null, MarketDataRepositoryError>>;
 
   /**
    * Find closest Price to a timestamp within tolerance
    */
-  findClosestPrice(
+  findClosestPrice: (
     exchange: string,
     symbol: string,
     targetTs: Date,
     toleranceMs: number,
-  ): Promise<Result<PriceRef | null, MarketDataRepositoryError>>;
+  ) => Promise<Result<PriceRef | null, MarketDataRepositoryError>>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Window Queries (Summarizer - feature calculation)
@@ -166,23 +166,23 @@ export interface MarketDataRepository {
   /**
    * Get trades in a time window (for trade imbalance, liq count)
    */
-  getTradesInWindow(
+  getTradesInWindow: (
     exchange: string,
     symbol: string,
     windowStart: Date,
     windowEnd: Date,
-  ): ResultAsync<MdTrade[], MarketDataRepositoryError>;
+  ) => ResultAsync<MdTrade[], MarketDataRepositoryError>;
 
   /**
    * Get BBOs in a time window (for realized vol)
    */
-  getBbosInWindow(
+  getBbosInWindow: (
     exchange: string,
     symbol: string,
     windowStart: Date,
     windowEnd: Date,
     limit?: number,
-  ): ResultAsync<MdBbo[], MarketDataRepositoryError>;
+  ) => ResultAsync<MdBbo[], MarketDataRepositoryError>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Bulk Load (Backtest)
@@ -191,10 +191,10 @@ export interface MarketDataRepository {
   /**
    * Load all market data for a time period (for backtest replay)
    */
-  loadMarketData(
+  loadMarketData: (
     exchange: string,
     symbol: string,
     startTime: Date,
     endTime: Date,
-  ): ResultAsync<MarketDataArrays, MarketDataRepositoryError>;
+  ) => ResultAsync<MarketDataArrays, MarketDataRepositoryError>;
 }

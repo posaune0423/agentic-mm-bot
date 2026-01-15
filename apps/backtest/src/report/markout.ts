@@ -78,7 +78,7 @@ export function enrichFillsWithMarkout(fills: SimFill[], bboData: MdBbo[]): Enri
 
   for (const fill of fills) {
     const fillMs = fill.ts.getTime();
-    const midT0 = parseFloat(fill.midT0);
+    const midT0 = Number.parseFloat(fill.midT0);
 
     // Find BBO at t+10s
     const targetMs = fillMs + MARKOUT_WINDOW_MS;
@@ -89,7 +89,7 @@ export function enrichFillsWithMarkout(fills: SimFill[], bboData: MdBbo[]): Enri
 
     if (bboT10s && bboT10s.ts.getTime() >= fillMs) {
       midT10s = bboT10s.midPx;
-      markout10sBps = calculateMarkoutBps(fill.side, midT0, parseFloat(midT10s));
+      markout10sBps = calculateMarkoutBps(fill.side, midT0, Number.parseFloat(midT10s));
     }
 
     enrichedFills.push({

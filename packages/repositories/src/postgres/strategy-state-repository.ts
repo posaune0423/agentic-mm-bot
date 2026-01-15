@@ -7,8 +7,10 @@
  */
 
 import { desc, eq, and } from "drizzle-orm";
-import { ok, err, type Result } from "neverthrow";
-import { strategyState, type Db } from "@agentic-mm-bot/db";
+import { ok, err } from "neverthrow";
+import type { Result } from "neverthrow";
+import { strategyState } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 import type { StrategyMode } from "@agentic-mm-bot/core";
 
 import type {

@@ -33,15 +33,25 @@ describe("ExtendedExecutionAdapter", () => {
           const message = error.message.toLowerCase();
 
           if (message.includes("rate limit")) {
-            return { type: "rate_limit" as const, message: error.message, retryAfterMs: 1000 };
+            return {
+              type: "rate_limit" as const,
+              message: error.message,
+              retryAfterMs: 1000,
+            };
           }
 
           if (message.includes("post_only") || message.includes("post only failed")) {
-            return { type: "post_only_rejected" as const, message: error.message };
+            return {
+              type: "post_only_rejected" as const,
+              message: error.message,
+            };
           }
 
           if (message.includes("insufficient") || message.includes("not enough")) {
-            return { type: "insufficient_balance" as const, message: error.message };
+            return {
+              type: "insufficient_balance" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -63,7 +73,10 @@ describe("ExtendedExecutionAdapter", () => {
           const message = error.message.toLowerCase();
 
           if (message.includes("post_only") || message.includes("post only failed")) {
-            return { type: "post_only_rejected" as const, message: error.message };
+            return {
+              type: "post_only_rejected" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -85,7 +98,10 @@ describe("ExtendedExecutionAdapter", () => {
           const message = error.message.toLowerCase();
 
           if (message.includes("insufficient") || message.includes("not enough")) {
-            return { type: "insufficient_balance" as const, message: error.message };
+            return {
+              type: "insufficient_balance" as const,
+              message: error.message,
+            };
           }
 
           return { type: "exchange_error" as const, message: error.message };
@@ -292,7 +308,10 @@ describe("ExtendedExecutionAdapter", () => {
     test("should require either clientOrderId or exchangeOrderId", () => {
       const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };
@@ -306,7 +325,10 @@ describe("ExtendedExecutionAdapter", () => {
     test("should accept exchangeOrderId", () => {
       const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };
@@ -319,7 +341,10 @@ describe("ExtendedExecutionAdapter", () => {
     test("should accept clientOrderId", () => {
       const validateCancelRequest = (request: { clientOrderId?: string; exchangeOrderId?: string }) => {
         if (!request.clientOrderId && !request.exchangeOrderId) {
-          return { valid: false, error: "Either clientOrderId or exchangeOrderId is required" };
+          return {
+            valid: false,
+            error: "Either clientOrderId or exchangeOrderId is required",
+          };
         }
         return { valid: true };
       };

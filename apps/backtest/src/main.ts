@@ -14,7 +14,8 @@ import { createPostgresMarketDataRepository } from "@agentic-mm-bot/repositories
 import { logger } from "@agentic-mm-bot/utils";
 
 import { env } from "./env";
-import { runBacktest, type BacktestConfig } from "./backtest-runner";
+import { runBacktest } from "./backtest-runner";
+import type { BacktestConfig } from "./backtest-runner";
 
 /**
  * Default strategy parameters for backtest
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
       finalPosition: results.finalPosition,
     });
 
-    if (env.BACKTEST_OUT_CSV) {
+    if (env.BACKTEST_OUT_CSV !== undefined && env.BACKTEST_OUT_CSV !== "") {
       logger.info(`Fills written to: ${env.BACKTEST_OUT_CSV}`);
     }
   } finally {
@@ -81,7 +82,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(error => {
+main().catch((error: unknown) => {
   logger.error("Fatal error", error);
-  process.exit(1);
+  process.exitCode = 1;
 });

@@ -15,15 +15,15 @@ export enum LogLevel {
   LOG = "LOG",
 }
 
-export type LogRecord = {
+export interface LogRecord {
   tsMs: number;
   level: LogLevel;
   message: string;
   fields?: Record<string, string>;
-};
+}
 
 export interface LogSink {
-  write(record: LogRecord): void;
+  write: (record: LogRecord) => void;
 }
 
 // Define log level priority (lower number = higher priority)
@@ -42,7 +42,7 @@ const getTimestamp = () => {
 const getCurrentLogLevel = (): LogLevel => {
   const envLevel = process.env.LOG_LEVEL?.toUpperCase();
 
-  if (envLevel && Object.values(LogLevel).includes(envLevel as LogLevel)) {
+  if (envLevel !== undefined && envLevel !== "" && Object.values(LogLevel).includes(envLevel as LogLevel)) {
     return envLevel as LogLevel;
   }
 
@@ -58,14 +58,14 @@ const shouldLog = (level: LogLevel): boolean => {
 
 const colorize = (message: string, level: LogLevel): string => {
   const colors = {
-    [LogLevel.ERROR]: "\x1b[31m", // Red
-    [LogLevel.WARN]: "\x1b[33m", // Yellow
-    [LogLevel.INFO]: "\x1b[36m", // Cyan
-    [LogLevel.DEBUG]: "\x1b[32m", // Green
+    [LogLevel.ERROR]: "\x1B[31m", // Red
+    [LogLevel.WARN]: "\x1B[33m", // Yellow
+    [LogLevel.INFO]: "\x1B[36m", // Cyan
+    [LogLevel.DEBUG]: "\x1B[32m", // Green
     [LogLevel.LOG]: null, // No color (standard)
   };
 
-  const reset = "\x1b[0m";
+  const reset = "\x1B[0m";
   const color = colors[level];
 
   if (color === null) {
@@ -86,7 +86,12 @@ let sink: LogSink | null = null;
 function toFields(args: unknown[]): Record<string, string> | undefined {
   // Common case in this codebase: logger.info("msg", { ...fields })
   const maybeFields = args[1];
-  if (maybeFields && typeof maybeFields === "object" && !(maybeFields instanceof Error)) {
+  if (
+    maybeFields !== null &&
+    maybeFields !== undefined &&
+    typeof maybeFields === "object" &&
+    !(maybeFields instanceof Error)
+  ) {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(maybeFields as Record<string, unknown>)) {
       out[k] = typeof v === "string" ? v : JSON.stringify(v);
@@ -108,8 +113,17 @@ function toMessage(args: unknown[]): string {
   if (rest.length === 0) return head;
 
   // Avoid duplicating the common fields object in the message; store it in `fields`.
+  const first0 = rest[0];
   const tail =
-    rest.length >= 1 && rest[0] && typeof rest[0] === "object" && !(rest[0] instanceof Error) ? rest.slice(1) : rest;
+    (
+      rest.length >= 1 &&
+      first0 !== null &&
+      first0 !== undefined &&
+      typeof first0 === "object" &&
+      !(first0 instanceof Error)
+    ) ?
+      rest.slice(1)
+    : rest;
 
   if (tail.length === 0) return head;
 

@@ -70,7 +70,10 @@ IMPORTANT:
 /**
  * Parse model string (e.g., "openai/gpt-4o") into provider and model name
  */
-function parseModelString(modelString: string): { provider: string; modelName: string } {
+function parseModelString(modelString: string): {
+  provider: string;
+  modelName: string;
+} {
   const parts = modelString.split("/");
   if (parts.length < 2) {
     throw new Error(`Invalid model string: ${modelString}. Expected format: provider/model-name`);

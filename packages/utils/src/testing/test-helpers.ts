@@ -10,7 +10,10 @@ export function withPatchedStdout<T>(fn: (writes: string[]) => T): T {
   const originalWrite = process.stdout.write.bind(process.stdout);
   const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 
-  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+  Object.defineProperty(process.stdout, "isTTY", {
+    value: true,
+    configurable: true,
+  });
   process.stdout.write = ((chunk: unknown) => {
     writes.push(typeof chunk === "string" ? chunk : String(chunk));
     return true;

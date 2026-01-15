@@ -16,26 +16,26 @@ export interface MetricsRepository {
   /**
    * Get hourly aggregation for LLM input
    */
-  getHourlyAggregation(
+  getHourlyAggregation: (
     exchange: string,
     symbol: string,
     windowStart: Date,
     windowEnd: Date,
-  ): ResultAsync<HourlyAggregation, MetricsRepositoryError>;
+  ) => ResultAsync<HourlyAggregation, MetricsRepositoryError>;
 
   /**
    * Get current strategy params
    */
-  getCurrentParams(exchange: string, symbol: string): ResultAsync<CurrentParamsSummary, MetricsRepositoryError>;
+  getCurrentParams: (exchange: string, symbol: string) => ResultAsync<CurrentParamsSummary, MetricsRepositoryError>;
 
   /**
    * Get worst fills for a time window
    */
-  getWorstFills(
+  getWorstFills: (
     exchange: string,
     symbol: string,
     windowStart: Date,
     windowEnd: Date,
     limit: number,
-  ): ResultAsync<WorstFillSummary[], MetricsRepositoryError>;
+  ) => ResultAsync<WorstFillSummary[], MetricsRepositoryError>;
 }

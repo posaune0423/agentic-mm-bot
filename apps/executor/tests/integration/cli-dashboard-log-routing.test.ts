@@ -14,7 +14,11 @@ describe("CLI dashboard log routing (integration)", () => {
         }) as typeof console.info;
 
         try {
-          const dash = new ExecutorCliDashboard({ enabled: true, exchange: "extended", symbol: "BTC-USD" });
+          const dash = new ExecutorCliDashboard({
+            enabled: true,
+            exchange: "extended",
+            symbol: "BTC-USD",
+          });
           dash.start();
 
           logger.info("hello-from-logger");

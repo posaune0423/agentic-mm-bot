@@ -24,9 +24,9 @@
     "neverthrow": "^8.2.0"
   },
   "devDependencies": {
-    "@agentic-mm-bot/eslint-config": "workspace:*",
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
+    "@posaune0423/eslint-config": "catalog:tooling",
     "@types/bun": "catalog:tooling",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",

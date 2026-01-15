@@ -7,7 +7,8 @@
  */
 
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { mdBbo, mdPrice, type Db } from "@agentic-mm-bot/db";
+import { mdBbo, mdPrice } from "@agentic-mm-bot/db";
+import type { Db } from "@agentic-mm-bot/db";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -79,9 +80,9 @@ export async function findClosestBbo(
   if (result.length === 0) return null;
 
   const row = result[0];
-  const mid = parseFloat(row.midPx);
-  const bid = parseFloat(row.bestBidPx);
-  const ask = parseFloat(row.bestAskPx);
+  const mid = Number.parseFloat(row.midPx);
+  const bid = Number.parseFloat(row.bestBidPx);
+  const ask = Number.parseFloat(row.bestAskPx);
   const spreadBps = mid > 0 ? ((ask - bid) / mid) * 10_000 : 0;
 
   return {

@@ -44,7 +44,10 @@ describe("TTYRenderer", () => {
     const r = new TTYRenderer(s => writes.push(s));
 
     const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
-    Object.defineProperty(process.stdout, "columns", { value: 10, configurable: true });
+    Object.defineProperty(process.stdout, "columns", {
+      value: 10,
+      configurable: true,
+    });
     try {
       r.render(["0123456789ABCDEFGHIJ"]);
     } finally {

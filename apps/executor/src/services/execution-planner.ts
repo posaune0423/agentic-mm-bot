@@ -23,7 +23,7 @@ export type ExecutionAction =
  * Generate a unique client order ID
  */
 export function generateClientOrderId(): string {
-  return `ord_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  return `ord_${String(Date.now())}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**

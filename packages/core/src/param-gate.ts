@@ -68,7 +68,7 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
 /** Maximum number of parameter changes allowed */
 const MAX_CHANGES = 2;
 
-type ChangeRule = {
+interface ChangeRule {
   /** Minimum allowed ratio (proposed/current) when current != 0 */
   minRatio: number;
   /** Maximum allowed ratio (proposed/current) when current != 0 */
@@ -77,7 +77,7 @@ type ChangeRule = {
   allowNegative: boolean;
   /** Absolute hard cap to catch magnitude hallucinations */
   absMax: number;
-};
+}
 
 /**
  * "Excessive" change guardrails.
@@ -86,16 +86,66 @@ type ChangeRule = {
  * while catching clearly unreasonable LLM outputs (orders of magnitude, sign flips).
  */
 const CHANGE_RULES: Record<keyof StrategyParams, ChangeRule> = {
-  baseHalfSpreadBps: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  volSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  toxSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  quoteSizeUsd: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  refreshIntervalMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
-  staleCancelMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
-  maxInventory: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  inventorySkewGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
-  pauseMarkIndexBps: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
-  pauseLiqCount10s: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  baseHalfSpreadBps: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  volSpreadGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  toxSpreadGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  quoteSizeUsd: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  refreshIntervalMs: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  staleCancelMs: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  maxInventory: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  inventorySkewGain: {
+    minRatio: 0.3,
+    maxRatio: 3.0,
+    allowNegative: false,
+    absMax: 1e6,
+  },
+  pauseMarkIndexBps: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  pauseLiqCount10s: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,11 +160,12 @@ export function isWithinReasonableRange(
   original: number | string,
   proposed: number | string,
 ): boolean {
-  const origNum = typeof original === "string" ? parseFloat(original) : original;
-  const propNum = typeof proposed === "string" ? parseFloat(proposed) : proposed;
+  const origNum = typeof original === "string" ? Number.parseFloat(original) : original;
+  const propNum = typeof proposed === "string" ? Number.parseFloat(proposed) : proposed;
 
   if (!Number.isFinite(origNum) || !Number.isFinite(propNum)) return false;
 
+  // eslint-disable-next-line security/detect-object-injection
   const rule = CHANGE_RULES[param];
   if (!rule.allowNegative && propNum < 0) return false;
   if (Math.abs(propNum) > rule.absMax) return false;

@@ -7,8 +7,7 @@
  * - Fill price is the order price (not trade price)
  */
 
-import type { Ms, Position, PriceStr, Side, SizeStr, StrategyMode, ReasonCode } from "@agentic-mm-bot/core";
-import type { TradeData } from "@agentic-mm-bot/core";
+import type { Ms, Position, PriceStr, Side, SizeStr, StrategyMode, ReasonCode, TradeData } from "@agentic-mm-bot/core";
 
 /**
  * Simulated order
@@ -56,7 +55,7 @@ export class SimExecution {
    */
   generateOrderId(): string {
     this.orderIdCounter++;
-    return `sim_${this.orderIdCounter}`;
+    return `sim_${String(this.orderIdCounter)}`;
   }
 
   /**
@@ -115,11 +114,11 @@ export class SimExecution {
     const newFills: SimFill[] = [];
 
     for (const trade of trades) {
-      const tradePx = parseFloat(trade.px);
+      const tradePx = Number.parseFloat(trade.px);
 
       // Check bid order
       if (this.bidOrder) {
-        const bidPrice = parseFloat(this.bidOrder.price);
+        const bidPrice = Number.parseFloat(this.bidOrder.price);
         if (tradePx <= bidPrice) {
           // Fill at order price (maker)
           const fill = this.executeFill(this.bidOrder, new Date(trade.ts), midPx, mode, reasonCodes);
@@ -130,7 +129,7 @@ export class SimExecution {
 
       // Check ask order
       if (this.askOrder) {
-        const askPrice = parseFloat(this.askOrder.price);
+        const askPrice = Number.parseFloat(this.askOrder.price);
         if (tradePx >= askPrice) {
           // Fill at order price (maker)
           const fill = this.executeFill(this.askOrder, new Date(trade.ts), midPx, mode, reasonCodes);
@@ -164,8 +163,8 @@ export class SimExecution {
     };
 
     // Update position
-    const currentPos = parseFloat(this.position.size);
-    const fillSize = parseFloat(order.size);
+    const currentPos = Number.parseFloat(this.position.size);
+    const fillSize = Number.parseFloat(order.size);
     const signedFill = order.side === "buy" ? fillSize : -fillSize;
     this.position = { size: (currentPos + signedFill).toString() };
 

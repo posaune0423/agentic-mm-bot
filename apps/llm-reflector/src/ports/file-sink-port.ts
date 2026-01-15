@@ -19,13 +19,13 @@ export interface FileSinkPort {
   /**
    * Write JSON content to a file and return the sha256 hash
    */
-  writeJsonLog(
+  writeJsonLog: (
     logDir: string,
     exchange: string,
     symbol: string,
     proposalId: string,
     content: unknown,
-  ): ResultAsync<{ path: string; sha256: string }, FileSinkError>;
+  ) => ResultAsync<{ path: string; sha256: string }, FileSinkError>;
 }
 
 /**
@@ -59,7 +59,9 @@ export function createFileSinkPort(): FileSinkPort {
       const filePath = join(llmDir, filename);
 
       // Serialize content without integrity field first
-      const contentWithoutIntegrity = { ...(content as Record<string, unknown>) };
+      const contentWithoutIntegrity = {
+        ...(content as Record<string, unknown>),
+      };
       delete contentWithoutIntegrity.integrity;
       const jsonWithoutIntegrity = JSON.stringify(contentWithoutIntegrity, null, 2);
       const sha256 = calculateSha256(jsonWithoutIntegrity);

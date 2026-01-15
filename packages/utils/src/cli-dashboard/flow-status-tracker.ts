@@ -1,9 +1,9 @@
-export type PhaseSnapshot<TPhase extends string> = {
+export interface PhaseSnapshot<TPhase extends string> {
   phase: TPhase;
   sinceMs: number;
   lastTransitionMs: number;
   lastDurationMs?: number;
-};
+}
 
 /**
  * Tracks an application's current "phase" and basic transition timing.

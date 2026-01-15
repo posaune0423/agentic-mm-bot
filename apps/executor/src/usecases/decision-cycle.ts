@@ -21,7 +21,8 @@ import { logger } from "@agentic-mm-bot/utils";
 import type { MarketDataCache } from "../services/market-data-cache";
 import type { OrderTracker } from "../services/order-tracker";
 import type { PositionTracker } from "../services/position-tracker";
-import { generateClientOrderId, planExecution, type ExecutionAction } from "../services/execution-planner";
+import { generateClientOrderId, planExecution } from "../services/execution-planner";
+import type { ExecutionAction } from "../services/execution-planner";
 
 /**
  * cancel_all throttling
@@ -217,7 +218,11 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
 
     plannedActions.push(...actions);
     if (intent.type === "QUOTE") {
-      targetQuote = { bidPx: intent.bidPx, askPx: intent.askPx, size: intent.size };
+      targetQuote = {
+        bidPx: intent.bidPx,
+        askPx: intent.askPx,
+        size: intent.size,
+      };
     }
 
     for (const action of actions) {
@@ -355,7 +360,10 @@ async function executeAction(
       if (result.isOk()) {
         const removed = orderTracker.removeOrder(action.clientOrderId);
         onAction?.({ phase: "ok", action });
-        logger.debug("Cancelled order", { clientOrderId: action.clientOrderId, removedFromTracker: removed });
+        logger.debug("Cancelled order", {
+          clientOrderId: action.clientOrderId,
+          removedFromTracker: removed,
+        });
       } else {
         if (result.error.type === "rate_limit") {
           rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
@@ -388,7 +396,11 @@ async function executeAction(
           size: action.size,
           createdAtMs: Date.now(),
         });
-        logger.debug("Placed order", { clientOrderId, side: action.side, price: action.price });
+        logger.debug("Placed order", {
+          clientOrderId,
+          side: action.side,
+          price: action.price,
+        });
       } else {
         if (result.error.type === "rate_limit") {
           rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);

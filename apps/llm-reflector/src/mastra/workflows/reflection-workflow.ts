@@ -19,9 +19,11 @@ import type {
   CurrentParamsSummary,
 } from "@agentic-mm-bot/repositories";
 
-import { ProposalOutputSchema, type ProposalOutput } from "../../types/schemas";
+import { ProposalOutputSchema } from "../../types/schemas";
+import type { ProposalOutput } from "../../types/schemas";
 import type { FileSinkPort } from "../../ports/file-sink-port";
-import { validateProposal, type ParamGateError } from "../../services/param-gate";
+import { validateProposal } from "../../services/param-gate";
+import type { ParamGateError } from "../../services/param-gate";
 import { extractFirstJsonObject, snippet } from "../../services/llm-output-parser";
 import { REFLECTOR_INSTRUCTIONS } from "../agents/reflector-agent";
 
@@ -66,16 +68,17 @@ interface ReflectionInput {
 function buildPrompt(input: ReflectionInput): string {
   const worstFillsSummary = input.aggregation.worstFills
     .map(
-      (f, i) => `${i + 1}. ${f.side} ${f.fillSz} @ ${f.fillPx}, markout: ${f.markout10sBps?.toFixed(2) ?? "N/A"} bps`,
+      (f, i) =>
+        `${String(i + 1)}. ${f.side} ${f.fillSz} @ ${f.fillPx}, markout: ${f.markout10sBps?.toFixed(2) ?? "N/A"} bps`,
     )
     .join("\n");
 
   return `## Performance Summary (Window: ${input.windowStart.toISOString()} - ${input.windowEnd.toISOString()})
 
 ### Trading Activity
-- Fills: ${input.aggregation.fillsCount}
-- Cancels: ${input.aggregation.cancelCount}
-- PAUSE events: ${input.aggregation.pauseCount}
+- Fills: ${String(input.aggregation.fillsCount)}
+- Cancels: ${String(input.aggregation.cancelCount)}
+- PAUSE events: ${String(input.aggregation.pauseCount)}
 
 ### Markout Distribution (10s, bps)
 - P10: ${input.aggregation.markout10sP10?.toFixed(2) ?? "N/A"}
@@ -90,12 +93,12 @@ ${worstFillsSummary || "No fills in this period"}
 - volSpreadGain: ${input.currentParams.volSpreadGain}
 - toxSpreadGain: ${input.currentParams.toxSpreadGain}
 - quoteSizeUsd: ${input.currentParams.quoteSizeUsd}
-- refreshIntervalMs: ${input.currentParams.refreshIntervalMs}
-- staleCancelMs: ${input.currentParams.staleCancelMs}
+- refreshIntervalMs: ${String(input.currentParams.refreshIntervalMs)}
+- staleCancelMs: ${String(input.currentParams.staleCancelMs)}
 - maxInventory: ${input.currentParams.maxInventory}
 - inventorySkewGain: ${input.currentParams.inventorySkewGain}
 - pauseMarkIndexBps: ${input.currentParams.pauseMarkIndexBps}
-- pauseLiqCount10s: ${input.currentParams.pauseLiqCount10s}
+- pauseLiqCount10s: ${String(input.currentParams.pauseLiqCount10s)}
 
 Based on this data, suggest parameter changes to improve performance.
 
@@ -161,7 +164,12 @@ function fetchInput(
     repo.getHourlyAggregation(exchange, symbol, windowStart, windowEnd),
     repo.getCurrentParams(exchange, symbol),
   ])
-    .mapErr((e): WorkflowError => ({ type: "FETCH_INPUT_FAILED", message: e.message }))
+    .mapErr(
+      (e): WorkflowError => ({
+        type: "FETCH_INPUT_FAILED",
+        message: e.message,
+      }),
+    )
     .map(([aggregation, currentParams]) => ({
       exchange,
       symbol,
@@ -198,7 +206,7 @@ function generateProposal(
   ).andThen(result => {
     try {
       const jsonText = extractFirstJsonObject(result.text);
-      if (!jsonText) {
+      if (jsonText === null || jsonText === "") {
         return errAsync({
           type: "AGENT_FAILED" as const,
           message: `JSON Parse error: could not find JSON object. got="${snippet(result.text)}"`,
@@ -257,7 +265,9 @@ function validateAndPersist(
   const validationResult = validateProposal(proposal, input.currentParams);
 
   if (validationResult.isErr()) {
-    logger.warn("Proposal rejected by ParamGate", { error: validationResult.error });
+    logger.warn("Proposal rejected by ParamGate", {
+      error: validationResult.error,
+    });
     return errAsync({
       type: "GATE_REJECTED",
       error: validationResult.error,
@@ -309,7 +319,12 @@ function validateAndPersist(
           reasoningLogSha256: sha256,
           status: "pending",
         })
-        .mapErr((e): WorkflowError => ({ type: "DB_INSERT_FAILED", message: e.message }))
+        .mapErr(
+          (e): WorkflowError => ({
+            type: "DB_INSERT_FAILED",
+            message: e.message,
+          }),
+        )
         .map(() => ({
           proposalId,
           logPath: path,

@@ -34,7 +34,9 @@ class FakeDb {
 describe("EventWriter", () => {
   test("flush should remove items only after successful insert", async () => {
     const fakeDb = new FakeDb(async () => {});
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
 
     writer.addBbo({
       ts: new Date("2026-01-01T00:00:00.000Z"),
@@ -65,7 +67,9 @@ describe("EventWriter", () => {
       if (tradeAttempts < 3) throw new Error("temporary failure");
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addTrade({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",
@@ -90,7 +94,9 @@ describe("EventWriter", () => {
       throw new Error("permanent failure");
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addPrice({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",
@@ -119,7 +125,9 @@ describe("EventWriter", () => {
       });
     });
 
-    const writer = new EventWriter(fakeDb as unknown as Db, { retryBaseDelayMs: 0 });
+    const writer = new EventWriter(fakeDb as unknown as Db, {
+      retryBaseDelayMs: 0,
+    });
     writer.addBbo({
       ts: new Date("2026-01-01T00:00:00.000Z"),
       exchange: "test",
