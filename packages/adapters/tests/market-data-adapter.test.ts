@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { ExtendedMarketDataAdapter } from "../src/extended/market-data-adapter";
 
 import type {
   BboEvent,
@@ -663,72 +664,188 @@ describe("ExtendedMarketDataAdapter", () => {
   });
 
   describe("Channel mapping", () => {
-    test("should map bbo channel to orderbook stream", () => {
-      const getStreamType = (channel: string) => {
-        switch (channel) {
-          case "bbo":
-            return "orderbooks";
-          case "trades":
-            return "publicTrades";
-          case "prices":
-            return "fundingRates";
-          default:
-            return null;
-        }
-      };
+    test("should map channels to adapter stream types", () => {
+      const adapter = new ExtendedMarketDataAdapter({
+        network: "testnet",
+        vaultId: 0,
+        starkPrivateKey: "0x1",
+        starkPublicKey: "0x1",
+        apiKey: "dummy",
+      });
 
-      expect(getStreamType("bbo")).toBe("orderbooks");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const channelToStreamTypes: (channel: "bbo" | "trades" | "prices" | "funding") => string[] = (
+        adapter as any
+      ).channelToStreamTypes.bind(adapter);
+
+      expect(channelToStreamTypes("bbo")).toEqual(["orderbook"]);
+      expect(channelToStreamTypes("trades")).toEqual(["trades"]);
+      expect(channelToStreamTypes("prices")).toEqual(["markPrice", "indexPrice"]);
+      expect(channelToStreamTypes("funding")).toEqual(["fundingRate"]);
     });
+  });
 
-    test("should map trades channel to publicTrades stream", () => {
-      const getStreamType = (channel: string) => {
-        switch (channel) {
-          case "bbo":
-            return "orderbooks";
-          case "trades":
-            return "publicTrades";
-          case "prices":
-            return "fundingRates";
-          default:
-            return null;
+  describe("Subscription (prices) -> WS -> PriceEvent", () => {
+    /**
+     * FakeWsConnection: a mock implementation that mimics WsConnection's AsyncIterable interface.
+     * Messages are pushed via `emitMessage()` and consumed via `for await`.
+     */
+    class FakeWsConnection<T> implements AsyncIterable<T> {
+      private closed = false;
+      private queue: T[] = [];
+      private pendingResolve: ((r: IteratorResult<T>) => void) | null = null;
+      public readonly url: string;
+      public readonly label: string;
+
+      constructor(url: string, label: string) {
+        this.url = url;
+        this.label = label;
+      }
+
+      async connect(): Promise<void> {
+        // No-op for mock
+      }
+
+      async close(): Promise<void> {
+        if (this.closed) return;
+        this.closed = true;
+        if (this.pendingResolve) {
+          const resolve = this.pendingResolve;
+          this.pendingResolve = null;
+          resolve({ value: undefined as unknown as T, done: true });
         }
+      }
+
+      isClosed(): boolean {
+        return this.closed;
+      }
+
+      emitMessage(obj: T): void {
+        if (this.pendingResolve) {
+          const resolve = this.pendingResolve;
+          this.pendingResolve = null;
+          resolve({ value: obj, done: false });
+        } else {
+          this.queue.push(obj);
+        }
+      }
+
+      [Symbol.asyncIterator](): AsyncIterator<T> {
+        return {
+          next: async (): Promise<IteratorResult<T>> => {
+            if (this.queue.length > 0) {
+              return { value: this.queue.shift()!, done: false };
+            }
+            if (this.closed) {
+              return { value: undefined as unknown as T, done: true };
+            }
+            return new Promise<IteratorResult<T>>(resolve => {
+              this.pendingResolve = resolve;
+            });
+          },
+          return: async (): Promise<IteratorResult<T>> => {
+            await this.close();
+            return { value: undefined as unknown as T, done: true };
+          },
+        };
+      }
+    }
+
+    const waitFor = async <T>(fn: () => T | undefined, timeoutMs: number): Promise<T> => {
+      const started = Date.now();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const v = fn();
+        if (v !== undefined) return v;
+        if (Date.now() - started >= timeoutMs) throw new Error(`timeout after ${timeoutMs}ms`);
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    };
+
+    test("should emit mark + index PriceEvent when subscribed to prices channel", async () => {
+      // Create mock connections for each stream type
+      const connections = new Map<string, FakeWsConnection<unknown>>();
+
+      // Create a connection factory that returns mock connections based on URL
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const connectionFactory = (url: string, _headers?: Record<string, string>, label?: string): any => {
+        const conn = new FakeWsConnection<unknown>(url, label ?? url);
+        connections.set(url, conn);
+        return conn;
       };
 
-      expect(getStreamType("trades")).toBe("publicTrades");
-    });
+      const adapter = new ExtendedMarketDataAdapter(
+        {
+          network: "testnet",
+          vaultId: 0,
+          starkPrivateKey: "0x1",
+          starkPublicKey: "0x1",
+          apiKey: "dummy",
+        },
+        undefined, // Default reconnect config
+        connectionFactory,
+      );
 
-    test("should map prices channel to fundingRates stream", () => {
-      const getStreamType = (channel: string) => {
-        switch (channel) {
-          case "bbo":
-            return "orderbooks";
-          case "trades":
-            return "publicTrades";
-          case "prices":
-            return "fundingRates";
-          default:
-            return null;
-        }
-      };
+      const events: MarketDataEvent[] = [];
+      adapter.onEvent(e => events.push(e));
 
-      expect(getStreamType("prices")).toBe("fundingRates");
-    });
+      const subRes = adapter.subscribe({
+        exchange: "extended",
+        symbol: "BTC-USD",
+        channels: ["prices"],
+      });
+      expect(subRes.isOk()).toBeTrue();
 
-    test("should return null for unknown channel", () => {
-      const getStreamType = (channel: string) => {
-        switch (channel) {
-          case "bbo":
-            return "orderbooks";
-          case "trades":
-            return "publicTrades";
-          case "prices":
-            return "fundingRates";
-          default:
-            return null;
-        }
-      };
+      const connRes = await adapter.connect();
+      expect(connRes.isOk()).toBeTrue();
 
-      expect(getStreamType("unknown")).toBeNull();
+      try {
+        // Wait a tick so stream listeners attach.
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Find the mark and index connections by URL pattern
+        const markConn = Array.from(connections.values()).find(c => c.url.includes("/prices/mark/"));
+        const indexConn = Array.from(connections.values()).find(c => c.url.includes("/prices/index/"));
+
+        expect(markConn).toBeDefined();
+        expect(indexConn).toBeDefined();
+
+        markConn!.emitMessage({
+          type: "MP",
+          data: { m: "BTC-USD", p: "50000", ts: 1704067200000 },
+          ts: 1704067200001,
+          seq: 100,
+          sourceEventId: null,
+        });
+
+        indexConn!.emitMessage({
+          type: "IP",
+          data: { m: "BTC-USD", p: "49998", ts: 1704067200000 },
+          ts: 1704067200001,
+          seq: 101,
+          sourceEventId: null,
+        });
+
+        const mark = await waitFor(
+          () =>
+            events.find(e => e.type === "price" && (e as PriceEvent).priceType === "mark") as PriceEvent | undefined,
+          2_000,
+        );
+        expect(mark.exchange).toBe("extended");
+        expect(mark.symbol).toBe("BTC-USD");
+        expect(mark.markPx).toBe("50000");
+
+        const index = await waitFor(
+          () =>
+            events.find(e => e.type === "price" && (e as PriceEvent).priceType === "index") as PriceEvent | undefined,
+          2_000,
+        );
+        expect(index.exchange).toBe("extended");
+        expect(index.symbol).toBe("BTC-USD");
+        expect(index.indexPx).toBe("49998");
+      } finally {
+        await adapter.disconnect();
+      }
     });
   });
 });

@@ -19,11 +19,12 @@ export type ParamGateError =
   | { type: "INVALID_PROPOSAL_SHAPE"; message: string }
   | { type: "TOO_MANY_CHANGES"; count: number }
   | {
-      type: "CHANGE_EXCEEDS_10PCT";
+      type: "EXCESSIVE_CHANGE";
       param: ParamName;
       currentValue: number;
       proposedValue: number;
-      diffPct: number;
+      ratio?: number;
+      reason: "RATIO_TOO_HIGH" | "RATIO_TOO_LOW" | "ABS_TOO_LARGE" | "NEGATIVE_NOT_ALLOWED" | "NON_FINITE";
     }
   | { type: "MISSING_ROLLBACK_CONDITIONS" }
   | { type: "INVALID_PARAM_VALUE"; param: ParamName; value: string };
@@ -41,6 +42,39 @@ const ALLOWED_PARAMS: readonly ParamName[] = [
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
 ];
+
+type ChangeRule = {
+  /** Minimum allowed ratio (proposed/current) when current != 0 */
+  minRatio: number;
+  /** Maximum allowed ratio (proposed/current) when current != 0 */
+  maxRatio: number;
+  /** Whether negative values are allowed */
+  allowNegative: boolean;
+  /**
+   * Absolute hard cap to catch LLM "hallucinated" magnitudes (e.g. 1e12).
+   * This is intentionally very loose; relative ratio is the main guard.
+   */
+  absMax: number;
+};
+
+/**
+ * "Excessive" change guardrails.
+ *
+ * Goal: avoid blocking normal reflection (e.g. 10-30% tweaks),
+ * while catching clearly unreasonable LLM outputs (orders of magnitude, sign flips).
+ */
+const CHANGE_RULES: Record<ParamName, ChangeRule> = {
+  baseHalfSpreadBps: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  volSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  toxSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  quoteSizeUsd: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  refreshIntervalMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  staleCancelMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  maxInventory: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  inventorySkewGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  pauseMarkIndexBps: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  pauseLiqCount10s: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+};
 
 /**
  * Get current value for a parameter from strategy params
@@ -69,12 +103,21 @@ function hasRollbackConditions(conditions: RollbackConditions): boolean {
   );
 }
 
+function parseNumber(
+  value: string | number,
+): { ok: true; value: number } | { ok: false; reason: "NAN" | "NON_FINITE" } {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  if (Number.isNaN(n)) return { ok: false, reason: "NAN" };
+  if (!Number.isFinite(n)) return { ok: false, reason: "NON_FINITE" };
+  return { ok: true, value: n };
+}
+
 /**
  * Validate a proposal against the param gate rules
  *
  * Rules:
  * 1. Maximum 2 parameter changes
- * 2. Each change must be within ±10% of current value
+ * 2. Each change must not be "excessive" (block only unreasonable magnitudes/signs)
  * 3. Rollback conditions are required (structured object)
  */
 export function validateProposal(proposal: unknown, currentParams: CurrentParamsSummary): Result<void, ParamGateError> {
@@ -100,7 +143,7 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
     });
   }
 
-  // 2. Each change within ±10%
+  // 2. Guard against excessive changes (avoid blocking normal reflection)
   for (const [param, proposedValue] of changes) {
     if (!ALLOWED_PARAMS.includes(param)) {
       return err({
@@ -110,40 +153,75 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
     }
 
     const currentValue = getCurrentValue(currentParams, param);
-    const proposedNum = typeof proposedValue === "string" ? parseFloat(proposedValue) : proposedValue;
+    const parsedProposed = parseNumber(proposedValue);
 
-    if (Number.isNaN(proposedNum)) {
+    if (!parsedProposed.ok) {
+      if (parsedProposed.reason === "NAN") {
+        return err({
+          type: "INVALID_PARAM_VALUE",
+          param,
+          value: String(proposedValue),
+        });
+      }
+
       return err({
-        type: "INVALID_PARAM_VALUE",
+        type: "EXCESSIVE_CHANGE",
         param,
-        value: String(proposedValue),
+        currentValue,
+        proposedValue: typeof proposedValue === "string" ? Number.NaN : proposedValue,
+        reason: "NON_FINITE",
       });
     }
 
-    // Handle edge case where current value is 0
-    if (currentValue === 0) {
-      if (Math.abs(proposedNum) > 0.1) {
-        return err({
-          type: "CHANGE_EXCEEDS_10PCT",
-          param,
-          currentValue,
-          proposedValue: proposedNum,
-          diffPct: 100,
-        });
-      }
-      continue;
-    }
+    const proposedNum = parsedProposed.value;
 
-    const diffPct = Math.abs((proposedNum - currentValue) / currentValue) * 100;
-
-    if (diffPct > 10) {
+    const rule = CHANGE_RULES[param];
+    // Basic sign sanity
+    if (!rule.allowNegative && proposedNum < 0) {
       return err({
-        type: "CHANGE_EXCEEDS_10PCT",
+        type: "EXCESSIVE_CHANGE",
         param,
         currentValue,
         proposedValue: proposedNum,
-        diffPct,
+        reason: "NEGATIVE_NOT_ALLOWED",
       });
+    }
+
+    // Absolute hard cap to catch magnitude hallucinations
+    if (Math.abs(proposedNum) > rule.absMax) {
+      return err({
+        type: "EXCESSIVE_CHANGE",
+        param,
+        currentValue,
+        proposedValue: proposedNum,
+        reason: "ABS_TOO_LARGE",
+      });
+    }
+
+    // Relative guardrail (primary)
+    if (currentValue !== 0) {
+      const ratio = proposedNum / currentValue;
+      const epsilon = 1e-9;
+      if (ratio > rule.maxRatio + epsilon) {
+        return err({
+          type: "EXCESSIVE_CHANGE",
+          param,
+          currentValue,
+          proposedValue: proposedNum,
+          ratio,
+          reason: "RATIO_TOO_HIGH",
+        });
+      }
+      if (ratio < rule.minRatio - epsilon) {
+        return err({
+          type: "EXCESSIVE_CHANGE",
+          param,
+          currentValue,
+          proposedValue: proposedNum,
+          ratio,
+          reason: "RATIO_TOO_LOW",
+        });
+      }
     }
   }
 

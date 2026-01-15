@@ -129,12 +129,24 @@ export interface ExtendedPositionUpdate {
 export interface ExtendedTradeUpdate {
   id: number;
   orderId: number;
+  /**
+   * Some payloads include the client-provided external order id (our clientOrderId).
+   * Naming varies across API/SDK versions.
+   */
+  externalOrderId?: string;
+  externalId?: string;
   market: string;
   side: string;
   price: string;
   qty: string;
   fee: string;
+  /**
+   * Trade classification / maker-taker hints (naming varies).
+   * Examples seen in the wild: tradeType, type, isTaker.
+   */
+  tradeType?: string;
   type: string;
+  isTaker?: boolean;
   createdTime: number;
 }
 

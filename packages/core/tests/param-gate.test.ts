@@ -12,7 +12,7 @@ import { describe, expect, test } from "bun:test";
 import {
   validateProposal,
   isWithinChangeLimit,
-  isWithinPercentageRange,
+  isWithinReasonableRange,
   type ParamProposal,
   type ParamGateResult,
   ALLOWED_PARAM_KEYS,
@@ -37,39 +37,39 @@ const baseParams: StrategyParams = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// isWithinPercentageRange Tests
+// isWithinReasonableRange Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("isWithinPercentageRange", () => {
+describe("isWithinReasonableRange", () => {
   test("should return true for 0% change", () => {
-    expect(isWithinPercentageRange(100, 100, 10)).toBe(true);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 100, 100)).toBe(true);
   });
 
   test("should return true for exactly +10% change", () => {
-    expect(isWithinPercentageRange(100, 110, 10)).toBe(true);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 100, 110)).toBe(true);
   });
 
   test("should return true for exactly -10% change", () => {
-    expect(isWithinPercentageRange(100, 90, 10)).toBe(true);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 100, 90)).toBe(true);
   });
 
-  test("should return false for +11% change", () => {
-    expect(isWithinPercentageRange(100, 111, 10)).toBe(false);
+  test("should return false for extreme increase beyond maxRatio", () => {
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 100, 400)).toBe(false); // 4x > 3x
   });
 
-  test("should return false for -11% change", () => {
-    expect(isWithinPercentageRange(100, 89, 10)).toBe(false);
+  test("should return false for extreme decrease beyond minRatio", () => {
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 100, 20)).toBe(false); // 0.2x < 0.3x
   });
 
   test("should handle string values", () => {
-    expect(isWithinPercentageRange("10", "11", 10)).toBe(true);
-    expect(isWithinPercentageRange("10", "12", 10)).toBe(false);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", "10", "11")).toBe(true);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", "10", "1000")).toBe(false);
   });
 
   test("should handle edge case: zero original value", () => {
-    // When original is 0, any change is considered out of range
-    expect(isWithinPercentageRange(0, 1, 10)).toBe(false);
-    expect(isWithinPercentageRange(0, 0, 10)).toBe(true);
+    // When original is 0, ratio can't be computed; we only enforce finiteness/absMax/sign.
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 0, 1)).toBe(true);
+    expect(isWithinReasonableRange("baseHalfSpreadBps", 0, 0)).toBe(true);
   });
 });
 
@@ -106,7 +106,7 @@ describe("isWithinChangeLimit", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("validateProposal", () => {
-  test("should accept valid proposal with 1 change within 10%", () => {
+  test("should accept valid proposal with 1 change (small tweak)", () => {
     const proposal: ParamProposal = {
       changes: { baseHalfSpreadBps: "11" }, // +10%
       rollbackConditions: { markout10sP50BelowBps: -5 },
@@ -118,7 +118,7 @@ describe("validateProposal", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  test("should accept valid proposal with 2 changes within 10%", () => {
+  test("should accept valid proposal with 2 changes (small tweaks)", () => {
     const proposal: ParamProposal = {
       changes: {
         baseHalfSpreadBps: "11", // +10%
@@ -149,28 +149,28 @@ describe("validateProposal", () => {
     expect(result.errors).toContain("CHANGE_LIMIT_EXCEEDED");
   });
 
-  test("should reject proposal with change exceeding +10%", () => {
+  test("should reject proposal with excessive increase", () => {
     const proposal: ParamProposal = {
-      changes: { baseHalfSpreadBps: "12" }, // +20%
+      changes: { baseHalfSpreadBps: "1000" }, // extreme vs 10
       rollbackConditions: { markout10sP50BelowBps: -5 },
     };
 
     const result = validateProposal(proposal, baseParams);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("PERCENTAGE_EXCEEDED:baseHalfSpreadBps");
+    expect(result.errors).toContain("EXCESSIVE_CHANGE:baseHalfSpreadBps");
   });
 
-  test("should reject proposal with change exceeding -10%", () => {
+  test("should reject proposal with negative value (not allowed)", () => {
     const proposal: ParamProposal = {
-      changes: { baseHalfSpreadBps: "8" }, // -20%
+      changes: { baseHalfSpreadBps: "-1" },
       rollbackConditions: { markout10sP50BelowBps: -5 },
     };
 
     const result = validateProposal(proposal, baseParams);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("PERCENTAGE_EXCEEDED:baseHalfSpreadBps");
+    expect(result.errors).toContain("EXCESSIVE_CHANGE:baseHalfSpreadBps");
   });
 
   test("should reject proposal without rollback conditions", () => {

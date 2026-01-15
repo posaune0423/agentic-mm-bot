@@ -16,7 +16,6 @@ import {
   MAINNET_CONFIG,
   StarkPerpetualAccount,
   PerpetualTradingClient,
-  PerpetualStreamClient,
   OrderSide as ExtendedOrderSide,
   OrderStatus as ExtendedOrderStatus,
   OrderStatusReason,
@@ -30,10 +29,11 @@ import {
   type MarketModel,
   type OpenOrderModel,
   type PositionModel,
-  type PerpetualStreamConnection,
 } from "extended-typescript-sdk";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { logger } from "@agentic-mm-bot/utils";
+
+import { WsConnection, ExtendedStreamPaths } from "./ws-connection";
 
 import type {
   CancelOrderRequest,
@@ -51,16 +51,17 @@ import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, Ex
  * Extended Execution Adapter
  *
  * Implements ExecutionPort for Extended exchange using extended-typescript-sdk
+ * and direct WebSocket connection for account stream.
  */
 export class ExtendedExecutionAdapter implements ExecutionPort {
   private config: ExtendedConfig;
   private endpointConfig: EndpointConfig;
   private starkAccount: StarkPerpetualAccount;
   private tradingClient: PerpetualTradingClient;
-  private streamClient: PerpetualStreamClient;
 
   private eventHandlers: ((event: ExecutionEvent) => void)[] = [];
-  private accountStream: PerpetualStreamConnection<ExtendedAccountStreamData> | null = null;
+  private accountStream: WsConnection<{ data?: ExtendedAccountStreamData }> | null = null;
+  private accountStreamRunning = false;
   private isWasmInitialized = false;
   private marketCache: Map<string, MarketModel> = new Map();
   private accountVaultCache: number | null = null;
@@ -70,6 +71,11 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     string,
     { minQtyStep: Decimal | null; minQty: Decimal | null; priceStep: Decimal | null }
   > = new Map();
+  /**
+   * Some SDK/account-stream variants do not include per-trade updates, only order updates with filledQty/averagePrice.
+   * Track last seen filledQty/fee per order to synthesize FillEvents from deltas.
+   */
+  private lastFillByExchangeOrderId: Map<string, { filledQty: Decimal; paidFee: Decimal }> = new Map();
 
   constructor(config: ExtendedConfig) {
     this.config = config;
@@ -83,7 +89,6 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     );
 
     this.tradingClient = new PerpetualTradingClient(this.endpointConfig, this.starkAccount);
-    this.streamClient = new PerpetualStreamClient({ apiUrl: this.endpointConfig.streamUrl });
 
     // NOTE: Do not log secrets (API key / private key). Prefixes only.
     logger.info("Extended execution adapter constructed", {
@@ -458,8 +463,20 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   connectPrivateStream(): ResultAsync<void, ExecutionError> {
     return ResultAsync.fromPromise(
       (async () => {
-        const connection = this.streamClient.subscribeToAccountUpdates(this.config.apiKey);
-        this.accountStream = await connection.connect();
+        // Create WebSocket connection directly with X-Api-Key header
+        const url = `${this.endpointConfig.streamUrl}${ExtendedStreamPaths.account()}`;
+        const connection = new WsConnection<{ data?: ExtendedAccountStreamData }>({
+          url,
+          headers: {
+            "User-Agent": "agentic-mm-bot/1.0",
+            "X-Api-Key": this.config.apiKey,
+          },
+          label: "account",
+        });
+
+        await connection.connect();
+        this.accountStream = connection;
+        this.accountStreamRunning = true;
 
         // Start listening for messages
         void this.listenAccountStream();
@@ -469,6 +486,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   disconnectPrivateStream(): ResultAsync<void, ExecutionError> {
+    this.accountStreamRunning = false;
+
     if (this.accountStream) {
       return ResultAsync.fromPromise(this.accountStream.close(), this.mapError).map(() => {
         this.accountStream = null;
@@ -480,9 +499,22 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private async listenAccountStream(): Promise<void> {
     if (!this.accountStream) return;
 
-    for await (const message of this.accountStream) {
-      if (message.data) {
-        this.handleAccountMessage(message.data);
+    try {
+      for await (const message of this.accountStream) {
+        if (!this.accountStreamRunning) break;
+
+        if (message.data) {
+          this.handleAccountMessage(message.data);
+        }
+      }
+
+      // Stream ended unexpectedly
+      if (this.accountStreamRunning) {
+        logger.warn("Account stream ended unexpectedly");
+      }
+    } catch (error) {
+      if (this.accountStreamRunning) {
+        logger.warn("Account stream error", { error });
       }
     }
   }
@@ -491,30 +523,126 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     // Handle trades (fills)
     if (data.trades) {
       for (const trade of data.trades) {
-        this.emitFillEvent(trade);
+        try {
+          this.emitFillEvent(trade);
+        } catch (error) {
+          logger.error("Failed to emit fill event from trade update", {
+            error: error instanceof Error ? error.message : String(error),
+            trade,
+          });
+        }
       }
     }
 
     // Handle order updates
     if (data.orders) {
       for (const order of data.orders) {
-        this.emitOrderUpdateEvent(order);
+        try {
+          this.emitOrderUpdateEvent(order);
+        } catch (error) {
+          logger.error("Failed to emit order update event", {
+            error: error instanceof Error ? error.message : String(error),
+            order,
+          });
+        }
       }
     }
   }
 
   private emitFillEvent(trade: ExtendedTradeUpdate): void {
+    // Be defensive: the account stream payload shape has varied across SDK versions.
+    // Missing fields here can later cause DB insert failures (ex_fill has NOT NULL numeric columns).
+    // Cast to loose type to allow defensive fallback lookups.
+    const raw = trade as unknown as Record<string, unknown>;
+    const market =
+      (raw["market"] as string | undefined) ??
+      (raw["symbol"] as string | undefined) ??
+      (raw["marketName"] as string | undefined);
+
+    const orderIdRaw = raw["orderId"] ?? raw["order_id"] ?? raw["orderID"];
+
+    const orderId =
+      typeof orderIdRaw === "number" ? orderIdRaw.toString()
+      : typeof orderIdRaw === "bigint" ? orderIdRaw.toString()
+      : typeof orderIdRaw === "string" ? orderIdRaw
+      : null;
+
+    const clientOrderId =
+      (raw["externalOrderId"] as string | undefined) ?? (raw["externalId"] as string | undefined) ?? "";
+
+    const price =
+      (raw["price"] as string | undefined) ??
+      (raw["fillPrice"] as string | undefined) ??
+      (raw["avgPrice"] as string | undefined);
+
+    const qty =
+      (raw["qty"] as string | undefined) ??
+      (raw["size"] as string | undefined) ??
+      (raw["quantity"] as string | undefined);
+
+    const fee =
+      (raw["fee"] as string | undefined) ??
+      (raw["payedFee"] as string | undefined) ??
+      (raw["paidFee"] as string | undefined);
+
+    const createdTimeRaw = raw["createdTime"] ?? raw["createdAt"] ?? raw["timestamp"];
+
+    const createdTimeMs =
+      typeof createdTimeRaw === "number" ? createdTimeRaw
+      : typeof createdTimeRaw === "bigint" ? Number(createdTimeRaw)
+      : typeof createdTimeRaw === "string" ? Number(createdTimeRaw)
+      : NaN;
+
+    if (!market || !orderId || !price || !qty || !Number.isFinite(createdTimeMs)) {
+      logger.warn("Skipping trade update with missing fields (cannot emit fill)", {
+        market,
+        orderId,
+        price,
+        qty,
+        createdTimeRaw,
+        trade,
+      });
+      return;
+    }
+
+    const sideVal = raw["side"];
+    const sideRaw = (typeof sideVal === "string" ? sideVal : "").toUpperCase();
+    const side =
+      sideRaw === "BUY" ? "buy"
+      : sideRaw === "SELL" ? "sell"
+      : null;
+    if (!side) {
+      logger.warn("Skipping trade update with unknown side (cannot emit fill)", { sideRaw: raw["side"], trade });
+      return;
+    }
+
+    // Prefer explicit boolean when present.
+    const isTakerField = raw["isTaker"];
+    const isTaker =
+      typeof isTakerField === "boolean" ? isTakerField : (
+        (() => {
+          const tradeTypeRaw = raw["tradeType"] ?? raw["type"];
+          const tradeTypeVal = (typeof tradeTypeRaw === "string" ? tradeTypeRaw : "").toUpperCase();
+          if (tradeTypeVal === "MAKER") return false;
+          if (tradeTypeVal === "TAKER") return true;
+          return null;
+        })()
+      );
+
     this.emitEvent({
       type: "fill",
-      ts: new Date(trade.createdTime),
-      clientOrderId: "",
-      exchangeOrderId: trade.orderId.toString(),
-      symbol: trade.market,
-      side: trade.side === "BUY" ? "buy" : "sell",
-      price: trade.price,
-      size: trade.qty,
-      fee: trade.fee,
-      liquidity: trade.type === "MAKER" ? "maker" : "taker",
+      ts: new Date(createdTimeMs),
+      clientOrderId,
+      exchangeOrderId: orderId,
+      symbol: market,
+      side,
+      price,
+      size: qty,
+      fee,
+      liquidity:
+        isTaker === null ? undefined
+        : isTaker ? "taker"
+        : "maker",
     });
   }
 
@@ -524,6 +652,57 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
     // Detect POST_ONLY_REJECTED
     const reason =
       order.statusReason === OrderStatusReason.POST_ONLY_FAILED ? "POST_ONLY_REJECTED" : order.statusReason;
+
+    // Synthesize fill events from order filledQty deltas if possible.
+    // This keeps ex_fill populated even when the account stream omits `trades`.
+    try {
+      const exchangeOrderId = order.id.toString();
+      const nextFilled = new Decimal(order.filledQty ?? "0");
+      const nextFee = new Decimal((order as unknown as { payedFee?: string }).payedFee ?? "0");
+
+      const prev = this.lastFillByExchangeOrderId.get(exchangeOrderId) ?? {
+        filledQty: new Decimal("0"),
+        paidFee: new Decimal("0"),
+      };
+
+      // Always update cache (even if delta is 0 / negative due to resets).
+      this.lastFillByExchangeOrderId.set(exchangeOrderId, { filledQty: nextFilled, paidFee: nextFee });
+
+      const deltaQty = nextFilled.sub(prev.filledQty);
+      const deltaFee = nextFee.sub(prev.paidFee);
+
+      // Only emit on positive deltas (ignore resets or unchanged).
+      if (deltaQty.gt(0)) {
+        const sideRaw = String(order.side).toUpperCase();
+        const side =
+          sideRaw === "BUY" ? ("buy" as const)
+          : sideRaw === "SELL" ? ("sell" as const)
+          : null;
+
+        const fillPx = order.averagePrice?.toString() ?? order.price.toString();
+
+        if (side && fillPx) {
+          this.emitEvent({
+            type: "fill",
+            ts: new Date(order.updatedTime),
+            clientOrderId: order.externalId,
+            exchangeOrderId,
+            symbol: order.market,
+            side,
+            price: fillPx,
+            size: deltaQty.toString(),
+            fee: deltaFee.gt(0) ? deltaFee.toString() : undefined,
+            // Executor uses postOnly=true, so this is usually maker.
+            liquidity: order.postOnly ? "maker" : undefined,
+          });
+        }
+      }
+    } catch (error) {
+      logger.debug("Failed to synthesize fill from order update", {
+        error: error instanceof Error ? error.message : String(error),
+        orderId: order.id,
+      });
+    }
 
     this.emitEvent({
       type: "order_update",

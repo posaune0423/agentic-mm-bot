@@ -13,7 +13,7 @@ const config: Linter.Config[] = [
   },
   // Package-specific ignores
   {
-    ignores: ["eslint.config.ts", "tests/**"],
+    ignores: ["eslint.config.ts", "tests/**", "wasm/**"],
   },
 ];
 

@@ -22,3 +22,14 @@ export type {
   ExtendedTradeUpdate,
   ExtendedBalanceUpdate,
 } from "./types";
+export {
+  WsConnection,
+  createPublicStreamConnection,
+  createPrivateStreamConnection,
+  ExtendedStreamPaths,
+  defaultConnectionFactory,
+  type IWsConnection,
+  type WsConnectionOptions,
+  type ExtendedStreamConfig,
+  type WsConnectionFactory,
+} from "./ws-connection";

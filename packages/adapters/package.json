@@ -17,8 +17,9 @@
   "dependencies": {
     "@agentic-mm-bot/utils": "workspace:*",
     "decimal.js": "^10.5.0",
-    "extended-typescript-sdk": "^0.0.1",
+    "extended-typescript-sdk": "^0.0.7",
     "neverthrow": "^8.2.0",
+    "ws": "^8.19.0",
     "zod": "^3.25.51"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@types/bun": "catalog:tooling",
+    "@types/ws": "^8.18.1",
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"

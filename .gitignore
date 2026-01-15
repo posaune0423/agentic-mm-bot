@@ -43,3 +43,6 @@ __pycache__
 data
 
 logs
+
+debug.log
+.tmp

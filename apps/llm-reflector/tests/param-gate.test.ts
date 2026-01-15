@@ -3,7 +3,7 @@
  *
  * Requirements: 10.2, 10.5
  * - Maximum 2 parameter changes (object format: { paramName: value })
- * - Each change within ±10% of current value
+ * - Each change must not be "excessive" (avoid unreasonable LLM outputs)
  * - Rollback conditions required (structured object with at least one condition)
  */
 
@@ -76,10 +76,10 @@ describe("validateProposal", () => {
     });
   });
 
-  describe("±10% change limit", () => {
-    it("should pass with exactly 10% increase", () => {
+  describe("excessive change guardrails", () => {
+    it("should pass with moderate increase", () => {
       const proposal: ProposalOutput = {
-        changes: { baseHalfSpreadBps: "1.65" }, // +10%
+        changes: { baseHalfSpreadBps: "1.65" }, // +10% (moderate)
         rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Widened spread by 10%"],
       };
@@ -88,9 +88,9 @@ describe("validateProposal", () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it("should pass with exactly 10% decrease", () => {
+    it("should pass with moderate decrease", () => {
       const proposal: ProposalOutput = {
-        changes: { baseHalfSpreadBps: "1.35" }, // -10%
+        changes: { baseHalfSpreadBps: "1.35" }, // -10% (moderate)
         rollbackConditions: { pauseCountAbove: 50 },
         reasoningTrace: ["Narrowed spread by 10%"],
       };
@@ -99,9 +99,9 @@ describe("validateProposal", () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it("should reject with >10% increase", () => {
+    it("should reject with excessive increase", () => {
       const proposal: ProposalOutput = {
-        changes: { baseHalfSpreadBps: "1.70" }, // +13.3%
+        changes: { baseHalfSpreadBps: "5.0" }, // 1.5 -> 5.0 (>3x)
         rollbackConditions: { markout10sP50BelowBps: -10 },
         reasoningTrace: ["Tried to widen spread too much"],
       };
@@ -109,13 +109,13 @@ describe("validateProposal", () => {
       const result = validateProposal(proposal, createMockParams());
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.type).toBe("CHANGE_EXCEEDS_10PCT");
+        expect(result.error.type).toBe("EXCESSIVE_CHANGE");
       }
     });
 
-    it("should reject with >10% decrease", () => {
+    it("should reject with excessive decrease", () => {
       const proposal: ProposalOutput = {
-        changes: { baseHalfSpreadBps: "1.30" }, // -13.3%
+        changes: { baseHalfSpreadBps: "0.1" }, // 1.5 -> 0.1 (<0.3x)
         rollbackConditions: { pauseCountAbove: 50 },
         reasoningTrace: ["Tried to narrow spread too much"],
       };
@@ -123,13 +123,13 @@ describe("validateProposal", () => {
       const result = validateProposal(proposal, createMockParams());
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.type).toBe("CHANGE_EXCEEDS_10PCT");
+        expect(result.error.type).toBe("EXCESSIVE_CHANGE");
       }
     });
 
-    it("should work with integer parameters (refreshIntervalMs)", () => {
+    it("should work with integer parameters (refreshIntervalMs) for moderate change", () => {
       const proposal: ProposalOutput = {
-        changes: { refreshIntervalMs: 1100 }, // +10%
+        changes: { refreshIntervalMs: 1100 }, // +10% (moderate)
         rollbackConditions: { maxDurationMs: 3600000 },
         reasoningTrace: ["Slowed refresh rate slightly"],
       };
@@ -138,9 +138,9 @@ describe("validateProposal", () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it("should reject integer parameter exceeding 10%", () => {
+    it("should reject integer parameter with excessive change", () => {
       const proposal: ProposalOutput = {
-        changes: { refreshIntervalMs: 1200 }, // +20%
+        changes: { refreshIntervalMs: 12000 }, // 1000 -> 12000 (>10x)
         rollbackConditions: { maxDurationMs: 3600000 },
         reasoningTrace: ["Tried to slow refresh too much"],
       };
@@ -148,7 +148,7 @@ describe("validateProposal", () => {
       const result = validateProposal(proposal, createMockParams());
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.type).toBe("CHANGE_EXCEEDS_10PCT");
+        expect(result.error.type).toBe("EXCESSIVE_CHANGE");
       }
     });
   });

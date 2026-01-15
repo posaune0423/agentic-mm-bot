@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { ExtendedMarketDataAdapter } from "../../src/extended/market-data-adapter";
-import type { BboEvent, MarketDataEvent, TradeEvent } from "../../src/ports";
+import type { BboEvent, MarketDataEvent, PriceEvent, TradeEvent } from "../../src/ports";
 
 function waitFor<T>(fn: () => T | undefined, timeoutMs: number): Promise<T> {
   const started = Date.now();
@@ -18,10 +18,12 @@ function waitFor<T>(fn: () => T | undefined, timeoutMs: number): Promise<T> {
 
 const it = process.env.EXTENDED_WS_INTEGRATION === "1" ? test : test.skip;
 
-it("ExtendedMarketDataAdapter can receive WS trade + bbo events (testnet)", async () => {
+it("ExtendedMarketDataAdapter can receive WS trade + bbo + price events (mainnet)", async () => {
+  // Uses direct `ws` package via WsConnection - no globalThis.WebSocket hack needed.
   const adapter = new ExtendedMarketDataAdapter({
     // Public market-data streams don't require auth; dummy values are ok for tests.
-    network: "testnet",
+    // NOTE: orderbooks are not reliably emitted on testnet; mainnet is stable for this integration check.
+    network: "mainnet",
     vaultId: 0,
     starkPrivateKey: "0x1",
     starkPublicKey: "0x1",
@@ -34,7 +36,7 @@ it("ExtendedMarketDataAdapter can receive WS trade + bbo events (testnet)", asyn
   const subRes = adapter.subscribe({
     exchange: "extended",
     symbol: "BTC-USD",
-    channels: ["trades", "bbo"],
+    channels: ["trades", "bbo", "prices"],
   });
   expect(subRes.isOk()).toBeTrue();
 
@@ -53,7 +55,23 @@ it("ExtendedMarketDataAdapter can receive WS trade + bbo events (testnet)", asyn
     expect(bbo.symbol).toBe("BTC-USD");
     expect(bbo.bestBidPx).toBeTruthy();
     expect(bbo.bestAskPx).toBeTruthy();
+
+    const mark = await waitFor(
+      () => events.find(e => e.type === "price" && (e as PriceEvent).priceType === "mark") as PriceEvent | undefined,
+      12_000,
+    );
+    expect(mark.exchange).toBe("extended");
+    expect(mark.symbol).toBe("BTC-USD");
+    expect(mark.markPx).toBeTruthy();
+
+    const index = await waitFor(
+      () => events.find(e => e.type === "price" && (e as PriceEvent).priceType === "index") as PriceEvent | undefined,
+      12_000,
+    );
+    expect(index.exchange).toBe("extended");
+    expect(index.symbol).toBe("BTC-USD");
+    expect(index.indexPx).toBeTruthy();
   } finally {
     await adapter.disconnect();
   }
-}, 20_000);
+}, 35_000);

@@ -108,7 +108,7 @@
   - **`markout10sP50BelowBps`**: markout10s の中央値（P50）がこの値を下回ったらロールバック（bps）。
   - **`pauseCountAbove`**: 一定窓（実装側の集計ロジック）で PAUSE 回数がこの値を超えたらロールバック。
   - **`maxDurationMs`**: この時間が経過したら成績に関わらずロールバック（ms）。
-- **ParamGate**: LLM提案のバリデーション（最大2変更、各±10%、ロールバック必須など）。参照: `packages/core/src/param-gate.ts`
+- **ParamGate**: LLM提案のバリデーション（最大2変更、過度な変更のみブロック、ロールバック必須など）。参照: `packages/core/src/param-gate.ts`
 - **`param_rollout`**: 提案の apply/reject/rollback を監査するテーブル。参照: `packages/db/src/schema/param-rollout.ts`
 
 ---

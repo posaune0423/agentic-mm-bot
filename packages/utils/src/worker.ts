@@ -55,6 +55,8 @@ export function createIntervalWorker(options: WorkerOptions): void {
 
   // In-flight guard to prevent parallel execution
   let isRunning = false;
+  // Shutdown guard to ensure cleanup runs once
+  let isShuttingDown = false;
 
   const runWithGuard = async (): Promise<void> => {
     if (isRunning) {
@@ -84,11 +86,18 @@ export function createIntervalWorker(options: WorkerOptions): void {
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     logger.info(`Shutting down ${name}...`);
     clearInterval(interval);
 
     if (cleanup) {
-      await cleanup();
+      try {
+        await cleanup();
+      } catch (error: unknown) {
+        logger.error(`${name} cleanup failed`, { error });
+      }
     }
 
     logger.info(`${name} shutdown complete`);

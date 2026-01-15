@@ -15,12 +15,14 @@
  * - It is safe to run multiple times (idempotent).
  */
 
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-const DEFAULT_NODE_WASM_URL =
-  "https://raw.githubusercontent.com/Bvvvp009/Extended-TS-SDK/main/wasm/stark_crypto_wasm_bg.wasm";
+const DEFAULT_WASM_URLS = {
+  js: "https://raw.githubusercontent.com/Bvvvp009/Extended-TS-SDK/main/wasm/stark_crypto_wasm.js",
+  wasm: "https://raw.githubusercontent.com/Bvvvp009/Extended-TS-SDK/main/wasm/stark_crypto_wasm_bg.wasm",
+} as const;
 
 function log(msg: string): void {
   // postinstall script: stdout is acceptable
@@ -77,31 +79,124 @@ async function findInstalledPackageRoot(): Promise<string | null> {
   return null;
 }
 
+async function ensureFileFromSourceOrDownload(opts: {
+  name: string;
+  sourcePath: string | null;
+  targetPath: string;
+  downloadUrl: string;
+}): Promise<boolean> {
+  const { name, sourcePath, targetPath, downloadUrl } = opts;
+
+  if (await fileExists(targetPath)) return true;
+
+  await mkdir(path.dirname(targetPath), { recursive: true });
+
+  if (sourcePath && (await fileExists(sourcePath))) {
+    const bytes = await readFile(sourcePath);
+    await writeFile(targetPath, bytes);
+    log(`Copied ${name} -> ${targetPath}`);
+    return true;
+  }
+
+  // Fallback: download (best-effort). If network is unavailable, do not crash postinstall.
+  try {
+    log(`Downloading ${name}: ${downloadUrl}`);
+    const bytes = await downloadBinary(downloadUrl);
+    await writeFile(targetPath, bytes);
+    log(`Wrote ${bytes.byteLength} bytes -> ${targetPath}`);
+    return true;
+  } catch (error: unknown) {
+    log(`WARN: Failed to download ${name}; skipping. ${(error as Error)?.message ?? String(error)}`);
+    return false;
+  }
+}
+
+async function patchExecutorWasmJsIfNeeded(targetJsPath: string): Promise<void> {
+  // Bun/Node compatibility: some builds do not wire "./stark_crypto_wasm_bg.js" imports.
+  // Ensure the import module exists and points at the same exports object.
+  if (!(await fileExists(targetJsPath))) return;
+
+  const text = await readFile(targetJsPath, "utf8");
+  if (text.includes("imports['./stark_crypto_wasm_bg.js']")) return;
+
+  // Common nodejs output pattern: placeholder module is module.exports.
+  const needle = "imports['__wbindgen_placeholder__'] = module.exports;\n";
+  if (text.includes(needle)) {
+    const patched = text.replace(
+      needle,
+      `${needle}// wasm-bindgen expects this module name for imports in Node builds\nimports['./stark_crypto_wasm_bg.js'] = module.exports;\n`,
+    );
+    await writeFile(targetJsPath, patched);
+    log(`Patched import wiring in ${targetJsPath}`);
+    return;
+  }
+
+  // Proxy-based output (rare): insert an equivalent proxy mapping.
+  const proxyNeedle = "imports['__wbindgen_placeholder__'] = new Proxy({}, {\n";
+  if (text.includes(proxyNeedle)) {
+    const insertAfter = "});\n";
+    const idx = text.indexOf(insertAfter);
+    if (idx !== -1) {
+      const patched =
+        text.slice(0, idx + insertAfter.length) +
+        '\n// Also handle the "./stark_crypto_wasm_bg.js" import that wasm-bindgen expects\n' +
+        "imports['./stark_crypto_wasm_bg.js'] = new Proxy({}, {\n" +
+        "  get: (target, prop) => {\n" +
+        "    return exports[prop];\n" +
+        "  }\n" +
+        "});\n" +
+        text.slice(idx + insertAfter.length);
+      await writeFile(targetJsPath, patched);
+      log(`Patched import wiring in ${targetJsPath}`);
+      return;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const pkgRoot = await findInstalledPackageRoot();
   if (!pkgRoot) {
     log("extended-typescript-sdk is not installed (or not discoverable); skipping.");
     return;
   }
-  const distWasmDir = path.join(pkgRoot, "dist", "wasm");
-  const targetWasmPath = path.join(distWasmDir, "stark_crypto_wasm_bg.wasm");
 
-  if (await fileExists(targetWasmPath)) {
-    log("WASM artifact already present; ok.");
-    return;
+  // v0.0.7+ publishes WASM assets under `wasm/` at package root.
+  // Older builds used `dist/wasm/`.
+  const pkgWasmDir = path.join(pkgRoot, "wasm");
+  const distWasmDir = path.join(pkgRoot, "dist", "wasm");
+  const preferDir = (await fileExists(path.join(pkgWasmDir, "stark_crypto_wasm.js"))) ? pkgWasmDir : distWasmDir;
+
+  const executorWasmDir = path.join(process.cwd(), "apps", "executor", "wasm");
+
+  const sourceJs = path.join(preferDir, "stark_crypto_wasm.js");
+  const sourceWasm = path.join(preferDir, "stark_crypto_wasm_bg.wasm");
+
+  const targetJs = path.join(executorWasmDir, "stark_crypto_wasm.js");
+  const targetWasm = path.join(executorWasmDir, "stark_crypto_wasm_bg.wasm");
+
+  const jsOk = await ensureFileFromSourceOrDownload({
+    name: "stark_crypto_wasm.js",
+    sourcePath: sourceJs,
+    targetPath: targetJs,
+    downloadUrl: process.env.EXTENDED_SDK_WASM_JS_URL ?? DEFAULT_WASM_URLS.js,
+  });
+
+  const wasmOk = await ensureFileFromSourceOrDownload({
+    name: "stark_crypto_wasm_bg.wasm",
+    sourcePath: sourceWasm,
+    targetPath: targetWasm,
+    downloadUrl: process.env.EXTENDED_SDK_WASM_URL ?? DEFAULT_WASM_URLS.wasm,
+  });
+
+  if (jsOk) {
+    await patchExecutorWasmJsIfNeeded(targetJs);
   }
 
-  const url = process.env.EXTENDED_SDK_WASM_URL ?? DEFAULT_NODE_WASM_URL;
-
-  log(`Missing WASM artifact: ${targetWasmPath}`);
-  log(`Downloading: ${url}`);
-
-  const bytes = await downloadBinary(url);
-
-  await mkdir(distWasmDir, { recursive: true });
-  await writeFile(targetWasmPath, bytes);
-
-  log(`Wrote ${bytes.byteLength} bytes -> ${targetWasmPath}`);
+  if (jsOk && wasmOk) {
+    log(`Executor WASM assets ready at: ${executorWasmDir}`);
+  } else {
+    log("WARN: Executor WASM assets are incomplete; initWasm() may still fail.");
+  }
 }
 
 await main();

@@ -702,7 +702,12 @@ async function main(): Promise<void> {
     await executionAdapter.cancelAllOrders(env.SYMBOL);
 
     // Flush remaining events
-    await eventRepo.stop();
+    {
+      const stopResult = await eventRepo.stop();
+      if (stopResult.isErr()) {
+        logger.error("Failed to flush events on shutdown", stopResult.error);
+      }
+    }
 
     await marketDataAdapter.disconnect();
     await executionAdapter.disconnectPrivateStream();

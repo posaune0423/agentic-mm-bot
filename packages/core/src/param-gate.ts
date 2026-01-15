@@ -3,7 +3,7 @@
  *
  * Requirements: 10.2, 10.5
  * - Schema validation
- * - Constraint validation: max 2 parameters, ±10% each
+ * - Constraint validation: max 2 parameters, block only "excessive" changes
  * - Rollback conditions required
  *
  * This module is pure logic (no I/O dependencies).
@@ -68,34 +68,67 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
 /** Maximum number of parameter changes allowed */
 const MAX_CHANGES = 2;
 
-/** Maximum percentage change allowed (±10%) */
-const MAX_PERCENTAGE_CHANGE = 10;
+type ChangeRule = {
+  /** Minimum allowed ratio (proposed/current) when current != 0 */
+  minRatio: number;
+  /** Maximum allowed ratio (proposed/current) when current != 0 */
+  maxRatio: number;
+  /** Whether negative values are allowed */
+  allowNegative: boolean;
+  /** Absolute hard cap to catch magnitude hallucinations */
+  absMax: number;
+};
+
+/**
+ * "Excessive" change guardrails.
+ *
+ * Goal: avoid rejecting normal tuning (10-30% tweaks),
+ * while catching clearly unreasonable LLM outputs (orders of magnitude, sign flips).
+ */
+const CHANGE_RULES: Record<keyof StrategyParams, ChangeRule> = {
+  baseHalfSpreadBps: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  volSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  toxSpreadGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  quoteSizeUsd: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  refreshIntervalMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  staleCancelMs: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+  maxInventory: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  inventorySkewGain: { minRatio: 0.3, maxRatio: 3.0, allowNegative: false, absMax: 1e6 },
+  pauseMarkIndexBps: { minRatio: 0.2, maxRatio: 5.0, allowNegative: false, absMax: 1e9 },
+  pauseLiqCount10s: { minRatio: 0.1, maxRatio: 10.0, allowNegative: false, absMax: 1e9 },
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Check if a value change is within the allowed percentage range
+ * Check if a proposed value is "excessive" relative to the current value.
  */
-export function isWithinPercentageRange(
+export function isWithinReasonableRange(
+  param: keyof StrategyParams,
   original: number | string,
   proposed: number | string,
-  maxPercentage: number,
 ): boolean {
   const origNum = typeof original === "string" ? parseFloat(original) : original;
   const propNum = typeof proposed === "string" ? parseFloat(proposed) : proposed;
 
-  // Edge case: if original is 0, only allow 0 as proposed
-  if (origNum === 0) {
-    return propNum === 0;
-  }
+  if (!Number.isFinite(origNum) || !Number.isFinite(propNum)) return false;
 
-  const percentChange = Math.abs((propNum - origNum) / origNum) * 100;
+  const rule = CHANGE_RULES[param];
+  if (!rule.allowNegative && propNum < 0) return false;
+  if (Math.abs(propNum) > rule.absMax) return false;
 
   // Add small epsilon for floating point comparison
   const epsilon = 1e-9;
-  return percentChange <= maxPercentage + epsilon;
+  if (origNum === 0) {
+    // When current is 0, we can't compute ratio reliably; only allow small/finite values.
+    // absMax and non-negative checks above are the main guard.
+    return true;
+  }
+
+  const ratio = propNum / origNum;
+  return ratio <= rule.maxRatio + epsilon && ratio >= rule.minRatio - epsilon;
 }
 
 /**
@@ -121,7 +154,7 @@ function hasRollbackConditions(conditions: RollbackConditions): boolean {
  *
  * Requirements:
  * - Max 2 parameter changes (10.2)
- * - Each change within ±10% (10.2)
+ * - Each change must not be "excessive" (10.2)
  * - Rollback conditions required (10.2)
  * - Valid parameter keys only
  */
@@ -144,9 +177,9 @@ export function validateProposal(proposal: ParamProposal, currentParams: Strateg
     // Get current value
     const currentValue = currentParams[key as keyof StrategyParams];
 
-    // Check percentage range
-    if (!isWithinPercentageRange(currentValue, proposedValue, MAX_PERCENTAGE_CHANGE)) {
-      errors.push(`PERCENTAGE_EXCEEDED:${key}`);
+    // Check excessive change guardrails
+    if (!isWithinReasonableRange(key as keyof StrategyParams, currentValue, proposedValue)) {
+      errors.push(`EXCESSIVE_CHANGE:${key}`);
     }
   }
 

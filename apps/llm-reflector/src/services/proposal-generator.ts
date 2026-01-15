@@ -115,8 +115,10 @@ Your task is to analyze the last hour's trading performance and suggest paramete
 
 CONSTRAINTS (MUST FOLLOW):
 1. You can change AT MOST 2 parameters at a time
-2. Each parameter change must be within ±10% of the current value
-3. You MUST provide rollback conditions
+2. You MUST provide rollback conditions
+3. Be conservative: prefer small changes (typically within ±30%) and avoid large jumps
+4. Never output extreme magnitudes (e.g., orders of magnitude changes, 1e6, 1e9, etc.)
+5. Do NOT output negative values for parameters (all are non-negative in this system)
 
 OUTPUT FORMAT (CRITICAL):
 - Return ONLY valid JSON (no Markdown, no code fences, no comments)
@@ -192,7 +194,8 @@ ${worstFillsText || "  No fills in this period"}
 - pauseMarkIndexBps: ${currentParams.pauseMarkIndexBps}
 - pauseLiqCount10s: ${currentParams.pauseLiqCount10s}
 
-Based on this analysis, suggest parameter changes (max 2, each within ±10%) with clear reasoning.`;
+Based on this analysis, suggest parameter changes (max 2) with clear reasoning.
+Keep changes small and realistic; avoid big jumps or extreme numbers.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
