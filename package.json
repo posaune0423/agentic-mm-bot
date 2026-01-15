@@ -34,7 +34,6 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "start": "turbo run start",
-    "postinstall": "bun run scripts/ensure-extended-sdk-wasm.ts",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "format": "prettier --check . --experimental-cli --experimental-ternaries",

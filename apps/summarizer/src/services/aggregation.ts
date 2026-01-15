@@ -194,6 +194,40 @@ export async function getAggregation(
 // Periodic Aggregation Generators
 // ─────────────────────────────────────────────────────────────────────────────
 
+function hasAnyActivity(agg: AggregationResult): boolean {
+  return agg.fillsCount > 0 || agg.cancelCount > 0 || agg.pauseCount > 0;
+}
+
+async function generateAggregationForWindow(
+  db: Db,
+  exchange: string,
+  symbol: string,
+  windowStart: Date,
+  windowEnd: Date,
+  onLog: (agg: AggregationResult, windowStart: Date, windowEnd: Date) => void,
+): Promise<AggregationResult | null> {
+  const agg = await getAggregation(db, exchange, symbol, windowStart, windowEnd);
+
+  if (!hasAnyActivity(agg)) {
+    return null;
+  }
+
+  onLog(agg, windowStart, windowEnd);
+  return agg;
+}
+
+function getLastCompleteMinuteWindow(now: Date): { windowStart: Date; windowEnd: Date } {
+  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0, 0);
+  const windowStart = new Date(windowEnd.getTime() - 60_000);
+  return { windowStart, windowEnd };
+}
+
+function getLastCompleteHourWindow(now: Date): { windowStart: Date; windowEnd: Date } {
+  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+  const windowStart = new Date(windowEnd.getTime() - 3600_000);
+  return { windowStart, windowEnd };
+}
+
 /**
  * Generate 1-minute aggregation for the last complete minute
  */
@@ -202,13 +236,8 @@ export async function generate1MinAggregation(
   exchange: string,
   symbol: string,
 ): Promise<AggregationResult | null> {
-  const now = new Date();
-  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0, 0);
-  const windowStart = new Date(windowEnd.getTime() - 60_000);
-
-  const agg = await getAggregation(db, exchange, symbol, windowStart, windowEnd);
-
-  if (agg.fillsCount > 0 || agg.cancelCount > 0 || agg.pauseCount > 0) {
+  const { windowStart, windowEnd } = getLastCompleteMinuteWindow(new Date());
+  return generateAggregationForWindow(db, exchange, symbol, windowStart, windowEnd, agg => {
     logger.info("1-minute aggregation", {
       window: `${windowStart.toISOString()} - ${windowEnd.toISOString()}`,
       fills: agg.fillsCount,
@@ -216,10 +245,7 @@ export async function generate1MinAggregation(
       pauses: agg.pauseCount,
       markout10sP50: agg.markout10sP50,
     });
-    return agg;
-  }
-
-  return null;
+  });
 }
 
 /**
@@ -230,13 +256,8 @@ export async function generate1HourAggregation(
   exchange: string,
   symbol: string,
 ): Promise<AggregationResult | null> {
-  const now = new Date();
-  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
-  const windowStart = new Date(windowEnd.getTime() - 3600_000);
-
-  const agg = await getAggregation(db, exchange, symbol, windowStart, windowEnd);
-
-  if (agg.fillsCount > 0 || agg.cancelCount > 0 || agg.pauseCount > 0) {
+  const { windowStart, windowEnd } = getLastCompleteHourWindow(new Date());
+  return generateAggregationForWindow(db, exchange, symbol, windowStart, windowEnd, agg => {
     logger.info("1-hour aggregation", {
       window: `${windowStart.toISOString()} - ${windowEnd.toISOString()}`,
       fills: agg.fillsCount,
@@ -256,9 +277,5 @@ export async function generate1HourAggregation(
         markout10sBps: fill.markout10sBps,
       });
     }
-
-    return agg;
-  }
-
-  return null;
+  });
 }
