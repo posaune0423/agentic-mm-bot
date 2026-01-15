@@ -1,5 +1,3 @@
----
-
 # agentic-mm-bot（Agentic Market Making Bot）
 
 このリポジトリは、**複数プロセス（`apps/*`）**で動くマーケットメイク・ボットのモノレポです。中核ロジックは `packages/core` に閉じ込め（純関数）、DB・取引所接続・集計・LLM提案などの I/O は周辺へ分離します。
