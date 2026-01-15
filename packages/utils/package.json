@@ -9,8 +9,6 @@
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --check . --experimental-cli --experimental-ternaries",
-    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {

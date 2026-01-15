@@ -15,8 +15,6 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit push",
     "db:studio": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit studio",
-    "format": "prettier --check . --experimental-cli --experimental-ternaries",
-    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },
@@ -26,7 +24,6 @@
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@posaune0423/eslint-config": "catalog:tooling",
     "@types/node": "catalog:tooling",

@@ -1,7 +1,0 @@
-{
-  "extends": "@agentic-mm-bot/typescript-config/node.json",
-  "compilerOptions": {
-    "types": []
-  },
-  "include": ["src/**/*"]
-}

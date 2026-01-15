@@ -6,8 +6,6 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "format": "prettier --check . --experimental-cli --experimental-ternaries",
-    "format:fix": "prettier --write . --experimental-cli --experimental-ternaries",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsgo --noEmit",
     "test": "bun test",
@@ -23,7 +21,6 @@
     "zod": "^3.25.51"
   },
   "devDependencies": {
-    "@agentic-mm-bot/prettier-config": "workspace:*",
     "@agentic-mm-bot/typescript-config": "workspace:*",
     "@posaune0423/eslint-config": "catalog:tooling",
     "@types/bun": "catalog:tooling",
@@ -31,6 +28,5 @@
     "@typescript/native-preview": "catalog:tooling",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling"
-  },
-  "prettier": "@agentic-mm-bot/prettier-config"
+  }
 }
