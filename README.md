@@ -83,7 +83,17 @@ docker-compose up -d postgres
 DOTENV_PRIVATE_KEY="受け取った鍵"
 ```
 
-これで `bun run dev` 等のコマンドが自動的に `.encrypted.local` を復号して実行します（デフォルト）。
+`dotenvx` は **`.env.keys` を置いただけでは `bun run dev` 実行時に自動復号されません**。`.encrypted.local` を復号して環境変数を読み込ませるには、次のいずれかが必要です。
+
+- **(1) runtime import（Bun のエントリポイントで読み込む）**: 各アプリの Bun エントリポイントに `import '@dotenvx/dotenvx/config'` を追加する
+- **(2) CLI ラッパー（dotenvx 経由で実行する）**: `dotenvx run -f .encrypted.local -- bun run dev` のように `dotenvx run` でコマンドをラップする
+
+このリポジトリは **方式 (2)** を採用しています。コントリビューターは、`bun run dev` を実行する際に必ず `dotenvx run` のラッパーを使う（または方式 (1) の import を追加する）ことで、`.encrypted.local` が実際に復号された状態で起動するようにしてください。
+
+```bash
+# 例: dotenvx で復号してから dev を実行（推奨 / 本リポジトリの方式）
+dotenvx run -f .encrypted.local -- bun run dev
+```
 
 #### 環境変数の更新（管理者向け）
 
@@ -188,8 +198,8 @@ dotenvx decrypt -f .encrypted.local        # .encrypted.local を復号（確認
 ### 鍵のローテーション
 
 ```bash
-# 新しい鍵ペアで再暗号化
-dotenvx encrypt -f .encrypted.local --rotate
+# 新しい鍵ペアで再暗号化（ローテーション）
+dotenvx rotate -f .encrypted.local
 
 # 新しい .env.keys を安全に配布し、古い鍵を無効化する
 ```
