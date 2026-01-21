@@ -14,59 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
-/**
- * Safety buffer in basis points (mirrors decision-cycle.ts)
- */
-const POST_ONLY_SAFETY_BUFFER_BPS = 1;
-
-/**
- * Clamp price to avoid crossing the BBO with a safety buffer.
- *
- * This mirrors the logic in decision-cycle.ts
- */
-function clampPriceToBbo(
-  side: "buy" | "sell",
-  price: string,
-  bestBidPx: string,
-  bestAskPx: string,
-): { adjustedPrice: string; clamped: boolean } {
-  const priceNum = Number.parseFloat(price);
-  const bestBid = Number.parseFloat(bestBidPx);
-  const bestAsk = Number.parseFloat(bestAskPx);
-
-  // Guard: if BBO is invalid, return original price
-  if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) {
-    return { adjustedPrice: price, clamped: false };
-  }
-
-  const mid = (bestBid + bestAsk) / 2;
-  const bufferPrice = (mid * POST_ONLY_SAFETY_BUFFER_BPS) / 10_000;
-
-  if (side === "buy") {
-    // BUY at or below bestBid is always safe
-    if (priceNum <= bestBid) {
-      return { adjustedPrice: price, clamped: false };
-    }
-    // BUY inside spread: clamp if too close to bestAsk
-    const threshold = bestAsk - bufferPrice;
-    if (priceNum >= threshold) {
-      return { adjustedPrice: bestBidPx, clamped: true };
-    }
-  } else {
-    // SELL at or above bestAsk is always safe
-    if (priceNum >= bestAsk) {
-      return { adjustedPrice: price, clamped: false };
-    }
-    // SELL inside spread: clamp if too close to bestBid
-    const threshold = bestBid + bufferPrice;
-    if (priceNum <= threshold) {
-      return { adjustedPrice: bestAskPx, clamped: true };
-    }
-  }
-
-  return { adjustedPrice: price, clamped: false };
-}
+import { clampPriceToBbo } from "../../src/services/bbo-clamp";
 
 describe("clampPriceToBbo", () => {
   describe("BUY side - buffer-based clamping", () => {

@@ -156,12 +156,6 @@ export function decide(input: DecideInput): DecideOutput {
     // NORMAL or DEFENSIVE → generate desired orders with attack-defense logic
     const desiredOrders = generateDesiredOrders(params, features, position, risk, nowMs);
     intents.push(setOrdersIntent(desiredOrders, risk.reasonCodes));
-
-    // Update last quote time
-    nextState = {
-      ...nextState,
-      lastQuoteMs: nowMs,
-    };
   }
 
   return {

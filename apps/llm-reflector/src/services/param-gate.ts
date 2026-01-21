@@ -12,6 +12,7 @@
 import { err, ok } from "neverthrow";
 import type { Result } from "neverthrow";
 
+import type { ChangeRule } from "@agentic-mm-bot/core";
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
 import { ProposalOutputSchema } from "../types/schemas";
@@ -44,20 +45,6 @@ const ALLOWED_PARAMS: readonly ParamName[] = [
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
 ];
-
-interface ChangeRule {
-  /** Minimum allowed ratio (proposed/current) when current != 0 */
-  minRatio: number;
-  /** Maximum allowed ratio (proposed/current) when current != 0 */
-  maxRatio: number;
-  /** Whether negative values are allowed */
-  allowNegative: boolean;
-  /**
-   * Absolute hard cap to catch LLM "hallucinated" magnitudes (e.g. 1e12).
-   * This is intentionally very loose; relative ratio is the main guard.
-   */
-  absMax: number;
-}
 
 /**
  * "Excessive" change guardrails.

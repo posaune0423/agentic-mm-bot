@@ -147,7 +147,12 @@ export function planSetOrdersExecution(
   const matchedCurrentIds = new Set<string>();
 
   // Check refresh interval
-  const canRefresh = lastQuoteMs === undefined || nowMs - lastQuoteMs >= params.refreshIntervalMs;
+  // NOTE:
+  // - refreshIntervalMs throttles quote *updates* to reduce churn / POST_ONLY_REJECT spam.
+  // - If there are no current orders, we must allow placement even if the last quote attempt was recent
+  //   (otherwise a single reject/cancel can stall quoting indefinitely).
+  const canRefresh =
+    currentOrders.length === 0 || lastQuoteMs === undefined || nowMs - lastQuoteMs >= params.refreshIntervalMs;
 
   // If no desired orders and we have current orders, cancel all
   if (desiredOrders.length === 0 && currentOrders.length > 0) {

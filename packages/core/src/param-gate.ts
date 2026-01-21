@@ -73,7 +73,7 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
 /** Maximum number of parameter changes allowed */
 const MAX_CHANGES = 2;
 
-interface ChangeRule {
+export interface ChangeRule {
   /** Minimum allowed ratio (proposed/current) when current != 0 */
   minRatio: number;
   /** Maximum allowed ratio (proposed/current) when current != 0 */

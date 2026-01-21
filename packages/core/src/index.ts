@@ -79,5 +79,5 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 // ParamGate (Future Extension: LLM)
 // ─────────────────────────────────────────────────────────────────────────────
-export type { ParamProposal, ParamGateResult, RollbackConditions } from "./param-gate";
+export type { ParamProposal, ParamGateResult, RollbackConditions, ChangeRule } from "./param-gate";
 export { validateProposal, isWithinChangeLimit, isWithinReasonableRange, ALLOWED_PARAM_KEYS } from "./param-gate";

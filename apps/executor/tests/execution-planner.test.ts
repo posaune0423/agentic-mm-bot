@@ -159,7 +159,7 @@ describe("planSetOrdersExecution", () => {
   });
 
   describe("refresh interval enforcement", () => {
-    test("should NOT place new orders when refresh interval not elapsed", () => {
+    test("should place new orders when no current orders (even if refresh interval not elapsed)", () => {
       const nowMs = Date.now();
       const params = { ...createDefaultParams(), refreshIntervalMs: 1000 };
       const midPx = "50000";
@@ -176,8 +176,10 @@ describe("planSetOrdersExecution", () => {
         midPx,
       );
 
-      // Should NOT place because refresh interval not elapsed
-      expect(actions).toHaveLength(0);
+      // If there are no current orders, we must allow placement even if last quote was recent
+      // (otherwise a single reject/cancel can stall quoting indefinitely).
+      const placeActions = actions.filter(a => a.type === "place");
+      expect(placeActions).toHaveLength(1);
     });
 
     test("should place new orders when refresh interval elapsed", () => {

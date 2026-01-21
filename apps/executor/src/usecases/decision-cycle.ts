@@ -21,6 +21,7 @@ import { logger } from "@agentic-mm-bot/utils";
 import type { MarketDataCache } from "../services/market-data-cache";
 import type { OrderTracker } from "../services/order-tracker";
 import type { PositionTracker } from "../services/position-tracker";
+import { clampPriceToBbo } from "../services/bbo-clamp";
 import { generateClientOrderId, planExecution } from "../services/execution-planner";
 import type { ExecutionAction } from "../services/execution-planner";
 
@@ -278,22 +279,29 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     }
   }
 
+  // Update lastQuoteMs only when we actually attempted to place quote orders.
+  // Core decide() is pure and cannot know whether orders were placed; executor is the source of truth.
+  const didAttemptQuotePlace = plannedActions.some(
+    a => a.type === "place" && a.postOnly && !a.reduceOnly && a.timeInForce === "GTC",
+  );
+  const nextState = didAttemptQuotePlace ? { ...output.nextState, lastQuoteMs: nowMs } : output.nextState;
+
   // For dashboards: emit a concise per-tick snapshot after executing.
   deps.onTickDebug?.({
     nowMs,
     snapshot,
     features,
     stateBefore: currentState,
-    stateAfter: output.nextState,
+    stateAfter: nextState,
     output,
     plannedActions,
     targetQuote,
   });
 
   // Step 7: Notify state change
-  if (deps.onStateChange && output.nextState.mode !== currentState.mode) {
+  if (deps.onStateChange && nextState.mode !== currentState.mode) {
     deps.onStateChange({
-      nextState: output.nextState,
+      nextState,
       reasonCodes: output.reasonCodes,
       intents: output.intents,
       debug: {
@@ -319,83 +327,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   });
 
   deps.onPhase?.("IDLE");
-  return output;
-}
-
-/**
- * Safety buffer for post-only clamping (in basis points of mid price).
- *
- * This buffer accounts for:
- * - Network latency between reading BBO and order submission
- * - Market movement during order processing
- * - Price rounding in the adapter
- *
- * A 1 bps buffer on a $100 price = $0.01 safety margin.
- * This allows quoting inside the spread while avoiding crossing.
- */
-const POST_ONLY_SAFETY_BUFFER_BPS = 1;
-
-/**
- * Clamp price to avoid crossing the BBO with a safety buffer.
- *
- * For post-only to succeed, the order must NOT take liquidity:
- * - BUY: price must be strictly BELOW bestAsk
- * - SELL: price must be strictly ABOVE bestBid
- *
- * Safe zones (never clamped):
- * - BUY at or below bestBid → always safe, passive maker
- * - SELL at or above bestAsk → always safe, passive maker
- *
- * Inside the spread, we add a small safety buffer:
- * - BUY: clamp if price > bestBid AND price >= (bestAsk - buffer)
- * - SELL: clamp if price < bestAsk AND price <= (bestBid + buffer)
- *
- * This allows the strategy to quote inside the spread (for tighter spreads and better fills)
- * while maintaining a safety margin to avoid post-only rejections.
- *
- * Returns the (possibly adjusted) price and a flag indicating if clamping occurred.
- */
-function clampPriceToBbo(
-  side: "buy" | "sell",
-  price: string,
-  bestBidPx: string,
-  bestAskPx: string,
-): { adjustedPrice: string; clamped: boolean } {
-  const priceNum = Number.parseFloat(price);
-  const bestBid = Number.parseFloat(bestBidPx);
-  const bestAsk = Number.parseFloat(bestAskPx);
-
-  // Guard: if BBO is invalid, return original price
-  if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) {
-    return { adjustedPrice: price, clamped: false };
-  }
-
-  const mid = (bestBid + bestAsk) / 2;
-  const bufferPrice = (mid * POST_ONLY_SAFETY_BUFFER_BPS) / 10_000;
-
-  if (side === "buy") {
-    // BUY at or below bestBid is always safe (passive maker)
-    if (priceNum <= bestBid) {
-      return { adjustedPrice: price, clamped: false };
-    }
-    // BUY inside spread: clamp if too close to bestAsk (within buffer)
-    const threshold = bestAsk - bufferPrice;
-    if (priceNum >= threshold) {
-      return { adjustedPrice: bestBidPx, clamped: true };
-    }
-  } else {
-    // SELL at or above bestAsk is always safe (passive maker)
-    if (priceNum >= bestAsk) {
-      return { adjustedPrice: price, clamped: false };
-    }
-    // SELL inside spread: clamp if too close to bestBid (within buffer)
-    const threshold = bestBid + bufferPrice;
-    if (priceNum <= threshold) {
-      return { adjustedPrice: bestAskPx, clamped: true };
-    }
-  }
-
-  return { adjustedPrice: price, clamped: false };
+  return { ...output, nextState };
 }
 
 /**
