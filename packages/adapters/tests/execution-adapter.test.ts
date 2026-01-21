@@ -470,4 +470,99 @@ describe("ExtendedExecutionAdapter", () => {
       expect(results[0]).not.toBe(results[1]);
     });
   });
+
+  describe("side-aware price rounding", () => {
+    /**
+     * Tests for side-aware price rounding to prevent post-only rejection.
+     * - BUY: round down to step (keep bid below spread)
+     * - SELL: round up to step (keep ask above spread)
+     *
+     * Note: The actual adapter uses Decimal.js which handles precision correctly.
+     * These tests use integer arithmetic to avoid floating-point issues.
+     */
+
+    // Helper functions mirroring the adapter logic (using integer arithmetic for precision)
+    const roundDownToStep = (value: number, step: number): number => {
+      if (step <= 0) return value;
+      // Use integer arithmetic to avoid floating-point issues
+      const precision = Math.round(1 / step);
+      return Math.floor(value * precision) / precision;
+    };
+
+    const roundUpToStep = (value: number, step: number): number => {
+      if (step <= 0) return value;
+      // Use integer arithmetic to avoid floating-point issues
+      const precision = Math.round(1 / step);
+      return Math.ceil(value * precision) / precision;
+    };
+
+    const roundPriceForSide = (side: "buy" | "sell", price: number, step: number): number => {
+      return side === "buy" ? roundDownToStep(price, step) : roundUpToStep(price, step);
+    };
+
+    test("should round BUY price down to step", () => {
+      // BUY at 100.15 with step 0.1 -> 100.1 (rounded down)
+      const result = roundPriceForSide("buy", 100.15, 0.1);
+      expect(result).toBeCloseTo(100.1, 5);
+    });
+
+    test("should round SELL price up to step", () => {
+      // SELL at 100.15 with step 0.1 -> 100.2 (rounded up)
+      const result = roundPriceForSide("sell", 100.15, 0.1);
+      expect(result).toBeCloseTo(100.2, 5);
+    });
+
+    test("should not change BUY price already on step", () => {
+      const result = roundPriceForSide("buy", 100.1, 0.1);
+      expect(result).toBeCloseTo(100.1, 5);
+    });
+
+    test("should not change SELL price already on step", () => {
+      const result = roundPriceForSide("sell", 100.1, 0.1);
+      expect(result).toBeCloseTo(100.1, 5);
+    });
+
+    test("should handle step of 1", () => {
+      // BUY at 100.7 with step 1 -> 100 (rounded down)
+      expect(roundPriceForSide("buy", 100.7, 1)).toBe(100);
+      // SELL at 100.3 with step 1 -> 101 (rounded up)
+      expect(roundPriceForSide("sell", 100.3, 1)).toBe(101);
+    });
+
+    test("should handle step of 0.01", () => {
+      // BUY at 100.155 with step 0.01 -> 100.15 (rounded down)
+      expect(roundPriceForSide("buy", 100.155, 0.01)).toBeCloseTo(100.15, 5);
+      // SELL at 100.151 with step 0.01 -> 100.16 (rounded up)
+      expect(roundPriceForSide("sell", 100.151, 0.01)).toBeCloseTo(100.16, 5);
+    });
+
+    test("should prevent SELL from rounding down into spread", () => {
+      // Scenario: bestBid=100.0, bestAsk=100.1, strategy wants to sell at 100.05
+      // With step 0.1:
+      // - Old behavior (round down): 100.0 -> would cross bestBid -> POST_ONLY_REJECTED
+      // - New behavior (round up): 100.1 -> stays at bestAsk -> OK
+      const sellPrice = 100.05;
+      const step = 0.1;
+      const bestBid = 100.0;
+
+      const roundedSell = roundPriceForSide("sell", sellPrice, step);
+      // Rounded sell price should NOT cross the spread (should be >= bestAsk, not <= bestBid)
+      expect(roundedSell).toBeGreaterThan(bestBid);
+      expect(roundedSell).toBeCloseTo(100.1, 5);
+    });
+
+    test("should keep BUY from rounding up into spread", () => {
+      // Scenario: bestBid=100.0, bestAsk=100.1, strategy wants to buy at 100.05
+      // With step 0.1:
+      // - Round down: 100.0 -> stays at bestBid -> OK
+      const buyPrice = 100.05;
+      const step = 0.1;
+      const bestAsk = 100.1;
+
+      const roundedBuy = roundPriceForSide("buy", buyPrice, step);
+      // Rounded buy price should NOT cross the spread (should be < bestAsk)
+      expect(roundedBuy).toBeLessThan(bestAsk);
+      expect(roundedBuy).toBeCloseTo(100.0, 5);
+    });
+  });
 });

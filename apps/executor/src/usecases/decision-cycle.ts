@@ -196,7 +196,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     const sellCount = orders.length - buyCount;
 
     if (orders.length > 2 || buyCount > 1 || sellCount > 1) {
-      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot.symbol, deps.onAction);
+      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot, deps.onAction);
       deps.onPhase?.("IDLE");
       return output;
     }
@@ -226,7 +226,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     }
 
     for (const action of actions) {
-      await executeAction(action, executionPort, orderTracker, snapshot.symbol, deps.onAction);
+      await executeAction(action, executionPort, orderTracker, snapshot, deps.onAction);
     }
   }
 
@@ -275,15 +275,92 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
 }
 
 /**
+ * Safety buffer for post-only clamping (in basis points of mid price).
+ *
+ * This buffer accounts for:
+ * - Network latency between reading BBO and order submission
+ * - Market movement during order processing
+ * - Price rounding in the adapter
+ *
+ * A 1 bps buffer on a $100 price = $0.01 safety margin.
+ * This allows quoting inside the spread while avoiding crossing.
+ */
+const POST_ONLY_SAFETY_BUFFER_BPS = 1;
+
+/**
+ * Clamp price to avoid crossing the BBO with a safety buffer.
+ *
+ * For post-only to succeed, the order must NOT take liquidity:
+ * - BUY: price must be strictly BELOW bestAsk
+ * - SELL: price must be strictly ABOVE bestBid
+ *
+ * Safe zones (never clamped):
+ * - BUY at or below bestBid → always safe, passive maker
+ * - SELL at or above bestAsk → always safe, passive maker
+ *
+ * Inside the spread, we add a small safety buffer:
+ * - BUY: clamp if price > bestBid AND price >= (bestAsk - buffer)
+ * - SELL: clamp if price < bestAsk AND price <= (bestBid + buffer)
+ *
+ * This allows the strategy to quote inside the spread (for tighter spreads and better fills)
+ * while maintaining a safety margin to avoid post-only rejections.
+ *
+ * Returns the (possibly adjusted) price and a flag indicating if clamping occurred.
+ */
+function clampPriceToBbo(
+  side: "buy" | "sell",
+  price: string,
+  bestBidPx: string,
+  bestAskPx: string,
+): { adjustedPrice: string; clamped: boolean } {
+  const priceNum = Number.parseFloat(price);
+  const bestBid = Number.parseFloat(bestBidPx);
+  const bestAsk = Number.parseFloat(bestAskPx);
+
+  // Guard: if BBO is invalid, return original price
+  if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) {
+    return { adjustedPrice: price, clamped: false };
+  }
+
+  const mid = (bestBid + bestAsk) / 2;
+  const bufferPrice = (mid * POST_ONLY_SAFETY_BUFFER_BPS) / 10_000;
+
+  if (side === "buy") {
+    // BUY at or below bestBid is always safe (passive maker)
+    if (priceNum <= bestBid) {
+      return { adjustedPrice: price, clamped: false };
+    }
+    // BUY inside spread: clamp if too close to bestAsk (within buffer)
+    const threshold = bestAsk - bufferPrice;
+    if (priceNum >= threshold) {
+      return { adjustedPrice: bestBidPx, clamped: true };
+    }
+  } else {
+    // SELL at or above bestAsk is always safe (passive maker)
+    if (priceNum >= bestAsk) {
+      return { adjustedPrice: price, clamped: false };
+    }
+    // SELL inside spread: clamp if too close to bestBid (within buffer)
+    const threshold = bestBid + bufferPrice;
+    if (priceNum <= threshold) {
+      return { adjustedPrice: bestAskPx, clamped: true };
+    }
+  }
+
+  return { adjustedPrice: price, clamped: false };
+}
+
+/**
  * Execute a single action
  */
 async function executeAction(
   action: ExecutionAction,
   executionPort: ExecutionPort,
   orderTracker: OrderTracker,
-  symbol: string,
+  snapshot: Snapshot,
   onAction?: (args: { phase: "start" | "ok" | "err"; action: ExecutionAction; error?: unknown }) => void,
 ): Promise<void> {
+  const symbol = snapshot.symbol;
   const nowMs = Date.now();
   if (nowMs < rateLimitUntilMs) {
     // Skip API calls during backoff window.
@@ -377,11 +454,30 @@ async function executeAction(
     case "place": {
       onAction?.({ phase: "start", action });
       const clientOrderId = generateClientOrderId();
+
+      // Clamp price to BBO to prevent post-only rejection
+      const { adjustedPrice, clamped } = clampPriceToBbo(
+        action.side,
+        action.price,
+        snapshot.bestBidPx,
+        snapshot.bestAskPx,
+      );
+
+      if (clamped) {
+        logger.warn("Price clamped to avoid BBO crossing", {
+          side: action.side,
+          originalPrice: action.price,
+          adjustedPrice,
+          bestBidPx: snapshot.bestBidPx,
+          bestAskPx: snapshot.bestAskPx,
+        });
+      }
+
       const result = await executionPort.placeOrder({
         clientOrderId,
         symbol,
         side: action.side,
-        price: action.price,
+        price: adjustedPrice,
         size: action.size,
         postOnly: true,
       });
@@ -392,14 +488,15 @@ async function executeAction(
           clientOrderId,
           exchangeOrderId: result.value.exchangeOrderId,
           side: action.side,
-          price: action.price,
+          price: adjustedPrice,
           size: action.size,
           createdAtMs: Date.now(),
         });
         logger.debug("Placed order", {
           clientOrderId,
           side: action.side,
-          price: action.price,
+          price: adjustedPrice,
+          clamped,
         });
       } else {
         if (result.error.type === "rate_limit") {

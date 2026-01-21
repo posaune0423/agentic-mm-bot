@@ -338,7 +338,13 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
           const priceStep = parsedPriceStep ?? cached?.priceStep ?? new Decimal("1");
 
           const sizeRounded = this.roundDownToStep(amountOfSynthetic, minQtyStep);
-          const priceRounded = this.roundDownToStep(rawPrice, priceStep);
+          // Side-aware price rounding to prevent post-only rejection:
+          // - BUY: round down so bid doesn't accidentally cross the spread
+          // - SELL: round up so ask doesn't accidentally cross the spread
+          const priceRounded =
+            request.side === "buy" ?
+              this.roundDownToStep(rawPrice, priceStep)
+            : this.roundUpToStep(rawPrice, priceStep);
 
           let sizeFinal = sizeRounded;
           if (sizeFinal.lt(minQty)) {
