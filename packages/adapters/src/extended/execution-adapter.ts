@@ -436,8 +436,26 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   getOpenOrders(symbol: string): ResultAsync<OpenOrder[], ExecutionError> {
+    // SDK's getOpenOrders does not support the `limit` parameter, causing the API
+    // to return only a small default number of orders. We call the API directly
+    // with an explicit limit to ensure all open orders are fetched.
+    const url = `${this.endpointConfig.apiBaseUrl}/api/v1/user/orders?market=${encodeURIComponent(symbol)}&limit=100`;
+
     return ResultAsync.fromPromise(
-      this.tradingClient.account.getOpenOrders({ marketNames: [symbol] }),
+      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Bun supports fetch natively
+      fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Api-Key": this.config.apiKey,
+          "Content-Type": "application/json",
+        },
+      }).then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${String(res.status)}: ${text}`);
+        }
+        return res.json() as Promise<{ data?: OpenOrderModel[] }>;
+      }),
       this.mapError,
     ).map(response =>
       (response.data ?? []).map((o: OpenOrderModel) => {
