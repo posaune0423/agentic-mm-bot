@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { DecideInput, Features, Position, StrategyParams, StrategyState } from "../src/types";
+import type { DecideInput, Features, Position, SetOrdersIntent, StrategyParams, StrategyState } from "../src/types";
 import { createInitialState, decide } from "../src/strategy-engine";
 import { PAUSE_MIN_DURATION_MS } from "../src/risk-policy";
 
@@ -44,9 +44,17 @@ const createNormalState = (nowMs: number): StrategyState => ({
   lastQuoteMs: nowMs - 1000,
 });
 
+/**
+ * Helper to assert SET_ORDERS intent
+ */
+function assertSetOrdersIntent(intent: unknown): asserts intent is SetOrdersIntent {
+  expect(intent).toBeDefined();
+  expect((intent as SetOrdersIntent).type).toBe("SET_ORDERS");
+}
+
 describe("decide", () => {
   describe("PAUSE mode behavior", () => {
-    test("should generate CANCEL_ALL when in PAUSE mode", () => {
+    test("should generate SET_ORDERS with empty orders when in PAUSE mode (no position)", () => {
       const nowMs = Date.now();
       const input: DecideInput = {
         nowMs,
@@ -65,7 +73,8 @@ describe("decide", () => {
 
       expect(result.nextState.mode).toBe("PAUSE");
       expect(result.intents).toHaveLength(1);
-      expect(result.intents[0].type).toBe("CANCEL_ALL");
+      assertSetOrdersIntent(result.intents[0]);
+      expect((result.intents[0] as SetOrdersIntent).orders).toHaveLength(0);
     });
 
     test("should transition to PAUSE when data is stale", () => {
@@ -81,7 +90,7 @@ describe("decide", () => {
       const result = decide(input);
 
       expect(result.nextState.mode).toBe("PAUSE");
-      expect(result.intents[0].type).toBe("CANCEL_ALL");
+      assertSetOrdersIntent(result.intents[0]);
       expect(result.reasonCodes).toContain("DATA_STALE");
     });
 
@@ -128,7 +137,7 @@ describe("decide", () => {
   });
 
   describe("NORMAL mode behavior", () => {
-    test("should generate QUOTE intent when in NORMAL mode", () => {
+    test("should generate SET_ORDERS with bid and ask when in NORMAL mode", () => {
       const nowMs = Date.now();
       const input: DecideInput = {
         nowMs,
@@ -142,7 +151,11 @@ describe("decide", () => {
 
       expect(result.nextState.mode).toBe("NORMAL");
       expect(result.intents).toHaveLength(1);
-      expect(result.intents[0].type).toBe("QUOTE");
+      assertSetOrdersIntent(result.intents[0]);
+      const orders = (result.intents[0] as SetOrdersIntent).orders;
+      expect(orders).toHaveLength(2); // bid + ask
+      expect(orders.find(o => o.side === "buy")).toBeDefined();
+      expect(orders.find(o => o.side === "sell")).toBeDefined();
     });
 
     test("should transition to DEFENSIVE when volatility is high", () => {
@@ -163,7 +176,7 @@ describe("decide", () => {
   });
 
   describe("DEFENSIVE mode behavior", () => {
-    test("should generate QUOTE intent when in DEFENSIVE mode", () => {
+    test("should generate SET_ORDERS with bid and ask when in DEFENSIVE mode", () => {
       const nowMs = Date.now();
       const input: DecideInput = {
         nowMs,
@@ -181,7 +194,9 @@ describe("decide", () => {
       const result = decide(input);
 
       expect(result.nextState.mode).toBe("DEFENSIVE");
-      expect(result.intents[0].type).toBe("QUOTE");
+      assertSetOrdersIntent(result.intents[0]);
+      const orders = (result.intents[0] as SetOrdersIntent).orders;
+      expect(orders).toHaveLength(2);
     });
 
     test("should transition to PAUSE when PAUSE conditions met", () => {
@@ -202,7 +217,7 @@ describe("decide", () => {
       const result = decide(input);
 
       expect(result.nextState.mode).toBe("PAUSE");
-      expect(result.intents[0].type).toBe("CANCEL_ALL");
+      assertSetOrdersIntent(result.intents[0]);
     });
   });
 

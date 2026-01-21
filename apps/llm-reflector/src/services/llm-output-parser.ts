@@ -22,7 +22,7 @@ export function extractFirstJsonObject(text: string): string | null {
   let escape = false;
 
   for (let i = start; i < withoutFences.length; i++) {
-    const ch = withoutFences[i];
+    const ch = withoutFences.charAt(i);
 
     if (inString) {
       if (escape) {

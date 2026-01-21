@@ -364,13 +364,20 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
             );
           }
 
+          // Map timeInForce: GTC -> GTT (Extended uses GTT for post-only), IOC stays as IOC
+          const tif =
+            request.timeInForce === "IOC" ? TimeInForce.IOC
+            : request.postOnly ? TimeInForce.GTT
+            : TimeInForce.IOC;
+
           return this.tradingClient.placeOrder({
             marketName: request.symbol,
             amountOfSynthetic: sizeFinal,
             price: priceRounded,
             side: request.side === "buy" ? ExtendedOrderSide.BUY : ExtendedOrderSide.SELL,
             postOnly: request.postOnly,
-            timeInForce: request.postOnly ? TimeInForce.GTT : TimeInForce.IOC,
+            reduceOnly: request.reduceOnly ?? false,
+            timeInForce: tif,
             expireTime: undefined,
             selfTradeProtectionLevel: SelfTradeProtectionLevel.ACCOUNT,
             externalId: request.clientOrderId,

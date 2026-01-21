@@ -33,7 +33,7 @@ export class TTYRenderer {
     // - Remove other control chars (except ESC, which we keep for ANSI SGR).
     let s = "";
     for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
+      const ch = line.charAt(i);
       const code = ch.charCodeAt(0);
 
       // Normalize hard line breaks (including Unicode line separators).
@@ -64,7 +64,9 @@ export class TTYRenderer {
     const chunks: string[] = [];
 
     for (let i = 0; i < maxLines; i++) {
+      // eslint-disable-next-line security/detect-object-injection
       const prevLine = this.prev[i];
+      // eslint-disable-next-line security/detect-object-injection
       const nextLine = next[i];
 
       if (i >= next.length) {

@@ -9,7 +9,7 @@
  * This module is pure (no I/O, no throw).
  */
 
-import type { Features, Position, PriceStr, QuoteIntent, ReasonCode, StrategyParams } from "./types";
+import type { DesiredOrder, Features, Position, PriceStr, RiskEvaluation, StrategyParams } from "./types";
 
 /**
  * Calculate half spread in bps
@@ -154,31 +154,212 @@ export function calculateQuotePrices(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SET_ORDERS generation (new attack-defense logic)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Generate quote intent
+ * Default values for optional params
+ */
+const DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER = 1.5;
+const DEFAULT_DEFENSIVE_SIZE_MULTIPLIER = 0.5;
+const DEFAULT_ONE_SIDED_THRESHOLD = 0.3;
+const DEFAULT_UNWIND_TRIGGER_MS = 30_000;
+const DEFAULT_UNWIND_SIZE_RATIO = 0.25;
+
+/**
+ * Calculate adjusted half spread for defensive mode
+ */
+function calculateDefensiveHalfSpreadBps(
+  baseHalfSpreadBps: number,
+  risk: RiskEvaluation,
+  defensiveMultiplier: number,
+): number {
+  if (risk.shouldDefensive) {
+    // Apply full defensive multiplier when in defensive mode
+    return baseHalfSpreadBps * defensiveMultiplier;
+  }
+  // Gradually increase spread based on risk score (interpolate)
+  const riskAdjustment = 1 + risk.riskScore * (defensiveMultiplier - 1);
+  return baseHalfSpreadBps * riskAdjustment;
+}
+
+/**
+ * Calculate adjusted quote size for defensive mode
+ */
+function calculateDefensiveSize(baseSizeUsd: number, risk: RiskEvaluation, defensiveSizeMultiplier: number): number {
+  if (risk.shouldDefensive) {
+    return baseSizeUsd * defensiveSizeMultiplier;
+  }
+  // Gradually decrease size based on risk score (interpolate)
+  const riskAdjustment = 1 - risk.riskScore * (1 - defensiveSizeMultiplier);
+  return baseSizeUsd * riskAdjustment;
+}
+
+/**
+ * Determine if one-sided quoting should be applied
  *
- * Requirements: 7.1-7.4
+ * @returns 'bid' if only bid should quote, 'ask' if only ask, null if both
+ */
+function getOneSidedMode(position: Position, params: StrategyParams): "bid" | "ask" | null {
+  const posSize = Number.parseFloat(position.size);
+  const maxInventory = Number.parseFloat(params.maxInventory);
+  const threshold = Number.parseFloat(params.oneSidedThreshold ?? String(DEFAULT_ONE_SIDED_THRESHOLD));
+
+  const absPos = Math.abs(posSize);
+  const oneSidedLevel = maxInventory * threshold;
+
+  if (absPos <= oneSidedLevel) {
+    return null; // Both sides active
+  }
+
+  // Long position → stop buying (only ask)
+  // Short position → stop selling (only bid)
+  return posSize > 0 ? "ask" : "bid";
+}
+
+/**
+ * Check if unwind order should be generated
+ */
+function shouldGenerateUnwind(position: Position, params: StrategyParams, nowMs: number): boolean {
+  const posSize = Number.parseFloat(position.size);
+  if (posSize === 0) return false;
+
+  const positionSinceMs = position.positionSinceMs;
+  if (positionSinceMs === undefined) return false;
+
+  const holdingTimeMs = nowMs - positionSinceMs;
+  const unwindTriggerMs = params.unwindTriggerMs ?? DEFAULT_UNWIND_TRIGGER_MS;
+
+  return holdingTimeMs >= unwindTriggerMs;
+}
+
+/**
+ * Calculate unwind order size
+ */
+function calculateUnwindSize(position: Position, params: StrategyParams): number {
+  const posSize = Math.abs(Number.parseFloat(position.size));
+  const unwindRatio = Number.parseFloat(params.unwindSizeRatio ?? String(DEFAULT_UNWIND_SIZE_RATIO));
+  return posSize * unwindRatio;
+}
+
+/**
+ * Generate desired orders for SET_ORDERS intent
+ *
+ * This implements the attack-defense logic:
+ * - Normal: both bid and ask with standard spread/size
+ * - Defensive: wider spread, smaller size
+ * - One-sided: stop quoting on side that increases inventory
+ * - Unwind: add reduce-only IOC to reduce held position
  *
  * @param params - Strategy parameters
  * @param features - Market features
  * @param position - Current position
- * @param reasonCodes - Reason codes from risk evaluation
- * @returns Quote intent
+ * @param risk - Risk evaluation result
+ * @param nowMs - Current timestamp for unwind timing
+ * @returns Array of desired orders
  */
-export function generateQuoteIntent(
+export function generateDesiredOrders(
   params: StrategyParams,
   features: Features,
   position: Position,
-  reasonCodes: ReasonCode[],
-): QuoteIntent {
-  const { bidPx, askPx } = calculateQuotePrices(params, features, position);
+  risk: RiskEvaluation,
+  nowMs: number,
+): DesiredOrder[] {
+  const orders: DesiredOrder[] = [];
+  const mid = Number.parseFloat(features.midPx);
 
-  return {
-    type: "QUOTE",
-    bidPx,
-    askPx,
-    size: usdToBaseSize(params.quoteSizeUsd, features.midPx),
-    postOnly: true,
-    reasonCodes,
-  };
+  if (mid <= 0 || !Number.isFinite(mid)) {
+    return orders; // Invalid mid price, return empty
+  }
+
+  // Get defensive multipliers (use defaults if not set)
+  const defensiveSpreadMult = Number.parseFloat(
+    params.defensiveSpreadMultiplier ?? String(DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER),
+  );
+  const defensiveSizeMult = Number.parseFloat(
+    params.defensiveSizeMultiplier ?? String(DEFAULT_DEFENSIVE_SIZE_MULTIPLIER),
+  );
+
+  // Calculate base spread
+  const baseHalfSpreadBps = calculateHalfSpreadBps(params, features);
+
+  // Apply defensive adjustment to spread
+  const adjustedHalfSpreadBps = calculateDefensiveHalfSpreadBps(baseHalfSpreadBps, risk, defensiveSpreadMult);
+
+  // Calculate skew
+  const skewBps = calculateSkewBps(params, position);
+
+  // Calculate prices
+  const halfSpreadPrice = bpsToPrice(mid, adjustedHalfSpreadBps);
+  const skewPrice = bpsToPrice(mid, skewBps);
+
+  const bidPx = formatPrice(mid - halfSpreadPrice - skewPrice);
+  const askPx = formatPrice(mid + halfSpreadPrice - skewPrice);
+
+  // Calculate size with defensive adjustment
+  const baseSizeUsd = Number.parseFloat(params.quoteSizeUsd);
+  const adjustedSizeUsd = calculateDefensiveSize(baseSizeUsd, risk, defensiveSizeMult);
+  const size = usdToBaseSize(String(adjustedSizeUsd), features.midPx);
+
+  // Check one-sided mode
+  const oneSidedMode = getOneSidedMode(position, params);
+
+  // Build reason codes for quotes
+  const quoteReasonCodes = risk.reasonCodes;
+
+  // Generate quote orders based on one-sided mode
+  if (oneSidedMode !== "ask") {
+    // Generate bid (unless one-sided ask only)
+    orders.push({
+      side: "buy",
+      price: bidPx,
+      size,
+      postOnly: true,
+      reduceOnly: false,
+      timeInForce: "GTC",
+      kind: "quote",
+      reasonCodes: quoteReasonCodes,
+    });
+  }
+
+  if (oneSidedMode !== "bid") {
+    // Generate ask (unless one-sided bid only)
+    orders.push({
+      side: "sell",
+      price: askPx,
+      size,
+      postOnly: true,
+      reduceOnly: false,
+      timeInForce: "GTC",
+      kind: "quote",
+      reasonCodes: quoteReasonCodes,
+    });
+  }
+
+  // Check if unwind order should be added
+  if (shouldGenerateUnwind(position, params, nowMs)) {
+    const posSize = Number.parseFloat(position.size);
+    const unwindSize = calculateUnwindSize(position, params);
+
+    if (unwindSize > 0) {
+      // Unwind opposite to position: long → sell, short → buy
+      const unwindSide = posSize > 0 ? "sell" : "buy";
+      // Use mid price for IOC (will fill at market or better)
+      const unwindPrice = formatPrice(mid);
+
+      orders.push({
+        side: unwindSide,
+        price: unwindPrice,
+        size: unwindSize.toFixed(6),
+        postOnly: false, // IOC can take liquidity
+        reduceOnly: true,
+        timeInForce: "IOC",
+        kind: "unwind",
+        reasonCodes: ["INVENTORY_LIMIT"], // Mark as inventory-related
+      });
+    }
+  }
+
+  return orders;
 }

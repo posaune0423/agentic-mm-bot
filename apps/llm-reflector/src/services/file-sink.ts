@@ -7,7 +7,6 @@
  * - Calculate SHA256 for integrity verification
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 
@@ -91,11 +90,20 @@ export function saveReasoningLog(
   const content = createLogContent(logData);
   const jsonContent = JSON.stringify(content, null, 2);
 
-  return ResultAsync.fromPromise(fs.mkdir(llmDir, { recursive: true }), e => ({
-    type: "DIRECTORY_CREATE_FAILED" as const,
-    message: e instanceof Error ? e.message : "Unknown error",
-  })).andThen(() =>
-    ResultAsync.fromPromise(fs.writeFile(filePath, jsonContent, "utf-8"), e => ({
+  return ResultAsync.fromPromise(
+    Promise.resolve().then(() => {
+      const proc = Bun.spawnSync(["mkdir", "-p", llmDir]);
+      if (proc.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(proc.stderr);
+        throw new Error(stderr.trim() || `mkdir -p failed (exit ${String(proc.exitCode)})`);
+      }
+    }),
+    e => ({
+      type: "DIRECTORY_CREATE_FAILED" as const,
+      message: e instanceof Error ? e.message : "Unknown error",
+    }),
+  ).andThen(() =>
+    ResultAsync.fromPromise(Bun.write(filePath, `${jsonContent}\n`), e => ({
       type: "FILE_WRITE_FAILED" as const,
       message: e instanceof Error ? e.message : "Unknown error",
     })).map(() => ({
@@ -109,7 +117,7 @@ export function saveReasoningLog(
  * Verify integrity of a reasoning log file
  */
 export function verifyLogIntegrity(filePath: string): ResultAsync<boolean, FileSinkError> {
-  return ResultAsync.fromPromise(fs.readFile(filePath, "utf-8"), e => ({
+  return ResultAsync.fromPromise(Bun.file(filePath).text(), e => ({
     type: "FILE_WRITE_FAILED" as const,
     message: e instanceof Error ? e.message : "Unknown error",
   })).map(content => {

@@ -617,6 +617,7 @@ async function main(): Promise<void> {
         // Detect which keys changed (use canonical key list to avoid metadata fields)
         const changedKeys: string[] = [];
         for (const key of ALLOWED_PARAM_KEYS) {
+          // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
           if (String(newParams[key]) !== String(params[key])) {
             changedKeys.push(key);
           }

@@ -128,6 +128,31 @@ const CHANGE_RULES: Record<ParamName, ChangeRule> = {
   },
 };
 
+function getChangeRule(param: ParamName): ChangeRule {
+  switch (param) {
+    case "baseHalfSpreadBps":
+      return CHANGE_RULES.baseHalfSpreadBps;
+    case "volSpreadGain":
+      return CHANGE_RULES.volSpreadGain;
+    case "toxSpreadGain":
+      return CHANGE_RULES.toxSpreadGain;
+    case "quoteSizeUsd":
+      return CHANGE_RULES.quoteSizeUsd;
+    case "refreshIntervalMs":
+      return CHANGE_RULES.refreshIntervalMs;
+    case "staleCancelMs":
+      return CHANGE_RULES.staleCancelMs;
+    case "maxInventory":
+      return CHANGE_RULES.maxInventory;
+    case "inventorySkewGain":
+      return CHANGE_RULES.inventorySkewGain;
+    case "pauseMarkIndexBps":
+      return CHANGE_RULES.pauseMarkIndexBps;
+    case "pauseLiqCount10s":
+      return CHANGE_RULES.pauseLiqCount10s;
+  }
+}
+
 /**
  * Get current value for a parameter from strategy params
  */
@@ -239,7 +264,7 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
 
     const proposedNum = parsedProposed.value;
 
-    const rule = CHANGE_RULES[param];
+    const rule = getChangeRule(param);
     // Basic sign sanity
     if (!rule.allowNegative && proposedNum < 0) {
       return err({

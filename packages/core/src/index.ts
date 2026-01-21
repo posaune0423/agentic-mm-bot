@@ -29,10 +29,11 @@ export type {
   Snapshot,
   Features,
   Position,
-  // Intents
-  OrderIntent,
-  CancelAllIntent,
-  QuoteIntent,
+  // Intents (new SET_ORDERS based)
+  OrderKind,
+  TimeInForce,
+  DesiredOrder,
+  SetOrdersIntent,
   // Decision
   DecideInput,
   DecideOutput,
@@ -56,7 +57,7 @@ export {
   calculateHalfSpreadBps,
   calculateSkewBps,
   calculateQuotePrices,
-  generateQuoteIntent,
+  generateDesiredOrders,
   priceExceedsThreshold,
 } from "./quote-calculator";
 

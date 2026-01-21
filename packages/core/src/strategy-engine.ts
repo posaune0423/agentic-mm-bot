@@ -4,30 +4,31 @@
  * Requirements: 4.3, 5.1-5.7, 7.5
  * - State machine: NORMAL → DEFENSIVE → PAUSE
  * - Priority: HARD PAUSE > DEFENSIVE > NORMAL
- * - PAUSE: always CANCEL_ALL, no quotes
+ * - PAUSE: SET_ORDERS with empty array (or unwind only)
  * - PAUSE exit: return to DEFENSIVE (not NORMAL)
  *
  * This module is pure (no I/O, no throw).
  */
 
 import type {
-  CancelAllIntent,
   DecideInput,
   DecideOutput,
-  OrderIntent,
+  DesiredOrder,
   ReasonCode,
+  SetOrdersIntent,
   StrategyMode,
   StrategyState,
 } from "./types";
-import { generateQuoteIntent } from "./quote-calculator";
+import { generateDesiredOrders } from "./quote-calculator";
 import { calculatePauseUntil, evaluateRisk, isPauseDurationElapsed } from "./risk-policy";
 
 /**
- * Create a CANCEL_ALL intent
+ * Create a SET_ORDERS intent
  */
-function cancelAllIntent(reasonCodes: ReasonCode[]): CancelAllIntent {
+function setOrdersIntent(orders: DesiredOrder[], reasonCodes: ReasonCode[]): SetOrdersIntent {
   return {
-    type: "CANCEL_ALL",
+    type: "SET_ORDERS",
+    orders,
     reasonCodes,
   };
 }
@@ -77,7 +78,12 @@ function determineNextMode(
  * This is the core decision function that:
  * 1. Evaluates risk conditions
  * 2. Determines next mode
- * 3. Generates appropriate intents (CANCEL_ALL or QUOTE)
+ * 3. Generates SET_ORDERS intent with desired orders
+ *
+ * The new SET_ORDERS approach:
+ * - PAUSE: empty orders array (cancel all)
+ * - NORMAL/DEFENSIVE: bid + ask quotes with attack-defense adjustments
+ * - May include unwind orders when position held too long
  *
  * @param input - Decision input (state, features, params, position)
  * @returns Decision output (next state, intents, reason codes)
@@ -121,24 +127,35 @@ export function decide(input: DecideInput): DecideOutput {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Step 4: Generate intents
+  // Step 4: Generate SET_ORDERS intent
   // ─────────────────────────────────────────────────────────────────────────
-  const intents: OrderIntent[] = [];
+  const intents: SetOrdersIntent[] = [];
   const allReasonCodes: ReasonCode[] = [...risk.reasonCodes];
 
-  // 7.5: PAUSE → always CANCEL_ALL, no quotes
   if (nextMode === "PAUSE") {
-    intents.push(cancelAllIntent(risk.reasonCodes));
+    // PAUSE: empty orders array (executor will cancel all)
+    // But we may still want unwind orders to reduce held position
+    const hasPosition = Number.parseFloat(position.size) !== 0;
+
+    if (hasPosition) {
+      // Generate unwind-only orders during PAUSE to reduce inventory
+      const unwindOrders = generateDesiredOrders(params, features, position, risk, nowMs).filter(
+        o => o.kind === "unwind",
+      );
+      intents.push(setOrdersIntent(unwindOrders, risk.reasonCodes));
+    } else {
+      // No position, just cancel all
+      intents.push(setOrdersIntent([], risk.reasonCodes));
+    }
 
     // Check for pause duration not elapsed
     if (!pauseDurationElapsed && state.mode === "PAUSE") {
       allReasonCodes.push("PAUSE_MIN_DURATION");
     }
   } else {
-    // NORMAL or DEFENSIVE → generate quote
-    // Note: DEFENSIVE might use wider spreads (handled by quote calculator through features)
-    const quote = generateQuoteIntent(params, features, position, risk.reasonCodes);
-    intents.push(quote);
+    // NORMAL or DEFENSIVE → generate desired orders with attack-defense logic
+    const desiredOrders = generateDesiredOrders(params, features, position, risk, nowMs);
+    intents.push(setOrdersIntent(desiredOrders, risk.reasonCodes));
 
     // Update last quote time
     nextState = {

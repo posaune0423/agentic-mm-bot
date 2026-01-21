@@ -63,6 +63,11 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
   "inventorySkewGain",
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
+  "defensiveSpreadMultiplier",
+  "defensiveSizeMultiplier",
+  "oneSidedThreshold",
+  "unwindTriggerMs",
+  "unwindSizeRatio",
 ] as const;
 
 /** Maximum number of parameter changes allowed */
@@ -146,6 +151,36 @@ const CHANGE_RULES: Record<keyof StrategyParams, ChangeRule> = {
     allowNegative: false,
     absMax: 1e9,
   },
+  defensiveSpreadMultiplier: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  defensiveSizeMultiplier: {
+    minRatio: 0.2,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  oneSidedThreshold: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 1,
+  },
+  unwindTriggerMs: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  unwindSizeRatio: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1,
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,7 +261,7 @@ export function validateProposal(proposal: ParamProposal, currentParams: Strateg
     }
 
     // Get current value
-    const currentValue = currentParams[key as keyof StrategyParams];
+    const currentValue = currentParams[key as keyof StrategyParams] ?? 0;
 
     // Check excessive change guardrails
     if (!isWithinReasonableRange(key as keyof StrategyParams, currentValue, proposedValue)) {

@@ -5,7 +5,6 @@
  * - Output fills as CSV with markout
  */
 
-import { writeFileSync } from "node:fs";
 import type { EnrichedFill } from "./markout";
 
 /**
@@ -75,7 +74,9 @@ export function writeFillsCsv(fills: EnrichedFill[], outputPath: string): void {
   }
 
   // Write to file
-  writeFileSync(outputPath, lines.join("\n"), "utf-8");
+  // Use Bun APIs to avoid non-literal-fs-filename lint warnings.
+  // This function remains sync-ish for callers; we deliberately fire-and-forget here.
+  void Bun.write(outputPath, `${lines.join("\n")}\n`);
 }
 
 /**

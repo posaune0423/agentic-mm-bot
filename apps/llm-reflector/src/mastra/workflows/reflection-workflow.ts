@@ -246,11 +246,7 @@ function generateProposal(
  * Convert changes object to a clean Record
  */
 function toChangesRecord(changes: ProposalOutput["changes"]): Record<string, string | number> {
-  const result: Record<string, string | number> = {};
-  for (const [key, value] of Object.entries(changes)) {
-    result[key] = value;
-  }
-  return result;
+  return Object.fromEntries(Object.entries(changes)) as Record<string, string | number>;
 }
 
 /**

@@ -27,8 +27,8 @@ import type { ExecutionAction } from "../services/execution-planner";
 /**
  * cancel_all throttling
  *
- * In PAUSE mode, core `decide()` can emit CANCEL_ALL every tick. Without throttling,
- * this will hammer the exchange mass-cancel endpoint even when there are no orders.
+ * In PAUSE mode, core `decide()` emits SET_ORDERS with empty `orders`. Without throttling,
+ * this can hammer the exchange mass-cancel endpoint when there are open orders.
  */
 let lastCancelAllAttemptMs = 0;
 let lastOpenOrdersSyncMs = 0;
@@ -217,11 +217,13 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     );
 
     plannedActions.push(...actions);
-    if (intent.type === "QUOTE") {
+    const bid = intent.orders.find(o => o.kind === "quote" && o.side === "buy");
+    const ask = intent.orders.find(o => o.kind === "quote" && o.side === "sell");
+    if (bid && ask) {
       targetQuote = {
-        bidPx: intent.bidPx,
-        askPx: intent.askPx,
-        size: intent.size,
+        bidPx: bid.price,
+        askPx: ask.price,
+        size: bid.size,
       };
     }
 
@@ -455,47 +457,59 @@ async function executeAction(
       onAction?.({ phase: "start", action });
       const clientOrderId = generateClientOrderId();
 
-      // Clamp price to BBO to prevent post-only rejection
-      const { adjustedPrice, clamped } = clampPriceToBbo(
-        action.side,
-        action.price,
-        snapshot.bestBidPx,
-        snapshot.bestAskPx,
-      );
+      const { postOnly, reduceOnly, timeInForce } = action;
 
-      if (clamped) {
-        logger.warn("Price clamped to avoid BBO crossing", {
-          side: action.side,
-          originalPrice: action.price,
-          adjustedPrice,
-          bestBidPx: snapshot.bestBidPx,
-          bestAskPx: snapshot.bestAskPx,
-        });
+      let finalPrice = action.price;
+      let clamped = false;
+
+      // Only clamp price for post-only orders
+      if (postOnly) {
+        const clampResult = clampPriceToBbo(action.side, action.price, snapshot.bestBidPx, snapshot.bestAskPx);
+        finalPrice = clampResult.adjustedPrice;
+        clamped = clampResult.clamped;
+
+        if (clamped) {
+          logger.warn("Price clamped to avoid BBO crossing", {
+            side: action.side,
+            originalPrice: action.price,
+            adjustedPrice: finalPrice,
+            bestBidPx: snapshot.bestBidPx,
+            bestAskPx: snapshot.bestAskPx,
+          });
+        }
       }
 
       const result = await executionPort.placeOrder({
         clientOrderId,
         symbol,
         side: action.side,
-        price: adjustedPrice,
+        price: finalPrice,
         size: action.size,
-        postOnly: true,
+        postOnly,
+        reduceOnly,
+        timeInForce,
       });
 
       if (result.isOk()) {
         onAction?.({ phase: "ok", action });
-        orderTracker.addOrder({
-          clientOrderId,
-          exchangeOrderId: result.value.exchangeOrderId,
-          side: action.side,
-          price: adjustedPrice,
-          size: action.size,
-          createdAtMs: Date.now(),
-        });
+        // Only track GTC orders (IOC orders fill immediately or cancel)
+        if (timeInForce === "GTC") {
+          orderTracker.addOrder({
+            clientOrderId,
+            exchangeOrderId: result.value.exchangeOrderId,
+            side: action.side,
+            price: finalPrice,
+            size: action.size,
+            createdAtMs: Date.now(),
+          });
+        }
         logger.debug("Placed order", {
           clientOrderId,
           side: action.side,
-          price: adjustedPrice,
+          price: finalPrice,
+          postOnly,
+          reduceOnly,
+          timeInForce,
           clamped,
         });
       } else {

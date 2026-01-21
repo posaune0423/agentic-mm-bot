@@ -211,16 +211,16 @@ export function generateProposal(
     })
     .map(obj => {
       // Filter out undefined values from changes
-      const filteredChanges: Record<string, string | number> = {};
-      for (const [key, value] of Object.entries(obj.changes)) {
-        if (typeof value === "string" || typeof value === "number") {
-          filteredChanges[key] = value;
-        }
-      }
+      const filteredChanges = Object.fromEntries(
+        Object.entries(obj.changes).filter((entry): entry is [string, string | number] => {
+          const value = entry[1];
+          return typeof value === "string" || typeof value === "number";
+        }),
+      );
 
       return {
         proposal: {
-          changes: filteredChanges,
+          changes: filteredChanges as Record<string, string | number>,
           rollbackConditions: obj.rollbackConditions,
         },
         reasoningTrace: obj.reasoningTrace,

@@ -26,14 +26,21 @@ export interface LogSink {
   write: (record: LogRecord) => void;
 }
 
-// Define log level priority (lower number = higher priority)
-const LOG_LEVEL_PRIORITY = {
-  [LogLevel.ERROR]: 0,
-  [LogLevel.WARN]: 1,
-  [LogLevel.LOG]: 2,
-  [LogLevel.INFO]: 3,
-  [LogLevel.DEBUG]: 4,
-} as const;
+function logLevelPriority(level: LogLevel): number {
+  // lower number = higher priority
+  switch (level) {
+    case LogLevel.ERROR:
+      return 0;
+    case LogLevel.WARN:
+      return 1;
+    case LogLevel.LOG:
+      return 2;
+    case LogLevel.INFO:
+      return 3;
+    case LogLevel.DEBUG:
+      return 4;
+  }
+}
 
 const getTimestamp = () => {
   return new Date().toISOString();
@@ -53,26 +60,23 @@ const getCurrentLogLevel = (): LogLevel => {
 // Check if a log at the specified level should be output
 const shouldLog = (level: LogLevel): boolean => {
   const currentLevel = getCurrentLogLevel();
-  return LOG_LEVEL_PRIORITY[level] <= LOG_LEVEL_PRIORITY[currentLevel];
+  return logLevelPriority(level) <= logLevelPriority(currentLevel);
 };
 
 const colorize = (message: string, level: LogLevel): string => {
-  const colors = {
-    [LogLevel.ERROR]: "\x1B[31m", // Red
-    [LogLevel.WARN]: "\x1B[33m", // Yellow
-    [LogLevel.INFO]: "\x1B[36m", // Cyan
-    [LogLevel.DEBUG]: "\x1B[32m", // Green
-    [LogLevel.LOG]: null, // No color (standard)
-  };
-
   const reset = "\x1B[0m";
-  const color = colors[level];
-
-  if (color === null) {
-    return message; // No color for LOG
+  switch (level) {
+    case LogLevel.LOG:
+      return message;
+    case LogLevel.ERROR:
+      return `\x1B[31m${message}${reset}`; // Red
+    case LogLevel.WARN:
+      return `\x1B[33m${message}${reset}`; // Yellow
+    case LogLevel.INFO:
+      return `\x1B[36m${message}${reset}`; // Cyan
+    case LogLevel.DEBUG:
+      return `\x1B[32m${message}${reset}`; // Green
   }
-
-  return `${color}${message}${reset}`;
 };
 
 const formatHeader = (level: LogLevel): string => {
@@ -92,10 +96,12 @@ function toFields(args: unknown[]): Record<string, string> | undefined {
     typeof maybeFields === "object" &&
     !(maybeFields instanceof Error)
   ) {
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(maybeFields as Record<string, unknown>)) {
-      out[k] = typeof v === "string" ? v : JSON.stringify(v);
-    }
+    const out = Object.fromEntries(
+      Object.entries(maybeFields as Record<string, unknown>).map(([k, v]) => [
+        k,
+        typeof v === "string" ? v : JSON.stringify(v),
+      ]),
+    ) as Record<string, string>;
     return Object.keys(out).length > 0 ? out : undefined;
   }
   return undefined;

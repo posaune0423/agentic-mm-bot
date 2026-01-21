@@ -8,7 +8,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { ResultAsync } from "neverthrow";
@@ -45,6 +44,14 @@ function calculateSha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+function ensureDir(dirPath: string): void {
+  const proc = Bun.spawnSync(["mkdir", "-p", dirPath]);
+  if (proc.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(proc.stderr);
+    throw new Error(stderr.trim() || `mkdir -p failed (exit ${String(proc.exitCode)})`);
+  }
+}
+
 export function createFileSinkPort(): FileSinkPort {
   return {
     writeJsonLog(
@@ -74,23 +81,27 @@ export function createFileSinkPort(): FileSinkPort {
       const finalJson = JSON.stringify(finalContent, null, 2);
 
       return ResultAsync.fromPromise(
-        mkdir(llmDir, { recursive: true }),
+        Promise.resolve().then(() => {
+          ensureDir(llmDir);
+        }),
         (error): FileSinkError => ({
           type: "MKDIR_FAILED",
           message: error instanceof Error ? error.message : "Unknown error",
         }),
-      ).andThen(() =>
-        ResultAsync.fromPromise(
-          writeFile(filePath, finalJson, "utf-8"),
-          (error): FileSinkError => ({
-            type: "WRITE_FAILED",
-            message: error instanceof Error ? error.message : "Unknown error",
-          }),
-        ).map(() => ({
+      )
+        .andThen(() =>
+          ResultAsync.fromPromise(
+            Bun.write(filePath, `${finalJson}\n`),
+            (error): FileSinkError => ({
+              type: "WRITE_FAILED",
+              message: error instanceof Error ? error.message : "Unknown error",
+            }),
+          ),
+        )
+        .map(() => ({
           path: filePath,
           sha256,
-        })),
-      );
+        }));
     },
   };
 }

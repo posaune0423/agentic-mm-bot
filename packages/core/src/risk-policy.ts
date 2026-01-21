@@ -28,6 +28,35 @@ const DEFENSIVE_VOL_THRESHOLD_BPS = "50"; // 0.5%
 const DEFENSIVE_TOX_THRESHOLD = "0.7"; // 70% imbalance
 
 /**
+ * Calculate normalized risk score [0, 1]
+ *
+ * Components:
+ * - Volatility contribution (0-0.4)
+ * - Toxicity contribution (0-0.4)
+ * - Inventory contribution (0-0.2)
+ */
+function calculateRiskScore(features: Features, position: Position, params: StrategyParams): number {
+  const vol = Number.parseFloat(features.realizedVol10s);
+  const tox = Math.abs(Number.parseFloat(features.tradeImbalance1s));
+  const absPosition = Math.abs(Number.parseFloat(position.size));
+  const maxInventory = Number.parseFloat(params.maxInventory);
+
+  // Volatility: normalized by defensive threshold, capped at 1
+  const volThreshold = Number.parseFloat(DEFENSIVE_VOL_THRESHOLD_BPS);
+  const volScore = Math.min(vol / volThreshold, 1);
+
+  // Toxicity: normalized by defensive threshold, capped at 1
+  const toxThreshold = Number.parseFloat(DEFENSIVE_TOX_THRESHOLD);
+  const toxScore = Math.min(tox / toxThreshold, 1);
+
+  // Inventory: normalized by maxInventory, capped at 1
+  const invScore = maxInventory > 0 ? Math.min(absPosition / maxInventory, 1) : 0;
+
+  // Weighted combination
+  return volScore * 0.4 + toxScore * 0.4 + invScore * 0.2;
+}
+
+/**
  * Evaluate risk conditions and determine required mode
  *
  * Requirements: 5.2-5.6, 8.1-8.2
@@ -83,9 +112,12 @@ export function evaluateRisk(features: Features, position: Position, params: Str
     reasonCodes.push("INVENTORY_LIMIT");
   }
 
+  // Calculate risk score (used even if pausing)
+  const riskScore = calculateRiskScore(features, position, params);
+
   // Early return if PAUSE required (highest priority)
   if (shouldPause) {
-    return { shouldPause, shouldDefensive: false, reasonCodes };
+    return { shouldPause, shouldDefensive: false, reasonCodes, riskScore: 1.0 };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -110,7 +142,7 @@ export function evaluateRisk(features: Features, position: Position, params: Str
     reasonCodes.push("NORMAL_CONDITIONS");
   }
 
-  return { shouldPause, shouldDefensive, reasonCodes };
+  return { shouldPause, shouldDefensive, reasonCodes, riskScore };
 }
 
 /**

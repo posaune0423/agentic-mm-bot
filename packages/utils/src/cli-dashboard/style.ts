@@ -23,31 +23,50 @@ export type StyleToken =
   | "bgMagenta"
   | "bgGray";
 
-const ANSI: Record<StyleToken, string> = {
-  // Reset & text decorations
-  reset: "\x1B[0m",
-  dim: "\x1B[2m",
-  bold: "\x1B[1m",
-  underline: "\x1B[4m",
-  inverse: "\x1B[7m",
-  // Foreground colors
-  red: "\x1B[31m",
-  yellow: "\x1B[33m",
-  green: "\x1B[32m",
-  cyan: "\x1B[36m",
-  blue: "\x1B[34m",
-  magenta: "\x1B[35m",
-  gray: "\x1B[90m",
-  white: "\x1B[97m",
-  // Background colors
-  bgRed: "\x1B[41m",
-  bgYellow: "\x1B[43m",
-  bgGreen: "\x1B[42m",
-  bgBlue: "\x1B[44m",
-  bgCyan: "\x1B[46m",
-  bgMagenta: "\x1B[45m",
-  bgGray: "\x1B[100m",
-};
+function tokenValue(t: StyleToken): string {
+  switch (t) {
+    case "reset":
+      return "\x1B[0m";
+    case "dim":
+      return "\x1B[2m";
+    case "bold":
+      return "\x1B[1m";
+    case "underline":
+      return "\x1B[4m";
+    case "inverse":
+      return "\x1B[7m";
+    case "red":
+      return "\x1B[31m";
+    case "yellow":
+      return "\x1B[33m";
+    case "green":
+      return "\x1B[32m";
+    case "cyan":
+      return "\x1B[36m";
+    case "blue":
+      return "\x1B[34m";
+    case "magenta":
+      return "\x1B[35m";
+    case "gray":
+      return "\x1B[90m";
+    case "white":
+      return "\x1B[97m";
+    case "bgRed":
+      return "\x1B[41m";
+    case "bgYellow":
+      return "\x1B[43m";
+    case "bgGreen":
+      return "\x1B[42m";
+    case "bgBlue":
+      return "\x1B[44m";
+    case "bgCyan":
+      return "\x1B[46m";
+    case "bgMagenta":
+      return "\x1B[45m";
+    case "bgGray":
+      return "\x1B[100m";
+  }
+}
 
 export class Style {
   enabled(): boolean {
@@ -55,7 +74,7 @@ export class Style {
   }
 
   token(t: StyleToken): string {
-    return ANSI[t];
+    return tokenValue(t);
   }
 
   /**
@@ -63,7 +82,7 @@ export class Style {
    * e.g. style.combine("bold", "red") => "\x1b[1m\x1b[31m"
    */
   combine(...tokens: StyleToken[]): string {
-    return tokens.map(t => ANSI[t]).join("");
+    return tokens.map(tokenValue).join("");
   }
 
   /**
@@ -71,7 +90,7 @@ export class Style {
    * e.g. style.wrap("ERROR", "bold", "bgRed", "white") => "\x1b[1m\x1b[41m\x1b[97mERROR\x1b[0m"
    */
   wrap(text: string, ...tokens: StyleToken[]): string {
-    return this.combine(...tokens) + text + ANSI.reset;
+    return this.combine(...tokens) + text + tokenValue("reset");
   }
 
   /**
