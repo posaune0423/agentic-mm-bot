@@ -82,13 +82,10 @@ function sizeNeedsUpdate(currentSize: string, targetSize: string): boolean {
  * Find matching tracked order for a desired order
  */
 function findMatchingOrder(desired: DesiredOrder, currentOrders: TrackedOrder[]): TrackedOrder | undefined {
-  return currentOrders.find(
-    o =>
-      o.side === desired.side &&
-      // For quote orders, match by side only (one per side)
-      // For unwind orders, we don't match (always create new)
-      desired.kind === "quote",
-  );
+  // For quote orders, match by side only (one quote per side).
+  // For unwind orders, we intentionally do not match (always create new IOC orders).
+  if (desired.kind !== "quote") return undefined;
+  return currentOrders.find(o => o.side === desired.side);
 }
 
 /**

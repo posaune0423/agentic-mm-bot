@@ -40,9 +40,6 @@ type DecisionCycleMarketDataCache = Pick<
  * In PAUSE mode, core `decide()` emits SET_ORDERS with empty `orders`. Without throttling,
  * this can hammer the exchange mass-cancel endpoint when there are open orders.
  */
-let lastCancelAllAttemptMs = 0;
-let lastOpenOrdersSyncMs = 0;
-let lastPeriodicReconcileMs = 0;
 const CANCEL_ALL_MIN_INTERVAL_WITH_ORDERS_MS = 1_000;
 const CANCEL_ALL_MIN_INTERVAL_WITHOUT_ORDERS_MS = 30_000;
 const OPEN_ORDERS_SYNC_INTERVAL_MS = 5_000;
@@ -52,15 +49,26 @@ const OPEN_ORDERS_SYNC_INTERVAL_MS = 5_000;
  * Set to 30s to balance accuracy vs rate limit risk.
  */
 const PERIODIC_RECONCILE_INTERVAL_MS = 30_000;
-let rateLimitUntilMs = 0;
 
 // Post-only rejection backoff (per side) to avoid reject spam.
 // When the exchange rejects post-only, retrying immediately at 200ms tick just spams the venue and logs.
 // We back off for a short (exponential-ish) window and let the next refresh / market move settle.
 const POST_ONLY_REJECT_BACKOFF_MIN_MS = 1_000;
 const POST_ONLY_REJECT_BACKOFF_MAX_MS = 10_000;
-const postOnlyRejectUntilBySide: Record<"buy" | "sell", number> = { buy: 0, sell: 0 };
-const postOnlyRejectStreakBySide: Record<"buy" | "sell", number> = { buy: 0, sell: 0 };
+
+/**
+ * Mutable runtime state for throttling/backoff.
+ *
+ * Kept module-local (single process) and intentionally not persisted.
+ */
+const runtimeState = {
+  lastCancelAllAttemptMs: 0,
+  lastOpenOrdersSyncMs: 0,
+  lastPeriodicReconcileMs: 0,
+  rateLimitUntilMs: 0,
+  postOnlyRejectUntilBySide: { buy: 0, sell: 0 } satisfies Record<"buy" | "sell", number>,
+  postOnlyRejectStreakBySide: { buy: 0, sell: 0 } satisfies Record<"buy" | "sell", number>,
+};
 
 /**
  * Decision cycle dependencies
@@ -115,6 +123,74 @@ export interface DecisionCycleDeps {
   }) => void;
 }
 
+async function periodicReconcileIfDue(args: {
+  nowMs: number;
+  symbol: string;
+  orderTracker: OrderTracker;
+  executionPort: ExecutionPort;
+}): Promise<void> {
+  const { nowMs, symbol, orderTracker, executionPort } = args;
+
+  // Periodic reconciliation: sync tracker with exchange to detect drift.
+  // This runs every PERIODIC_RECONCILE_INTERVAL_MS regardless of tracker state.
+  if (
+    nowMs - runtimeState.lastPeriodicReconcileMs < PERIODIC_RECONCILE_INTERVAL_MS ||
+    nowMs < runtimeState.rateLimitUntilMs
+  ) {
+    return;
+  }
+
+  runtimeState.lastPeriodicReconcileMs = nowMs;
+  const reconcileResult = await executionPort.getOpenOrders(symbol);
+  if (reconcileResult.isOk()) {
+    const exchangeOrders = reconcileResult.value;
+    const trackedOrders = orderTracker.getActiveOrders();
+
+    // Build sets for comparison
+    const exchangeIds = new Set(exchangeOrders.map(o => o.exchangeOrderId));
+    const trackedExchangeIds = new Set(
+      trackedOrders.map(o => o.exchangeOrderId).filter((id): id is string => id !== undefined),
+    );
+
+    // Detect drift: orders on exchange not in tracker, or orders in tracker not on exchange
+    const missingInTracker = exchangeOrders.filter(o => !trackedExchangeIds.has(o.exchangeOrderId));
+    const staleInTracker = trackedOrders.filter(
+      o => o.exchangeOrderId !== undefined && !exchangeIds.has(o.exchangeOrderId),
+    );
+
+    if (missingInTracker.length > 0 || staleInTracker.length > 0) {
+      logger.warn("Periodic reconciliation detected drift; syncing from exchange", {
+        missingInTracker: missingInTracker.length,
+        staleInTracker: staleInTracker.length,
+        exchangeOrderCount: exchangeOrders.length,
+        trackedOrderCount: trackedOrders.length,
+      });
+
+      // Sync from exchange to fix drift
+      orderTracker.syncFromOpenOrders(exchangeOrders);
+    } else {
+      logger.debug("Periodic reconciliation: no drift detected", {
+        exchangeOrderCount: exchangeOrders.length,
+        trackedOrderCount: trackedOrders.length,
+      });
+    }
+    return;
+  }
+
+  logger.debug("Periodic reconciliation failed", reconcileResult.error);
+  if (reconcileResult.error.type === "rate_limit") {
+    runtimeState.rateLimitUntilMs = nowMs + (reconcileResult.error.retryAfterMs ?? 1000);
+  }
+}
+
+function shouldGuardrailCancelAll(orderTracker: OrderTracker): boolean {
+  // Guardrail: we expect at most 1 bid + 1 ask live. If there's more, clean slate first.
+  const orders = orderTracker.getActiveOrders();
+  const buyCount = orders.filter(o => o.side === "buy").length;
+  const sellCount = orders.length - buyCount;
+  return orders.length > 2 || buyCount > 1 || sellCount > 1;
+}
+
 /**
  * Execute one decision cycle tick
  *
@@ -164,62 +240,12 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
 
   deps.onPhase?.("EXECUTE");
 
-  // Periodic reconciliation: sync tracker with exchange to detect drift
-  // This runs every PERIODIC_RECONCILE_INTERVAL_MS regardless of tracker state
-  if (nowMs - lastPeriodicReconcileMs >= PERIODIC_RECONCILE_INTERVAL_MS && nowMs >= rateLimitUntilMs) {
-    lastPeriodicReconcileMs = nowMs;
-    const reconcileResult = await executionPort.getOpenOrders(snapshot.symbol);
-    if (reconcileResult.isOk()) {
-      const exchangeOrders = reconcileResult.value;
-      const trackedOrders = orderTracker.getActiveOrders();
+  await periodicReconcileIfDue({ nowMs, symbol: snapshot.symbol, orderTracker, executionPort });
 
-      // Build sets for comparison
-      const exchangeIds = new Set(exchangeOrders.map(o => o.exchangeOrderId));
-      const trackedExchangeIds = new Set(
-        trackedOrders.map(o => o.exchangeOrderId).filter((id): id is string => id !== undefined),
-      );
-
-      // Detect drift: orders on exchange not in tracker, or orders in tracker not on exchange
-      const missingInTracker = exchangeOrders.filter(o => !trackedExchangeIds.has(o.exchangeOrderId));
-      const staleInTracker = trackedOrders.filter(
-        o => o.exchangeOrderId !== undefined && !exchangeIds.has(o.exchangeOrderId),
-      );
-
-      if (missingInTracker.length > 0 || staleInTracker.length > 0) {
-        logger.warn("Periodic reconciliation detected drift; syncing from exchange", {
-          missingInTracker: missingInTracker.length,
-          staleInTracker: staleInTracker.length,
-          exchangeOrderCount: exchangeOrders.length,
-          trackedOrderCount: trackedOrders.length,
-        });
-
-        // Sync from exchange to fix drift
-        orderTracker.syncFromOpenOrders(exchangeOrders);
-      } else {
-        logger.debug("Periodic reconciliation: no drift detected", {
-          exchangeOrderCount: exchangeOrders.length,
-          trackedOrderCount: trackedOrders.length,
-        });
-      }
-    } else {
-      logger.debug("Periodic reconciliation failed", reconcileResult.error);
-      if (reconcileResult.error.type === "rate_limit") {
-        rateLimitUntilMs = nowMs + (reconcileResult.error.retryAfterMs ?? 1000);
-      }
-    }
-  }
-
-  // Guardrail: we expect at most 1 bid + 1 ask live. If there's more, clean slate first.
-  {
-    const orders = orderTracker.getActiveOrders();
-    const buyCount = orders.filter(o => o.side === "buy").length;
-    const sellCount = orders.length - buyCount;
-
-    if (orders.length > 2 || buyCount > 1 || sellCount > 1) {
-      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot, deps.onAction);
-      deps.onPhase?.("IDLE");
-      return output;
-    }
+  if (shouldGuardrailCancelAll(orderTracker)) {
+    await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot, deps.onAction);
+    deps.onPhase?.("IDLE");
+    return output;
   }
 
   for (const intent of output.intents) {
@@ -384,7 +410,7 @@ async function executeAction(
 ): Promise<void> {
   const symbol = snapshot.symbol;
   const nowMs = Date.now();
-  if (nowMs < rateLimitUntilMs) {
+  if (nowMs < runtimeState.rateLimitUntilMs) {
     // Skip API calls during backoff window.
     return;
   }
@@ -396,8 +422,8 @@ async function executeAction(
 
       // If we believe there are no orders, periodically verify via REST to avoid tracker drift.
       // This is intentionally low-frequency to avoid hammering the exchange.
-      if (trackedCount === 0 && nowMs - lastOpenOrdersSyncMs >= OPEN_ORDERS_SYNC_INTERVAL_MS) {
-        lastOpenOrdersSyncMs = nowMs;
+      if (trackedCount === 0 && nowMs - runtimeState.lastOpenOrdersSyncMs >= OPEN_ORDERS_SYNC_INTERVAL_MS) {
+        runtimeState.lastOpenOrdersSyncMs = nowMs;
         const openOrdersResult = await executionPort.getOpenOrders(symbol);
         if (openOrdersResult.isOk()) {
           if (openOrdersResult.value.length > 0) {
@@ -413,12 +439,12 @@ async function executeAction(
       const minIntervalMs =
         trackedCount > 0 ? CANCEL_ALL_MIN_INTERVAL_WITH_ORDERS_MS : CANCEL_ALL_MIN_INTERVAL_WITHOUT_ORDERS_MS;
 
-      if (nowMs - lastCancelAllAttemptMs < minIntervalMs) {
+      if (nowMs - runtimeState.lastCancelAllAttemptMs < minIntervalMs) {
         // Skip repeated cancel_all when we're already clean (or recently attempted).
         break;
       }
 
-      lastCancelAllAttemptMs = nowMs;
+      runtimeState.lastCancelAllAttemptMs = nowMs;
 
       const result = await executionPort.cancelAllOrders(symbol);
       if (result.isOk()) {
@@ -431,7 +457,7 @@ async function executeAction(
         }
       } else {
         if (result.error.type === "rate_limit") {
-          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+          runtimeState.rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
         }
         onAction?.({ phase: "err", action, error: result.error });
         logger.error("Failed to cancel all orders", result.error);
@@ -465,7 +491,7 @@ async function executeAction(
         });
       } else {
         if (result.error.type === "rate_limit") {
-          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+          runtimeState.rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
         }
         onAction?.({ phase: "err", action, error: result.error });
         // Best-effort cleanup: if the exchange says the order doesn't exist, drop it from the tracker.
@@ -489,7 +515,7 @@ async function executeAction(
     case "place": {
       // Skip aggressive retry loops on post-only rejection.
       if (action.postOnly) {
-        const until = postOnlyRejectUntilBySide[action.side];
+        const until = runtimeState.postOnlyRejectUntilBySide[action.side];
         if (nowMs < until) {
           return;
         }
@@ -547,19 +573,19 @@ async function executeAction(
 
           if (postOnly && result.value.reason?.includes("POST_ONLY")) {
             // Treat immediate post-only rejection the same as an error path for backoff.
-            const streak = postOnlyRejectStreakBySide[action.side] + 1;
-            postOnlyRejectStreakBySide[action.side] = streak;
+            const streak = runtimeState.postOnlyRejectStreakBySide[action.side] + 1;
+            runtimeState.postOnlyRejectStreakBySide[action.side] = streak;
             const delay = Math.min(
               POST_ONLY_REJECT_BACKOFF_MAX_MS,
               POST_ONLY_REJECT_BACKOFF_MIN_MS * Math.pow(2, Math.min(4, streak - 1)),
             );
-            postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
+            runtimeState.postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
           }
           break;
         }
 
         // Reset reject streak on success (per side).
-        postOnlyRejectStreakBySide[action.side] = 0;
+        runtimeState.postOnlyRejectStreakBySide[action.side] = 0;
 
         // Only track GTC orders (IOC orders fill immediately or cancel)
         if (timeInForce === "GTC") {
@@ -583,18 +609,18 @@ async function executeAction(
         });
       } else {
         if (result.error.type === "rate_limit") {
-          rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
+          runtimeState.rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
         }
         onAction?.({ phase: "err", action, error: result.error });
         // Check for post-only rejection
         if (result.error.type === "post_only_rejected") {
-          const streak = postOnlyRejectStreakBySide[action.side] + 1;
-          postOnlyRejectStreakBySide[action.side] = streak;
+          const streak = runtimeState.postOnlyRejectStreakBySide[action.side] + 1;
+          runtimeState.postOnlyRejectStreakBySide[action.side] = streak;
           const delay = Math.min(
             POST_ONLY_REJECT_BACKOFF_MAX_MS,
             POST_ONLY_REJECT_BACKOFF_MIN_MS * Math.pow(2, Math.min(4, streak - 1)),
           );
-          postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
+          runtimeState.postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
           logger.warn("Post-only rejected; backing off", { side: action.side, streak, delayMs: delay });
         } else {
           logger.error("Failed to place order", result.error);

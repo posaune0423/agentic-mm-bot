@@ -11,6 +11,23 @@
 
 import type { DesiredOrder, Features, Position, PriceStr, RiskEvaluation, StrategyParams } from "./types";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal numeric helpers (keep core pure; avoid NaN/Infinity propagation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function toFiniteNumber(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function nonNegative(n: number): number {
+  return n < 0 ? 0 : n;
+}
+
 /**
  * Calculate half spread in bps
  *
@@ -24,12 +41,12 @@ import type { DesiredOrder, Features, Position, PriceStr, RiskEvaluation, Strate
  * @returns Half spread in bps
  */
 export function calculateHalfSpreadBps(params: StrategyParams, features: Features): number {
-  const baseSpread = Number.parseFloat(params.baseHalfSpreadBps);
-  const volGain = Number.parseFloat(params.volSpreadGain);
-  const toxGain = Number.parseFloat(params.toxSpreadGain);
+  const baseSpread = toFiniteNumber(params.baseHalfSpreadBps, 0);
+  const volGain = toFiniteNumber(params.volSpreadGain, 0);
+  const toxGain = toFiniteNumber(params.toxSpreadGain, 0);
 
-  const vol = Number.parseFloat(features.realizedVol10s);
-  const tox = Math.abs(Number.parseFloat(features.tradeImbalance1s));
+  const vol = toFiniteNumber(features.realizedVol10s, 0);
+  const tox = Math.abs(toFiniteNumber(features.tradeImbalance1s, 0));
 
   return baseSpread + volGain * vol + toxGain * tox;
 }
@@ -48,8 +65,8 @@ export function calculateHalfSpreadBps(params: StrategyParams, features: Feature
  * @returns Skew in bps
  */
 export function calculateSkewBps(params: StrategyParams, position: Position): number {
-  const skewGain = Number.parseFloat(params.inventorySkewGain);
-  const inventory = Number.parseFloat(position.size);
+  const skewGain = toFiniteNumber(params.inventorySkewGain, 0);
+  const inventory = toFiniteNumber(position.size, 0);
 
   return skewGain * inventory;
 }
@@ -106,11 +123,11 @@ export function priceExceedsThreshold(
   midPx: PriceStr,
   thresholdBps: number,
 ): boolean {
-  const current = Number.parseFloat(currentPx);
-  const target = Number.parseFloat(targetPx);
-  const mid = Number.parseFloat(midPx);
+  const current = toFiniteNumber(currentPx, Number.NaN);
+  const target = toFiniteNumber(targetPx, Number.NaN);
+  const mid = toFiniteNumber(midPx, Number.NaN);
 
-  if (mid === 0) return true;
+  if (!Number.isFinite(current) || !Number.isFinite(target) || !Number.isFinite(mid) || mid === 0) return true;
 
   const diffBps = (Math.abs(target - current) / mid) * 10_000;
   return diffBps >= thresholdBps;
@@ -203,22 +220,16 @@ function calculateDefensiveSize(baseSizeUsd: number, risk: RiskEvaluation, defen
  */
 function getOneSidedMode(position: Position, params: StrategyParams): "bid" | "ask" | null {
   // Validate and sanitize inputs to avoid forcing single-sided quoting on NaN/out-of-range values
-  let posSize = Number.parseFloat(position.size);
-  if (!Number.isFinite(posSize)) posSize = 0;
+  const posSize = toFiniteNumber(position.size, 0);
 
-  let maxInventory = Number.parseFloat(params.maxInventory);
-  if (!Number.isFinite(maxInventory) || maxInventory <= 0) {
-    maxInventory = 0;
-    return null; // Both sides active when maxInventory is invalid
-  }
+  const maxInventory = toFiniteNumber(params.maxInventory, 0);
+  if (maxInventory <= 0) return null; // Both sides active when maxInventory is invalid
 
-  let threshold = Number.parseFloat(params.oneSidedThreshold ?? String(DEFAULT_ONE_SIDED_THRESHOLD));
-  if (!Number.isFinite(threshold)) {
-    threshold = DEFAULT_ONE_SIDED_THRESHOLD;
-  } else {
-    // Clamp to [0, 1] to avoid out-of-range thresholds
-    threshold = Math.max(0, Math.min(1, threshold));
-  }
+  const threshold = clamp(
+    toFiniteNumber(params.oneSidedThreshold ?? String(DEFAULT_ONE_SIDED_THRESHOLD), DEFAULT_ONE_SIDED_THRESHOLD),
+    0,
+    1,
+  );
 
   const absPos = Math.abs(posSize);
   const oneSidedLevel = maxInventory * threshold;
@@ -236,7 +247,7 @@ function getOneSidedMode(position: Position, params: StrategyParams): "bid" | "a
  * Check if unwind order should be generated
  */
 function shouldGenerateUnwind(position: Position, params: StrategyParams, nowMs: number): boolean {
-  const posSize = Number.parseFloat(position.size);
+  const posSize = toFiniteNumber(position.size, 0);
   if (posSize === 0) return false;
 
   const positionSinceMs = position.positionSinceMs;
@@ -252,8 +263,12 @@ function shouldGenerateUnwind(position: Position, params: StrategyParams, nowMs:
  * Calculate unwind order size
  */
 function calculateUnwindSize(position: Position, params: StrategyParams): number {
-  const posSize = Math.abs(Number.parseFloat(position.size));
-  const unwindRatio = Number.parseFloat(params.unwindSizeRatio ?? String(DEFAULT_UNWIND_SIZE_RATIO));
+  const posSize = Math.abs(toFiniteNumber(position.size, 0));
+  const unwindRatio = clamp(
+    toFiniteNumber(params.unwindSizeRatio ?? String(DEFAULT_UNWIND_SIZE_RATIO), DEFAULT_UNWIND_SIZE_RATIO),
+    0,
+    1,
+  );
   return posSize * unwindRatio;
 }
 
@@ -281,41 +296,41 @@ export function generateDesiredOrders(
   nowMs: number,
 ): DesiredOrder[] {
   const orders: DesiredOrder[] = [];
-  const mid = Number.parseFloat(features.midPx);
+  const mid = toFiniteNumber(features.midPx, Number.NaN);
 
-  if (mid <= 0 || !Number.isFinite(mid)) {
+  if (!Number.isFinite(mid) || mid <= 0) {
     return orders; // Invalid mid price, return empty
   }
 
   // Get defensive multipliers (use defaults if not set)
-  let defensiveSpreadMult = Number.parseFloat(
-    params.defensiveSpreadMultiplier ?? String(DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER),
+  const defensiveSpreadMult = Math.max(
+    0,
+    toFiniteNumber(
+      params.defensiveSpreadMultiplier ?? String(DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER),
+      DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER,
+    ),
   );
-  if (!Number.isFinite(defensiveSpreadMult) || defensiveSpreadMult <= 0) {
-    defensiveSpreadMult = DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER;
-  }
 
-  let defensiveSizeMult = Number.parseFloat(
-    params.defensiveSizeMultiplier ?? String(DEFAULT_DEFENSIVE_SIZE_MULTIPLIER),
+  const defensiveSizeMult = Math.max(
+    0,
+    toFiniteNumber(
+      params.defensiveSizeMultiplier ?? String(DEFAULT_DEFENSIVE_SIZE_MULTIPLIER),
+      DEFAULT_DEFENSIVE_SIZE_MULTIPLIER,
+    ),
   );
-  if (!Number.isFinite(defensiveSizeMult) || defensiveSizeMult <= 0) {
-    defensiveSizeMult = DEFAULT_DEFENSIVE_SIZE_MULTIPLIER;
-  }
 
   // Calculate base spread
-  let baseHalfSpreadBps = calculateHalfSpreadBps(params, features);
-  if (!Number.isFinite(baseHalfSpreadBps)) baseHalfSpreadBps = 0;
+  const baseHalfSpreadBps = nonNegative(toFiniteNumber(calculateHalfSpreadBps(params, features), 0));
 
   // Apply defensive adjustment to spread
   let adjustedHalfSpreadBps = calculateDefensiveHalfSpreadBps(baseHalfSpreadBps, risk, defensiveSpreadMult);
   if (!Number.isFinite(adjustedHalfSpreadBps)) {
     return []; // Avoid producing NaN quotes
   }
-  if (adjustedHalfSpreadBps < 0) adjustedHalfSpreadBps = 0;
+  adjustedHalfSpreadBps = nonNegative(adjustedHalfSpreadBps);
 
   // Calculate skew
-  let skewBps = calculateSkewBps(params, position);
-  if (!Number.isFinite(skewBps)) skewBps = 0;
+  const skewBps = toFiniteNumber(calculateSkewBps(params, position), 0);
 
   // Calculate prices
   const halfSpreadPrice = bpsToPrice(mid, adjustedHalfSpreadBps);
@@ -336,17 +351,16 @@ export function generateDesiredOrders(
   const askPx = formatPrice(askPxNum);
 
   // Calculate size with defensive adjustment
-  let baseSizeUsd = Number.parseFloat(params.quoteSizeUsd);
-  if (!Number.isFinite(baseSizeUsd) || baseSizeUsd < 0) baseSizeUsd = 0;
+  const baseSizeUsd = nonNegative(toFiniteNumber(params.quoteSizeUsd, 0));
 
   let adjustedSizeUsd = calculateDefensiveSize(baseSizeUsd, risk, defensiveSizeMult);
   if (!Number.isFinite(adjustedSizeUsd)) {
     return []; // Avoid producing NaN size / orders
   }
-  if (adjustedSizeUsd < 0) adjustedSizeUsd = 0;
+  adjustedSizeUsd = nonNegative(adjustedSizeUsd);
 
   const size = usdToBaseSize(String(adjustedSizeUsd), features.midPx);
-  const sizeNum = Number.parseFloat(size);
+  const sizeNum = toFiniteNumber(size, Number.NaN);
   const shouldGenerateQuotes = adjustedSizeUsd > 0 && Number.isFinite(sizeNum) && sizeNum > 0;
 
   // Check one-sided mode
@@ -386,7 +400,7 @@ export function generateDesiredOrders(
 
   // Check if unwind order should be added
   if (shouldGenerateUnwind(position, params, nowMs)) {
-    const posSize = Number.parseFloat(position.size);
+    const posSize = toFiniteNumber(position.size, 0);
     const unwindSize = calculateUnwindSize(position, params);
 
     if (unwindSize > 0) {
