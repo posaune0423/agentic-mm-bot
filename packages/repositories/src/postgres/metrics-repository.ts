@@ -170,21 +170,21 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
               baseHalfSpreadBps: "10",
               volSpreadGain: "1",
               toxSpreadGain: "1",
-              quoteSizeUsd: "10",
+              quoteSizeUsd: "20",
               refreshIntervalMs: 1000,
               staleCancelMs: 5000,
-              maxInventory: "1",
+              maxInventory: "0.5", // Tuned: actual max pos ~0.328 BTC
               inventorySkewGain: "5",
               pauseMarkIndexBps: "50",
               pauseLiqCount10s: 3,
-              // Attack-defense parameters (defaults)
-              defensiveSpreadMultiplier: null,
-              defensiveSizeMultiplier: null,
-              oneSidedThreshold: null,
-              oneSidedOnNonZeroInventory: null,
-              unwindTriggerMs: null,
-              unwindSizeRatio: null,
-              unwindCrossBps: null,
+              // Attack-defense parameters (tuned based on data analysis)
+              defensiveSpreadMultiplier: "1.5",
+              defensiveSizeMultiplier: "0.5",
+              oneSidedThreshold: "0.2", // Lower threshold for earlier one-sided
+              oneSidedOnNonZeroInventory: true, // Stop bad side immediately
+              unwindTriggerMs: 30000,
+              unwindSizeRatio: "0.25",
+              unwindCrossBps: "2", // Cross 2 bps for better unwind fill
             }),
           );
         }

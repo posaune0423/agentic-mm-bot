@@ -220,10 +220,18 @@ async function main(): Promise<void> {
     quoteSizeUsd: "20", // $20 per order (fallback)
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
-    maxInventory: "1",
+    maxInventory: "0.5", // Tuned: actual max pos ~0.328 BTC (p50 ~0.097)
     inventorySkewGain: "5",
     pauseMarkIndexBps: "50",
     pauseLiqCount10s: 3,
+    // Attack-defense parameters (tuned based on data analysis)
+    defensiveSpreadMultiplier: "1.5",
+    defensiveSizeMultiplier: "0.5",
+    oneSidedThreshold: "0.2", // Tuned: lower threshold for earlier one-sided
+    oneSidedOnNonZeroInventory: true, // Enable: stop bad side immediately when pos!=0
+    unwindTriggerMs: 30000, // 30s (markout10s positive, markout60s negative)
+    unwindSizeRatio: "0.25",
+    unwindCrossBps: "2", // Cross 2 bps to improve unwind fill rate
   };
   let currentParamsSetId: string = DEFAULT_PARAMS_SET_ID;
 
