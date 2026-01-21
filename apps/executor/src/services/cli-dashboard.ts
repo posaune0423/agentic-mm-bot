@@ -63,6 +63,8 @@ export interface TickDebug {
   plannedActions: ExecutionAction[];
   /** Funding rate for display */
   funding?: { rate?: string; tsMs?: number };
+  /** Open interest for display */
+  openInterest?: { openInterest?: string; openInterestUsd?: string; tsMs?: number };
 }
 
 /** Format number with optional digits, "-" for missing values */
@@ -457,7 +459,20 @@ export class ExecutorCliDashboard {
       const fundingRow = `${fundingLabel} ${rateVal}    ${fundingAgeLabel} ${fundingAge}`;
       lines.push(this.boxRow(fundingRow, width));
     } else {
-      lines.push(this.boxRow(`${fundingLabel} ${this.style.wrap("-", "dim")}`, width));
+      lines.push(this.boxRow(`${fundingLabel} ${this.style.wrap("waiting (updates infrequently)", "dim")}`, width));
+    }
+
+    // Open Interest Row
+    const oiLabel = `${this.style.token("dim")}OI:${this.style.token("reset")}`;
+    const oi = t.openInterest;
+    if (oi && (oi.openInterest != null || oi.openInterestUsd != null)) {
+      const oiBase = oi.openInterest ?? "-";
+      const oiUsd = oi.openInterestUsd ?? "-";
+      const oiAge = oi.tsMs !== undefined ? this.layout.formatAgeMs(t.nowMs, oi.tsMs) : "-";
+      const oiRow = `${oiLabel} base=${oiBase}  ${this.style.token("dim")}usd:${this.style.token("reset")}${oiUsd}  ${this.style.token("dim")}age:${this.style.token("reset")}${oiAge}`;
+      lines.push(this.boxRow(oiRow, width));
+    } else {
+      lines.push(this.boxRow(`${oiLabel} ${this.style.wrap("polling (waiting first sample)", "dim")}`, width));
     }
 
     lines.push(this.layout.boxLine(width, "middle"));

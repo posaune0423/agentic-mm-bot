@@ -275,6 +275,9 @@ async function main(): Promise<void> {
       case "funding":
         marketDataCache.updateFunding(event);
         break;
+      case "oi":
+        marketDataCache.updateOpenInterest(event);
+        break;
       case "connected":
         dashboard.setConnectionStatus("connected");
         logger.info("Market data connected");
@@ -383,7 +386,7 @@ async function main(): Promise<void> {
   marketDataAdapter.subscribe({
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices", "funding"],
+    channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
 
   // Connect to private stream
@@ -470,6 +473,7 @@ async function main(): Promise<void> {
                 lastUpdateMs: positionTracker.getLastUpdateMs(),
               },
               funding: marketDataCache.getFunding(),
+              openInterest: marketDataCache.getOpenInterest(),
             });
           },
           onAction: ({ phase, action, error }) => {

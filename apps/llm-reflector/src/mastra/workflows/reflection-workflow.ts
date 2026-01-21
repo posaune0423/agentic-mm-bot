@@ -24,7 +24,7 @@ import type { ProposalOutput } from "../../types/schemas";
 import type { FileSinkPort } from "../../ports/file-sink-port";
 import { validateProposal } from "../../services/param-gate";
 import type { ParamGateError } from "../../services/param-gate";
-import { extractFirstJsonObject, snippet } from "../../services/llm-output-parser";
+import { extractFirstJsonObject, parseJsonLenient, snippet } from "../../services/llm-output-parser";
 import { REFLECTOR_INSTRUCTIONS } from "../agents/reflector-agent";
 
 export type WorkflowError =
@@ -104,11 +104,11 @@ Based on this data, suggest parameter changes to improve performance.
 
 RESPONSE FORMAT (CRITICAL):
 {
-  "changes": { "<paramName>": <newValue> },  // 1-2 params as object keys
+  "changes": { "<paramName>": <newValue> },
   "rollbackConditions": {
-    "markout10sP50BelowBps": <number>,  // optional
-    "pauseCountAbove": <number>,         // optional
-    "maxDurationMs": <number>            // optional (at least one required)
+    "markout10sP50BelowBps": <number>,
+    "pauseCountAbove": <number>,
+    "maxDurationMs": <number>
   },
   "reasoningTrace": ["reason1", "reason2"]
 }
@@ -215,7 +215,7 @@ function generateProposal(
 
       let parsedJson: unknown;
       try {
-        parsedJson = JSON.parse(jsonText);
+        parsedJson = parseJsonLenient(jsonText);
       } catch (error) {
         return errAsync({
           type: "AGENT_FAILED" as const,

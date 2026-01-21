@@ -34,6 +34,7 @@ export interface IngestorMetrics {
   tradeReceived: number;
   priceReceived: number;
   fundingReceived: number;
+  oiReceived: number;
   bboBufferSize: number;
   tradeBufferSize: number;
   priceBufferSize: number;

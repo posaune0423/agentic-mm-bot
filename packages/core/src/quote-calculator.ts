@@ -202,9 +202,23 @@ function calculateDefensiveSize(baseSizeUsd: number, risk: RiskEvaluation, defen
  * @returns 'bid' if only bid should quote, 'ask' if only ask, null if both
  */
 function getOneSidedMode(position: Position, params: StrategyParams): "bid" | "ask" | null {
-  const posSize = Number.parseFloat(position.size);
-  const maxInventory = Number.parseFloat(params.maxInventory);
-  const threshold = Number.parseFloat(params.oneSidedThreshold ?? String(DEFAULT_ONE_SIDED_THRESHOLD));
+  // Validate and sanitize inputs to avoid forcing single-sided quoting on NaN/out-of-range values
+  let posSize = Number.parseFloat(position.size);
+  if (!Number.isFinite(posSize)) posSize = 0;
+
+  let maxInventory = Number.parseFloat(params.maxInventory);
+  if (!Number.isFinite(maxInventory) || maxInventory <= 0) {
+    maxInventory = 0;
+    return null; // Both sides active when maxInventory is invalid
+  }
+
+  let threshold = Number.parseFloat(params.oneSidedThreshold ?? String(DEFAULT_ONE_SIDED_THRESHOLD));
+  if (!Number.isFinite(threshold)) {
+    threshold = DEFAULT_ONE_SIDED_THRESHOLD;
+  } else {
+    // Clamp to [0, 1] to avoid out-of-range thresholds
+    threshold = Math.max(0, Math.min(1, threshold));
+  }
 
   const absPos = Math.abs(posSize);
   const oneSidedLevel = maxInventory * threshold;
@@ -274,32 +288,63 @@ export function generateDesiredOrders(
   }
 
   // Get defensive multipliers (use defaults if not set)
-  const defensiveSpreadMult = Number.parseFloat(
+  let defensiveSpreadMult = Number.parseFloat(
     params.defensiveSpreadMultiplier ?? String(DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER),
   );
-  const defensiveSizeMult = Number.parseFloat(
+  if (!Number.isFinite(defensiveSpreadMult) || defensiveSpreadMult <= 0) {
+    defensiveSpreadMult = DEFAULT_DEFENSIVE_SPREAD_MULTIPLIER;
+  }
+
+  let defensiveSizeMult = Number.parseFloat(
     params.defensiveSizeMultiplier ?? String(DEFAULT_DEFENSIVE_SIZE_MULTIPLIER),
   );
+  if (!Number.isFinite(defensiveSizeMult) || defensiveSizeMult <= 0) {
+    defensiveSizeMult = DEFAULT_DEFENSIVE_SIZE_MULTIPLIER;
+  }
 
   // Calculate base spread
-  const baseHalfSpreadBps = calculateHalfSpreadBps(params, features);
+  let baseHalfSpreadBps = calculateHalfSpreadBps(params, features);
+  if (!Number.isFinite(baseHalfSpreadBps)) baseHalfSpreadBps = 0;
 
   // Apply defensive adjustment to spread
-  const adjustedHalfSpreadBps = calculateDefensiveHalfSpreadBps(baseHalfSpreadBps, risk, defensiveSpreadMult);
+  let adjustedHalfSpreadBps = calculateDefensiveHalfSpreadBps(baseHalfSpreadBps, risk, defensiveSpreadMult);
+  if (!Number.isFinite(adjustedHalfSpreadBps)) {
+    return []; // Avoid producing NaN quotes
+  }
+  if (adjustedHalfSpreadBps < 0) adjustedHalfSpreadBps = 0;
 
   // Calculate skew
-  const skewBps = calculateSkewBps(params, position);
+  let skewBps = calculateSkewBps(params, position);
+  if (!Number.isFinite(skewBps)) skewBps = 0;
 
   // Calculate prices
   const halfSpreadPrice = bpsToPrice(mid, adjustedHalfSpreadBps);
   const skewPrice = bpsToPrice(mid, skewBps);
 
-  const bidPx = formatPrice(mid - halfSpreadPrice - skewPrice);
-  const askPx = formatPrice(mid + halfSpreadPrice - skewPrice);
+  if (!Number.isFinite(halfSpreadPrice) || !Number.isFinite(skewPrice)) {
+    return []; // Avoid producing NaN quotes
+  }
+
+  const bidPxNum = mid - halfSpreadPrice - skewPrice;
+  const askPxNum = mid + halfSpreadPrice - skewPrice;
+
+  if (!Number.isFinite(bidPxNum) || !Number.isFinite(askPxNum) || bidPxNum <= 0 || askPxNum <= 0) {
+    return []; // Avoid producing invalid/NaN quotes
+  }
+
+  const bidPx = formatPrice(bidPxNum);
+  const askPx = formatPrice(askPxNum);
 
   // Calculate size with defensive adjustment
-  const baseSizeUsd = Number.parseFloat(params.quoteSizeUsd);
-  const adjustedSizeUsd = calculateDefensiveSize(baseSizeUsd, risk, defensiveSizeMult);
+  let baseSizeUsd = Number.parseFloat(params.quoteSizeUsd);
+  if (!Number.isFinite(baseSizeUsd) || baseSizeUsd < 0) baseSizeUsd = 0;
+
+  let adjustedSizeUsd = calculateDefensiveSize(baseSizeUsd, risk, defensiveSizeMult);
+  if (!Number.isFinite(adjustedSizeUsd)) {
+    return []; // Avoid producing NaN size / orders
+  }
+  if (adjustedSizeUsd < 0) adjustedSizeUsd = 0;
+
   const size = usdToBaseSize(String(adjustedSizeUsd), features.midPx);
   const sizeNum = Number.parseFloat(size);
   const shouldGenerateQuotes = adjustedSizeUsd > 0 && Number.isFinite(sizeNum) && sizeNum > 0;

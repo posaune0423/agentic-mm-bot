@@ -17,7 +17,7 @@ mock.module("ai", () => ({
 }));
 
 import { generateProposal } from "../src/services/proposal-generator";
-import { extractFirstJsonObject } from "../src/services/llm-output-parser";
+import { extractFirstJsonObject, parseJsonLenient } from "../src/services/llm-output-parser";
 
 describe("proposal-generator", () => {
   it("returns proposal when AI returns structured `output`", async () => {
@@ -70,5 +70,22 @@ describe("proposal-generator", () => {
   it("extracts first JSON object from noisy output", () => {
     const out = extractFirstJsonObject('note:\n{"a": {"b": 2}} trailing');
     expect(out).toBe('{"a": {"b": 2}}');
+  });
+
+  it("parses JSON with // comments (lenient)", () => {
+    const parsed = parseJsonLenient(
+      '{ "changes": { "refreshIntervalMs": 120 }, "rollbackConditions": { "maxDurationMs": 300000 // 5 minutes\n }, "reasoningTrace": ["ok"] }',
+    ) as any;
+    expect(parsed.rollbackConditions.maxDurationMs).toBe(300000);
+  });
+
+  it("parses JSON with /* */ comments and trailing commas (lenient)", () => {
+    const parsed = parseJsonLenient('{ "a": 1, /* comment */ "b": [1,2,], }') as any;
+    expect(parsed).toEqual({ a: 1, b: [1, 2] });
+  });
+
+  it("does not treat // inside strings as comments", () => {
+    const parsed = parseJsonLenient('{ "url": "http://example.com/a//b" }') as any;
+    expect(parsed.url).toBe("http://example.com/a//b");
   });
 });

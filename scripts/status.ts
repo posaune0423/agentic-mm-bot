@@ -1,30 +1,21 @@
 /**
  * Status Dashboard Script
  *
- * TUI dashboard showing bot KPIs from both Extended SDK (live account data)
- * and Database (historical performance metrics).
+ * TUI dashboard focused on bot-improvement KPIs from Database.
+ *
+ * Notes:
+ * - This dashboard intentionally avoids “runtime monitoring” (e.g., current position)
+ *   and instead highlights summary KPIs, profitability, fill quality, and trends.
  *
  * Usage: bun run status
  *
- * Environment variables (same as executor):
+ * Environment variables:
  * - DATABASE_URL: PostgreSQL connection string
  * - EXCHANGE: Exchange identifier (default: extended)
  * - SYMBOL: Trading symbol (e.g., BTC-USD)
- * - EXTENDED_NETWORK: testnet | mainnet
- * - EXTENDED_API_KEY: API key
- * - EXTENDED_STARK_PRIVATE_KEY: Stark private key
- * - EXTENDED_STARK_PUBLIC_KEY: Stark public key
- * - EXTENDED_VAULT_ID: Vault ID
  */
 
 import { sql } from "drizzle-orm";
-import {
-  initWasm,
-  MAINNET_CONFIG,
-  PerpetualTradingClient,
-  StarkPerpetualAccount,
-  TESTNET_CONFIG,
-} from "extended-typescript-sdk";
 
 import { getDb } from "@agentic-mm-bot/db";
 import type { Db } from "@agentic-mm-bot/db";
@@ -38,70 +29,16 @@ import type { LogRecord } from "@agentic-mm-bot/utils";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 const EXCHANGE = process.env.EXCHANGE ?? "extended";
 const SYMBOL = process.env.SYMBOL ?? "BTC-USD";
-const EXTENDED_NETWORK = (process.env.EXTENDED_NETWORK ?? "testnet") as "testnet" | "mainnet";
-const EXTENDED_API_KEY = process.env.EXTENDED_API_KEY ?? "";
-const EXTENDED_STARK_PRIVATE_KEY = process.env.EXTENDED_STARK_PRIVATE_KEY ?? "";
-const EXTENDED_STARK_PUBLIC_KEY = process.env.EXTENDED_STARK_PUBLIC_KEY ?? "";
-const EXTENDED_VAULT_ID = Number(process.env.EXTENDED_VAULT_ID ?? "0");
 
 // Dashboard config
 const RENDER_INTERVAL_MS = 250;
-const SDK_FETCH_INTERVAL_MS = 5_000;
 const DB_FETCH_INTERVAL_MS = 10_000;
+const TREND_WINDOW_HOURS = 48;
+const MIN_CHART_WIDTH = 10;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface BalanceData {
-  collateralName?: string;
-  balance?: string; // Wallet balance
-  equity?: string;
-  availableForTrade?: string;
-  availableForWithdrawal?: string;
-  unrealisedPnl?: string;
-  initialMargin?: string;
-  marginRatio?: string;
-  exposure?: string;
-  leverage?: string;
-  updatedTime?: number;
-}
-
-interface PositionData {
-  size: string;
-  entryPrice?: string;
-  unrealizedPnl?: string;
-  side?: string;
-  markPrice?: string;
-  liquidationPrice?: string;
-  leverage?: string;
-  value?: string;
-  margin?: string;
-  realisedPnl?: string;
-}
-
-interface AccountInfo {
-  accountId?: number;
-  status?: string;
-  l2Vault?: number;
-  description?: string;
-}
-
-interface PnlDataPoint {
-  date: string;
-  value: string;
-}
-
-interface SdkData {
-  accountInfo?: AccountInfo;
-  balance?: BalanceData;
-  position?: PositionData;
-  openOrdersCount?: number;
-  pnlHistory?: PnlDataPoint[];
-  equityHistory?: PnlDataPoint[];
-  lastFetchMs?: number;
-  error?: string;
-}
 
 interface DbPerformanceWindow {
   fillCount: number;
@@ -165,6 +102,8 @@ interface DbOps {
   feeSum: number | null;
   makerRate: number | null;
   takerRate: number | null;
+  lastFillTs: Date | null;
+  lastOrderEventTs: Date | null;
 }
 
 interface DbAllTime {
@@ -179,6 +118,16 @@ interface DbAllTime {
   lastFillTs: Date | null;
 }
 
+interface DbTrendPoint {
+  hour: Date;
+  fillCount: number;
+  totalNotional: number | null;
+  edgeT0Usd: number | null;
+  markout10sUsd: number | null;
+  edgeT0BpsVwap: number | null;
+  markout10sBpsVwap: number | null;
+}
+
 interface DbData {
   perf1h?: DbPerformanceWindow;
   perf24h?: DbPerformanceWindow;
@@ -187,6 +136,7 @@ interface DbData {
   bySide1h?: DbBySide[];
   quality1h?: DbQuality;
   ops1h?: DbOps;
+  trend?: DbTrendPoint[];
   lastFetchMs?: number;
   error?: string;
 }
@@ -195,10 +145,9 @@ interface DbData {
 // Global State
 // ─────────────────────────────────────────────────────────────────────────────
 
-let sdkData: SdkData = {};
 let dbData: DbData = {};
-let lastSdkFetchMs = 0;
 let lastDbFetchMs = 0;
+let isFetchingDb = false;
 
 const style = new Style();
 const layout = new LayoutPolicy();
@@ -210,216 +159,82 @@ const screen = new TTYScreen({
 });
 const renderer = new TTYRenderer(chunk => process.stdout.write(chunk));
 
-let tradingClient: PerpetualTradingClient | null = null;
 let db: Db | null = null;
 let startedAtMs = Date.now();
-
-// API base URL for direct HTTP calls
-const API_BASE_URL =
-  EXTENDED_NETWORK === "mainnet" ?
-    "https://api.starknet.extended.exchange/api/v1"
-  : "https://api.starknet.sepolia.extended.exchange/api/v1";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SDK Data Fetcher
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Safely extract a string value from an object
- */
-function safeString(obj: unknown, key: string): string | undefined {
-  if (!obj || typeof obj !== "object") return undefined;
-  const val = (obj as Record<string, unknown>)[key];
-  if (val === null || val === undefined) return undefined;
-  if (typeof val === "string") return val;
-  if (typeof val === "number") return val.toString();
-  if (typeof val === "object" && "toString" in val) {
-    return (val as { toString: () => string }).toString();
-  }
-  return String(val);
-}
-
-/**
- * Fetch PnL history directly via HTTP API
- */
-async function fetchPnlHistory(accountId: number, interval: string, pnlType: string): Promise<PnlDataPoint[]> {
-  try {
-    const url = `${API_BASE_URL}/portfolio/charts/pnl?accountId=${accountId}&interval=${interval}&pnlType=${pnlType}`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": EXTENDED_API_KEY,
-        "User-Agent": "agentic-mm-bot/1.0",
-      },
-    });
-
-    if (!res.ok) {
-      pushLog(LogLevel.DEBUG, `PnL history API returned ${res.status}`);
-      return [];
-    }
-
-    const json = (await res.json()) as { status?: string; data?: Array<{ date: string; value: string }> };
-    if (json.status !== "OK" || !Array.isArray(json.data)) {
-      return [];
-    }
-
-    return json.data;
-  } catch (err) {
-    pushLog(LogLevel.DEBUG, `PnL history fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-    return [];
-  }
-}
-
-/**
- * Fetch equity history directly via HTTP API
- */
-async function fetchEquityHistory(accountId: number, interval: string): Promise<PnlDataPoint[]> {
-  try {
-    const url = `${API_BASE_URL}/portfolio/charts/equities?accountId=${accountId}&interval=${interval}`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": EXTENDED_API_KEY,
-        "User-Agent": "agentic-mm-bot/1.0",
-      },
-    });
-
-    if (!res.ok) {
-      pushLog(LogLevel.DEBUG, `Equity history API returned ${res.status}`);
-      return [];
-    }
-
-    const json = (await res.json()) as { status?: string; data?: Array<{ date: string; value: string }> };
-    if (json.status !== "OK" || !Array.isArray(json.data)) {
-      return [];
-    }
-
-    return json.data;
-  } catch (err) {
-    pushLog(LogLevel.DEBUG, `Equity history fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-    return [];
-  }
-}
-
-async function fetchSdkData(): Promise<void> {
-  if (!tradingClient) {
-    sdkData = { error: "SDK not initialized" };
-    return;
-  }
-
-  try {
-    // Fetch account info to get accountId
-    let accountInfo: AccountInfo | undefined;
-    try {
-      const accountRes = (await tradingClient.account.getAccount()) as unknown as {
-        data?: {
-          accountId?: number;
-          status?: string;
-          l2Vault?: number;
-          description?: string;
-        };
-      };
-      const acctData = accountRes.data;
-      if (acctData) {
-        accountInfo = {
-          accountId: acctData.accountId,
-          status: acctData.status,
-          l2Vault: acctData.l2Vault,
-          description: acctData.description,
-        };
-      }
-    } catch {
-      // Account info is optional
-    }
-
-    // Fetch balance with all fields
-    const balanceRes = await tradingClient.account.getBalance();
-    const balData = balanceRes.data as unknown as Record<string, unknown> | undefined;
-
-    const balance: BalanceData | undefined =
-      balData ?
-        {
-          collateralName: safeString(balData, "collateralName"),
-          balance: safeString(balData, "balance"),
-          equity: safeString(balData, "equity"),
-          availableForTrade: safeString(balData, "availableForTrade"),
-          availableForWithdrawal: safeString(balData, "availableForWithdrawal"),
-          unrealisedPnl: safeString(balData, "unrealisedPnl"),
-          initialMargin: safeString(balData, "initialMargin"),
-          marginRatio: safeString(balData, "marginRatio"),
-          exposure: safeString(balData, "exposure"),
-          leverage: safeString(balData, "leverage"),
-          updatedTime: typeof balData.updatedTime === "number" ? balData.updatedTime : undefined,
-        }
-      : undefined;
-
-    // Fetch positions with all fields
-    const positionsRes = await tradingClient.account.getPositions({ marketNames: [SYMBOL] });
-    const positions = (positionsRes.data ?? []) as Array<Record<string, unknown>>;
-    const rawPos = positions[0];
-
-    let position: PositionData | undefined;
-    if (rawPos) {
-      const side = safeString(rawPos, "side");
-      const sizeRaw = safeString(rawPos, "size") ?? "0";
-      const size = side === "SHORT" ? `-${sizeRaw}` : sizeRaw;
-
-      position = {
-        size,
-        side,
-        entryPrice: safeString(rawPos, "openPrice"),
-        unrealizedPnl: safeString(rawPos, "unrealisedPnl"),
-        markPrice: safeString(rawPos, "markPrice"),
-        liquidationPrice: safeString(rawPos, "liquidationPrice"),
-        leverage: safeString(rawPos, "leverage"),
-        value: safeString(rawPos, "value"),
-        margin: safeString(rawPos, "margin"),
-        realisedPnl: safeString(rawPos, "realisedPnl"),
-      };
-    }
-
-    // Fetch open orders count
-    const ordersRes = await tradingClient.account.getOpenOrders({ marketNames: [SYMBOL] });
-    const orders = ordersRes.data ?? [];
-
-    // Fetch PnL and equity history if we have accountId
-    let pnlHistory: PnlDataPoint[] = [];
-    let equityHistory: PnlDataPoint[] = [];
-
-    if (accountInfo?.accountId) {
-      // Fetch WEEK interval for charts (7 days)
-      pnlHistory = await fetchPnlHistory(accountInfo.accountId, "WEEK", "TOTAL_PNL");
-      equityHistory = await fetchEquityHistory(accountInfo.accountId, "WEEK");
-    }
-
-    sdkData = {
-      accountInfo,
-      balance,
-      position,
-      openOrdersCount: orders.length,
-      pnlHistory,
-      equityHistory,
-      lastFetchMs: Date.now(),
-      error: undefined,
-    };
-
-    pushLog(LogLevel.DEBUG, "SDK data fetched", {
-      orders: orders.length,
-      pnlHistoryLen: pnlHistory.length,
-      equityHistoryLen: equityHistory.length,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    sdkData = { ...sdkData, error: msg, lastFetchMs: Date.now() };
-    pushLog(LogLevel.WARN, `SDK fetch error: ${msg}`);
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DB Data Fetcher
 // ─────────────────────────────────────────────────────────────────────────────
+
+interface PerfQueryRow extends Record<string, unknown> {
+  fill_count: string;
+  buy_count: string;
+  sell_count: string;
+  total_notional: string | null;
+  edge_t0_usd: string | null;
+  price_move_10s_usd: string | null;
+  price_move_60s_usd: string | null;
+  markout_10s_usd: string | null;
+  markout_60s_usd: string | null;
+  edge_t0_bps_vwap: string | null;
+  price_move_10s_bps_vwap: string | null;
+  markout_10s_bps_vwap: string | null;
+  markout_60s_bps_vwap: string | null;
+  win_count: string;
+  avg_fill_size: string | null;
+  total_fees: string | null;
+}
+
+interface TrendQueryRow extends Record<string, unknown> {
+  hour: string;
+  fill_count: string;
+  total_notional: string | null;
+  edge_t0_usd: string | null;
+  markout_10s_usd: string | null;
+  edge_t0_bps_vwap: string | null;
+  markout_10s_bps_vwap: string | null;
+}
+
+function parsePerfRow(row: PerfQueryRow | undefined): DbPerformanceWindow {
+  const fillCount = Number(row?.fill_count ?? "0");
+  const edgeT0Usd = row?.edge_t0_usd ? Number(row.edge_t0_usd) : null;
+  const markout10sUsd = row?.markout_10s_usd ? Number(row.markout_10s_usd) : null;
+  const totalFees = row?.total_fees ? Number(row.total_fees) : null;
+  const winCount = Number(row?.win_count ?? "0");
+
+  return {
+    fillCount,
+    buyCount: Number(row?.buy_count ?? "0"),
+    sellCount: Number(row?.sell_count ?? "0"),
+    totalNotional: row?.total_notional ? Number(row.total_notional) : null,
+    edgeT0Usd,
+    priceMove10sUsd: row?.price_move_10s_usd ? Number(row.price_move_10s_usd) : null,
+    priceMove60sUsd: row?.price_move_60s_usd ? Number(row.price_move_60s_usd) : null,
+    markout10sUsd,
+    markout60sUsd: row?.markout_60s_usd ? Number(row.markout_60s_usd) : null,
+    edgeT0BpsVwap: row?.edge_t0_bps_vwap ? Number(row.edge_t0_bps_vwap) : null,
+    priceMove10sBpsVwap: row?.price_move_10s_bps_vwap ? Number(row.price_move_10s_bps_vwap) : null,
+    markout10sBpsVwap: row?.markout_10s_bps_vwap ? Number(row.markout_10s_bps_vwap) : null,
+    markout60sBpsVwap: row?.markout_60s_bps_vwap ? Number(row.markout_60s_bps_vwap) : null,
+    winCount,
+    winRate: fillCount > 0 ? (winCount / fillCount) * 100 : null,
+    avgFillSize: row?.avg_fill_size ? Number(row.avg_fill_size) : null,
+    totalFees,
+    netAfterFees: markout10sUsd !== null && totalFees !== null ? markout10sUsd - totalFees : markout10sUsd,
+  };
+}
+
+function parseDbTs(ts: string | null | undefined): Date | null {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function computeRetentionPct(edgeUsd: number | null, netUsd: number | null): number | null {
+  if (edgeUsd === null || netUsd === null) return null;
+  if (!Number.isFinite(edgeUsd) || !Number.isFinite(netUsd) || edgeUsd === 0) return null;
+  return (netUsd / edgeUsd) * 100;
+}
 
 async function fetchDbData(): Promise<void> {
   if (!db) {
@@ -431,25 +246,68 @@ async function fetchDbData(): Promise<void> {
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const trendSince = new Date(now.getTime() - TREND_WINDOW_HOURS * 60 * 60 * 1000);
 
-    // Fetch 1h performance from v_fills_edge_hourly
-    const perf1hResult = await db.execute<{
-      fill_count: string;
-      total_notional: string | null;
-      edge_t0_usd: string | null;
-      price_move_10s_usd: string | null;
-      markout_10s_usd: string | null;
-      markout_60s_usd: string | null;
-      edge_t0_bps_vwap: string | null;
-      markout_10s_bps_vwap: string | null;
-    }>(sql`
+    // Comprehensive performance query helper
+    const perfQuery = (since: Date) => sql`
       SELECT
         COALESCE(SUM(fill_count), 0)::text as fill_count,
+        COALESCE(SUM(buy_count), 0)::text as buy_count,
+        COALESCE(SUM(sell_count), 0)::text as sell_count,
         SUM(total_notional)::text as total_notional,
         SUM(edge_t0_usd)::text as edge_t0_usd,
         SUM(price_move_10s_usd)::text as price_move_10s_usd,
+        SUM(markout_60s_usd - markout_10s_usd)::text as price_move_60s_usd,
         SUM(markout_10s_usd)::text as markout_10s_usd,
         SUM(markout_60s_usd)::text as markout_60s_usd,
+        CASE WHEN SUM(total_notional) > 0
+          THEN (SUM(edge_t0_bps_vwap * total_notional) / SUM(total_notional))::text
+          ELSE NULL
+        END as edge_t0_bps_vwap,
+        CASE WHEN SUM(total_notional) > 0
+          THEN (SUM(price_move_10s_bps_vwap * total_notional) / SUM(total_notional))::text
+          ELSE NULL
+        END as price_move_10s_bps_vwap,
+        CASE WHEN SUM(total_notional) > 0
+          THEN (SUM(markout_10s_bps_vwap * total_notional) / SUM(total_notional))::text
+          ELSE NULL
+        END as markout_10s_bps_vwap,
+        CASE WHEN SUM(total_notional) > 0
+          THEN (SUM(markout_60s_bps_vwap * total_notional) / SUM(total_notional))::text
+          ELSE NULL
+        END as markout_60s_bps_vwap,
+        (SELECT COUNT(*) FROM fills_enriched
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
+         AND ts >= ${since} AND markout_10s_bps IS NOT NULL AND markout_10s_bps > 0)::text as win_count,
+        CASE WHEN SUM(fill_count) > 0
+          THEN (SUM(total_notional) / SUM(fill_count))::text
+          ELSE NULL
+        END as avg_fill_size,
+        (SELECT SUM(CAST(fee AS NUMERIC)) FROM ex_fill
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
+         AND ts >= ${since} AND fee IS NOT NULL)::text as total_fees
+      FROM v_fills_edge_hourly
+      WHERE exchange = ${EXCHANGE}
+        AND symbol = ${SYMBOL}
+        AND hour >= ${since}
+    `;
+
+    // Fetch performance for different time windows
+    const [perf1hResult, perf24hResult, perf7dResult] = await Promise.all([
+      db.execute<PerfQueryRow>(perfQuery(oneHourAgo)),
+      db.execute<PerfQueryRow>(perfQuery(twentyFourHoursAgo)),
+      db.execute<PerfQueryRow>(perfQuery(sevenDaysAgo)),
+    ]);
+
+    // Fetch trends (hourly time series)
+    const trendResult = await db.execute<TrendQueryRow>(sql`
+      SELECT
+        hour::text as hour,
+        COALESCE(SUM(fill_count), 0)::text as fill_count,
+        SUM(total_notional)::text as total_notional,
+        SUM(edge_t0_usd)::text as edge_t0_usd,
+        SUM(markout_10s_usd)::text as markout_10s_usd,
         CASE WHEN SUM(total_notional) > 0
           THEN (SUM(edge_t0_bps_vwap * total_notional) / SUM(total_notional))::text
           ELSE NULL
@@ -461,42 +319,75 @@ async function fetchDbData(): Promise<void> {
       FROM v_fills_edge_hourly
       WHERE exchange = ${EXCHANGE}
         AND symbol = ${SYMBOL}
-        AND hour >= ${oneHourAgo}
+        AND hour >= ${trendSince}
+      GROUP BY hour
+      ORDER BY hour ASC
     `);
-    const p1h = perf1hResult.rows[0];
 
-    // Fetch 24h performance
-    const perf24hResult = await db.execute<{
+    // Fetch all-time totals
+    const allTimeResult = await db.execute<{
       fill_count: string;
       total_notional: string | null;
       edge_t0_usd: string | null;
       price_move_10s_usd: string | null;
       markout_10s_usd: string | null;
-      markout_60s_usd: string | null;
-      edge_t0_bps_vwap: string | null;
-      markout_10s_bps_vwap: string | null;
+      total_fees: string | null;
+      first_fill_ts: string | null;
+      last_fill_ts: string | null;
     }>(sql`
       SELECT
-        COALESCE(SUM(fill_count), 0)::text as fill_count,
-        SUM(total_notional)::text as total_notional,
-        SUM(edge_t0_usd)::text as edge_t0_usd,
-        SUM(price_move_10s_usd)::text as price_move_10s_usd,
-        SUM(markout_10s_usd)::text as markout_10s_usd,
-        SUM(markout_60s_usd)::text as markout_60s_usd,
-        CASE WHEN SUM(total_notional) > 0
-          THEN (SUM(edge_t0_bps_vwap * total_notional) / SUM(total_notional))::text
-          ELSE NULL
-        END as edge_t0_bps_vwap,
-        CASE WHEN SUM(total_notional) > 0
-          THEN (SUM(markout_10s_bps_vwap * total_notional) / SUM(total_notional))::text
-          ELSE NULL
-        END as markout_10s_bps_vwap
-      FROM v_fills_edge_hourly
+        COUNT(*)::text as fill_count,
+        SUM(notional_t0)::text as total_notional,
+        SUM(edge_t0_bps * notional_t0 / 10000)::text as edge_t0_usd,
+        SUM(price_move_10s_bps * notional_t0 / 10000)::text as price_move_10s_usd,
+        SUM(markout_10s_bps * notional_t0 / 10000)::text as markout_10s_usd,
+        (SELECT SUM(CAST(fee AS NUMERIC)) FROM ex_fill
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL} AND fee IS NOT NULL)::text as total_fees,
+        MIN(ts)::text as first_fill_ts,
+        MAX(ts)::text as last_fill_ts
+      FROM v_fills_edge_decomposition
       WHERE exchange = ${EXCHANGE}
         AND symbol = ${SYMBOL}
-        AND hour >= ${twentyFourHoursAgo}
+        AND notional_t0 IS NOT NULL AND notional_t0 > 0
     `);
-    const p24h = perf24hResult.rows[0];
+    const at = allTimeResult.rows[0];
+
+    // Fetch by-side analysis (1h)
+    const bySideResult = await db.execute<{
+      side: string;
+      fill_count: string;
+      total_notional: string | null;
+      edge_t0_bps_vwap: string | null;
+      price_move_10s_bps_vwap: string | null;
+      markout_10s_bps_vwap: string | null;
+      edge_t0_usd: string | null;
+      markout_10s_usd: string | null;
+    }>(sql`
+      SELECT
+        UPPER(side) as side,
+        COUNT(*)::text as fill_count,
+        SUM(notional_t0)::text as total_notional,
+        CASE WHEN SUM(notional_t0) > 0
+          THEN (SUM(edge_t0_bps * notional_t0) / SUM(notional_t0))::text
+          ELSE NULL
+        END as edge_t0_bps_vwap,
+        CASE WHEN SUM(notional_t0) > 0
+          THEN (SUM(price_move_10s_bps * notional_t0) / SUM(notional_t0))::text
+          ELSE NULL
+        END as price_move_10s_bps_vwap,
+        CASE WHEN SUM(notional_t0) > 0
+          THEN (SUM(markout_10s_bps * notional_t0) / SUM(notional_t0))::text
+          ELSE NULL
+        END as markout_10s_bps_vwap,
+        SUM(edge_t0_bps * notional_t0 / 10000)::text as edge_t0_usd,
+        SUM(markout_10s_bps * notional_t0 / 10000)::text as markout_10s_usd
+      FROM v_fills_edge_decomposition
+      WHERE exchange = ${EXCHANGE}
+        AND symbol = ${SYMBOL}
+        AND ts >= ${oneHourAgo}
+        AND notional_t0 IS NOT NULL AND notional_t0 > 0
+      GROUP BY UPPER(side)
+    `);
 
     // Fetch markout percentiles (1h)
     const percentilesResult = await db.execute<{
@@ -516,7 +407,7 @@ async function fetchDbData(): Promise<void> {
     `);
     const pctl = percentilesResult.rows[0];
 
-    // Fetch worst fills (1h, top 5)
+    // Fetch worst fills (1h, top 3)
     const worstFillsResult = await db.execute<{
       fill_id: string;
       side: string;
@@ -534,15 +425,41 @@ async function fetchDbData(): Promise<void> {
         AND ts >= ${oneHourAgo}
         AND markout_10s_bps IS NOT NULL
       ORDER BY markout_10s_bps ASC
-      LIMIT 5
+      LIMIT 3
     `);
 
-    // Fetch ops stats (1h): cancel count, pause count, fees, maker rate
+    // Fetch best fills (1h, top 3)
+    const bestFillsResult = await db.execute<{
+      fill_id: string;
+      side: string;
+      markout_10s_bps: string | null;
+      fill_sz: string;
+    }>(sql`
+      SELECT
+        fill_id::text as fill_id,
+        side,
+        markout_10s_bps::text as markout_10s_bps,
+        fill_sz::text as fill_sz
+      FROM fills_enriched
+      WHERE exchange = ${EXCHANGE}
+        AND symbol = ${SYMBOL}
+        AND ts >= ${oneHourAgo}
+        AND markout_10s_bps IS NOT NULL
+      ORDER BY markout_10s_bps DESC
+      LIMIT 3
+    `);
+
+    // Fetch ops stats (1h)
     const opsResult = await db.execute<{
       cancel_count: string;
       pause_count: string;
+      order_count: string;
+      fill_count: string;
       fee_sum: string | null;
-      maker_rate: string | null;
+      maker_count: string;
+      taker_count: string;
+      last_fill_ts: string | null;
+      last_order_event_ts: string | null;
     }>(sql`
       SELECT
         (SELECT COUNT(*) FROM ex_order_event
@@ -551,41 +468,62 @@ async function fetchDbData(): Promise<void> {
         (SELECT COUNT(*) FROM strategy_state
          WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
          AND mode = 'PAUSE' AND ts >= ${oneHourAgo})::text as pause_count,
+        (SELECT COUNT(*) FROM ex_order_event
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
+         AND event_type = 'new' AND ts >= ${oneHourAgo})::text as order_count,
+        (SELECT COUNT(*) FROM ex_fill
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
+         AND ts >= ${oneHourAgo})::text as fill_count,
         (SELECT SUM(CAST(fee AS NUMERIC)) FROM ex_fill
          WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
          AND ts >= ${oneHourAgo} AND fee IS NOT NULL)::text as fee_sum,
-        (SELECT
-          CASE WHEN COUNT(*) > 0
-            THEN (COUNT(*) FILTER (WHERE liquidity = 'maker')::numeric / COUNT(*)::numeric * 100)::text
-            ELSE NULL
-          END
-         FROM ex_fill
+        (SELECT COUNT(*) FROM ex_fill
          WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
-         AND ts >= ${oneHourAgo})::text as maker_rate
+         AND ts >= ${oneHourAgo} AND liquidity = 'maker')::text as maker_count,
+        (SELECT COUNT(*) FROM ex_fill
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL}
+         AND ts >= ${oneHourAgo} AND liquidity = 'taker')::text as taker_count
+        ,
+        (SELECT MAX(ts) FROM ex_fill
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL})::text as last_fill_ts,
+        (SELECT MAX(ts) FROM ex_order_event
+         WHERE exchange = ${EXCHANGE} AND symbol = ${SYMBOL})::text as last_order_event_ts
     `);
     const ops = opsResult.rows[0];
+    const orderCount = Number(ops?.order_count ?? "0");
+    const fillCount = Number(ops?.fill_count ?? "0");
+    const makerCount = Number(ops?.maker_count ?? "0");
+    const takerCount = Number(ops?.taker_count ?? "0");
+    const totalLiqCount = makerCount + takerCount;
 
     dbData = {
-      perf1h: {
-        fillCount: Number(p1h?.fill_count ?? "0"),
-        totalNotional: p1h?.total_notional ? Number(p1h.total_notional) : null,
-        edgeT0Usd: p1h?.edge_t0_usd ? Number(p1h.edge_t0_usd) : null,
-        priceMove10sUsd: p1h?.price_move_10s_usd ? Number(p1h.price_move_10s_usd) : null,
-        markout10sUsd: p1h?.markout_10s_usd ? Number(p1h.markout_10s_usd) : null,
-        markout60sUsd: p1h?.markout_60s_usd ? Number(p1h.markout_60s_usd) : null,
-        edgeT0BpsVwap: p1h?.edge_t0_bps_vwap ? Number(p1h.edge_t0_bps_vwap) : null,
-        markout10sBpsVwap: p1h?.markout_10s_bps_vwap ? Number(p1h.markout_10s_bps_vwap) : null,
+      perf1h: parsePerfRow(perf1hResult.rows[0]),
+      perf24h: parsePerfRow(perf24hResult.rows[0]),
+      perf7d: parsePerfRow(perf7dResult.rows[0]),
+      allTime: {
+        fillCount: Number(at?.fill_count ?? "0"),
+        totalNotional: at?.total_notional ? Number(at.total_notional) : null,
+        edgeT0Usd: at?.edge_t0_usd ? Number(at.edge_t0_usd) : null,
+        priceMove10sUsd: at?.price_move_10s_usd ? Number(at.price_move_10s_usd) : null,
+        markout10sUsd: at?.markout_10s_usd ? Number(at.markout_10s_usd) : null,
+        totalFees: at?.total_fees ? Number(at.total_fees) : null,
+        netAfterFees:
+          at?.markout_10s_usd && at?.total_fees ? Number(at.markout_10s_usd) - Number(at.total_fees)
+          : at?.markout_10s_usd ? Number(at.markout_10s_usd)
+          : null,
+        firstFillTs: at?.first_fill_ts ? new Date(at.first_fill_ts) : null,
+        lastFillTs: at?.last_fill_ts ? new Date(at.last_fill_ts) : null,
       },
-      perf24h: {
-        fillCount: Number(p24h?.fill_count ?? "0"),
-        totalNotional: p24h?.total_notional ? Number(p24h.total_notional) : null,
-        edgeT0Usd: p24h?.edge_t0_usd ? Number(p24h.edge_t0_usd) : null,
-        priceMove10sUsd: p24h?.price_move_10s_usd ? Number(p24h.price_move_10s_usd) : null,
-        markout10sUsd: p24h?.markout_10s_usd ? Number(p24h.markout_10s_usd) : null,
-        markout60sUsd: p24h?.markout_60s_usd ? Number(p24h.markout_60s_usd) : null,
-        edgeT0BpsVwap: p24h?.edge_t0_bps_vwap ? Number(p24h.edge_t0_bps_vwap) : null,
-        markout10sBpsVwap: p24h?.markout_10s_bps_vwap ? Number(p24h.markout_10s_bps_vwap) : null,
-      },
+      bySide1h: bySideResult.rows.map(r => ({
+        side: r.side,
+        fillCount: Number(r.fill_count ?? "0"),
+        totalNotional: r.total_notional ? Number(r.total_notional) : null,
+        edgeT0BpsVwap: r.edge_t0_bps_vwap ? Number(r.edge_t0_bps_vwap) : null,
+        priceMove10sBpsVwap: r.price_move_10s_bps_vwap ? Number(r.price_move_10s_bps_vwap) : null,
+        markout10sBpsVwap: r.markout_10s_bps_vwap ? Number(r.markout_10s_bps_vwap) : null,
+        edgeT0Usd: r.edge_t0_usd ? Number(r.edge_t0_usd) : null,
+        markout10sUsd: r.markout_10s_usd ? Number(r.markout_10s_usd) : null,
+      })),
       quality1h: {
         markout10sP10: pctl?.p10 ? Number(pctl.p10) : null,
         markout10sP50: pctl?.p50 ? Number(pctl.p50) : null,
@@ -596,13 +534,33 @@ async function fetchDbData(): Promise<void> {
           markout10sBps: r.markout_10s_bps ? Number(r.markout_10s_bps) : null,
           fillSz: r.fill_sz,
         })),
+        bestFills: bestFillsResult.rows.map(r => ({
+          fillId: r.fill_id,
+          side: r.side,
+          markout10sBps: r.markout_10s_bps ? Number(r.markout_10s_bps) : null,
+          fillSz: r.fill_sz,
+        })),
       },
       ops1h: {
         cancelCount: Number(ops?.cancel_count ?? "0"),
         pauseCount: Number(ops?.pause_count ?? "0"),
+        orderCount,
+        fillRate: orderCount > 0 ? (fillCount / orderCount) * 100 : null,
         feeSum: ops?.fee_sum ? Number(ops.fee_sum) : null,
-        makerRate: ops?.maker_rate ? Number(ops.maker_rate) : null,
+        makerRate: totalLiqCount > 0 ? (makerCount / totalLiqCount) * 100 : null,
+        takerRate: totalLiqCount > 0 ? (takerCount / totalLiqCount) * 100 : null,
+        lastFillTs: parseDbTs(ops?.last_fill_ts ?? null),
+        lastOrderEventTs: parseDbTs(ops?.last_order_event_ts ?? null),
       },
+      trend: trendResult.rows.map(r => ({
+        hour: new Date(r.hour),
+        fillCount: Number(r.fill_count ?? "0"),
+        totalNotional: r.total_notional ? Number(r.total_notional) : null,
+        edgeT0Usd: r.edge_t0_usd ? Number(r.edge_t0_usd) : null,
+        markout10sUsd: r.markout_10s_usd ? Number(r.markout_10s_usd) : null,
+        edgeT0BpsVwap: r.edge_t0_bps_vwap ? Number(r.edge_t0_bps_vwap) : null,
+        markout10sBpsVwap: r.markout_10s_bps_vwap ? Number(r.markout_10s_bps_vwap) : null,
+      })),
       lastFetchMs: Date.now(),
       error: undefined,
     };
@@ -726,252 +684,234 @@ function boxRow(content: string, width: number): string {
 function renderHeader(nowMs: number, width: number): string[] {
   const lines: string[] = [];
 
-  const title = style.wrap("STATUS DASHBOARD", "bold", "white");
+  const title = style.wrap("BOT KPI DASHBOARD", "bold", "white");
   const symbol = style.wrap(`${EXCHANGE}/${SYMBOL}`, "bold", "cyan");
-  const network = style.badge(
-    EXTENDED_NETWORK.toUpperCase(),
-    EXTENDED_NETWORK === "mainnet" ? "bgGreen" : "bgYellow",
-    "white",
-  );
 
   lines.push(layout.sectionHeader(title, width));
 
   const uptime = layout.formatDurationMs(nowMs - startedAtMs);
   const uptimeLabel = `${style.token("dim")}uptime${style.token("reset")} ${uptime}`;
 
-  // SDK status
-  const sdkAge = sdkData.lastFetchMs ? layout.formatAgeMs(nowMs, sdkData.lastFetchMs) : "-";
-  const sdkStatus =
-    sdkData.error ? style.badge("SDK ERR", "bgRed", "white") : style.badge("SDK OK", "bgGreen", "white");
-
   // DB status
   const dbAge = dbData.lastFetchMs ? layout.formatAgeMs(nowMs, dbData.lastFetchMs) : "-";
   const dbStatus = dbData.error ? style.badge("DB ERR", "bgRed", "white") : style.badge("DB OK", "bgGreen", "white");
 
-  const row1 = `${symbol}  ${network}  ${uptimeLabel}`;
+  const row1 = `${symbol}  ${uptimeLabel}`;
   lines.push(boxRow(row1, width));
 
-  const row2 = `${sdkStatus} ${style.token("dim")}age:${style.token("reset")}${sdkAge}  ${dbStatus} ${style.token("dim")}age:${style.token("reset")}${dbAge}`;
+  const row2 = `${dbStatus} ${style.token("dim")}age:${style.token("reset")}${dbAge}  ${style.wrap("focus: KPIs / profitability / quality", "dim")}`;
   lines.push(boxRow(row2, width));
 
   lines.push(layout.boxLine(width, "middle"));
   return lines;
 }
 
-function renderAccountSection(nowMs: number, width: number): string[] {
+function renderKpiSummarySection(width: number): string[] {
   const lines: string[] = [];
 
-  const sectionTitle = style.wrap("ACCOUNT (SDK)", "bold", "blue");
+  const sectionTitle = style.wrap("KPI SUMMARY (DB)", "bold", "magenta");
   lines.push(layout.sectionHeader(sectionTitle, width));
 
-  if (sdkData.error) {
-    lines.push(boxRow(`${style.wrap("Error:", "red")} ${sdkData.error}`, width));
+  if (dbData.error) {
+    lines.push(boxRow(`${style.wrap("Error:", "red")} ${dbData.error}`, width));
     lines.push(layout.boxLine(width, "middle"));
     return lines;
   }
 
-  const bal = sdkData.balance;
-  const acct = sdkData.accountInfo;
+  const renderKpiRow = (label: string, labelColor: "cyan" | "yellow" | "green", p?: DbPerformanceWindow) => {
+    if (!p) return;
+    const edge = p.edgeT0Usd;
+    const adv = p.priceMove10sUsd;
+    const net = p.markout10sUsd;
+    const netAf = p.netAfterFees;
 
-  // Account ID & Status row
-  if (acct?.accountId) {
-    const statusBadge =
-      acct.status === "ACTIVE" ?
-        style.badge("ACTIVE", "bgGreen", "white")
-      : style.badge(acct.status ?? "-", "bgYellow", "white");
+    const edgeColor = colorValue(edge);
+    const advColor = colorValue(adv, "red");
+    const netColor = colorValue(net);
+    const nafColor = colorValue(netAf);
+
+    const retention = computeRetentionPct(edge, net);
+    const retentionColor =
+      retention === null ? style.token("dim")
+      : retention >= 50 ? style.token("green")
+      : retention >= 25 ? style.token("yellow")
+      : style.token("red");
+
     lines.push(
       boxRow(
-        `${style.token("dim")}Account:${style.token("reset")} #${acct.accountId}  ${statusBadge}  ${style.token("dim")}${acct.description ?? ""}${style.token("reset")}`,
+        `${style.wrap(label, "bold", labelColor)}  ` +
+          `${style.token("dim")}NetAfterFees:${style.token("reset")}${nafColor}${fmtUsd(netAf).padStart(10)}${style.token("reset")}  ` +
+          `${style.token("dim")}Edge:${style.token("reset")}${edgeColor}${fmtUsd(edge).padStart(10)}${style.token("reset")}  ` +
+          `${style.token("dim")}AdvSel:${style.token("reset")}${advColor}${fmtUsd(adv).padStart(10)}${style.token("reset")}  ` +
+          `${style.token("dim")}Net:${style.token("reset")}${netColor}${fmtUsd(net).padStart(10)}${style.token("reset")}`,
+        width,
+      ),
+    );
+
+    lines.push(
+      boxRow(
+        `     ${style.token("dim")}Retention:${style.token("reset")}${retentionColor}${fmtPct(retention)}${style.token("reset")}  ` +
+          `${style.token("dim")}WinRate:${style.token("reset")}${fmtPct(p.winRate)}  ` +
+          `${style.token("dim")}AvgFill:${style.token("reset")}${p.avgFillSize ? `$${fmtNum(p.avgFillSize, 0)}` : "-"}  ` +
+          `${style.token("dim")}Vol:${style.token("reset")}${p.totalNotional ? `$${fmtNum(p.totalNotional / 1000, 0)}k` : "-"}  ` +
+          `${style.token("dim")}Markout:${style.token("reset")}${fmtBps(p.markout10sBpsVwap)}`,
+        width,
+      ),
+    );
+  };
+
+  renderKpiRow("1h ", "cyan", dbData.perf1h);
+  renderKpiRow("24h", "yellow", dbData.perf24h);
+  renderKpiRow("7d ", "green", dbData.perf7d);
+
+  const at = dbData.allTime;
+  if (at && at.fillCount > 0) {
+    const range =
+      at.firstFillTs && at.lastFillTs ?
+        `${at.firstFillTs.toLocaleDateString()} - ${at.lastFillTs.toLocaleDateString()}`
+      : "-";
+    lines.push(
+      boxRow(
+        `${style.token("dim")}All-time:${style.token("reset")} ${style.wrap(range, "dim")}  ` +
+          `${style.token("dim")}Fills:${style.token("reset")} ${style.wrap(String(at.fillCount), "bold")}  ` +
+          `${style.token("dim")}NetAfterFees:${style.token("reset")}${colorValue(at.netAfterFees)}${fmtUsd(at.netAfterFees)}${style.token("reset")}`,
         width,
       ),
     );
   }
-
-  // Main balance row: Equity + Balance + Unrealized PnL
-  const equityNum = bal?.equity ? Number.parseFloat(bal.equity) : null;
-  const walletBalNum = bal?.balance ? Number.parseFloat(bal.balance) : null;
-  const uPnlNum = bal?.unrealisedPnl ? Number.parseFloat(bal.unrealisedPnl) : null;
-
-  const equityLabel = `${style.token("dim")}Equity:${style.token("reset")}`;
-  const equityVal = equityNum !== null ? style.wrap(`$${fmtNum(equityNum, 2)}`, "bold", "white") : "-";
-  const balLabel = `${style.token("dim")}Wallet:${style.token("reset")}`;
-  const balVal = walletBalNum !== null ? `$${fmtNum(walletBalNum, 2)}` : "-";
-  const uPnlLabel = `${style.token("dim")}Unrealized PnL:${style.token("reset")}`;
-  const uPnlColor = colorValue(uPnlNum);
-  const uPnlVal = uPnlNum !== null ? `${uPnlColor}${fmtUsd(uPnlNum, 2)}${style.token("reset")}` : "-";
-
-  lines.push(boxRow(`${equityLabel} ${equityVal}  ${balLabel} ${balVal}  ${uPnlLabel} ${uPnlVal}`, width));
-
-  // Available / Margin / Leverage row
-  const availTradeNum = bal?.availableForTrade ? Number.parseFloat(bal.availableForTrade) : null;
-  const initialMarginNum = bal?.initialMargin ? Number.parseFloat(bal.initialMargin) : null;
-  const leverageNum = bal?.leverage ? Number.parseFloat(bal.leverage) : null;
-  const marginRatioNum = bal?.marginRatio ? Number.parseFloat(bal.marginRatio) : null;
-  const exposureNum = bal?.exposure ? Number.parseFloat(bal.exposure) : null;
-
-  const availLabel = `${style.token("dim")}Avail:${style.token("reset")}`;
-  const availVal = availTradeNum !== null ? `$${fmtNum(availTradeNum, 2)}` : "-";
-  const marginLabel = `${style.token("dim")}Margin:${style.token("reset")}`;
-  const marginVal = initialMarginNum !== null ? `$${fmtNum(initialMarginNum, 2)}` : "-";
-  const levLabel = `${style.token("dim")}Leverage:${style.token("reset")}`;
-  const levVal =
-    leverageNum !== null ?
-      style.wrap(
-        `${fmtNum(leverageNum, 2)}x`,
-        leverageNum > 10 ? "red"
-        : leverageNum > 5 ? "yellow"
-        : "green",
-      )
-    : "-";
-  const expLabel = `${style.token("dim")}Exposure:${style.token("reset")}`;
-  const expVal = exposureNum !== null ? `$${fmtNum(exposureNum, 0)}` : "-";
-
-  lines.push(
-    boxRow(
-      `${availLabel} ${availVal}  ${marginLabel} ${marginVal}  ${levLabel} ${levVal}  ${expLabel} ${expVal}`,
-      width,
-    ),
-  );
-
-  // Margin ratio bar
-  if (marginRatioNum !== null) {
-    const mrLabel = `${style.token("dim")}Margin Ratio:${style.token("reset")}`;
-    const mrPct = marginRatioNum * 100;
-    const mrColor =
-      mrPct > 80 ? style.token("red")
-      : mrPct > 50 ? style.token("yellow")
-      : style.token("green");
-    const mrBar = barChart(mrPct, 100, 20, "█", "░");
-    lines.push(
-      boxRow(
-        `${mrLabel} ${mrColor}${fmtPct(mrPct)}${style.token("reset")} ${mrColor}${mrBar}${style.token("reset")}`,
-        width,
-      ),
-    );
-  }
-
-  lines.push(layout.boxLine(width, "middle"));
-
-  // Position section
-  const posTitle = style.wrap("POSITION", "bold", "cyan");
-  lines.push(layout.sectionHeader(posTitle, width));
-
-  const pos = sdkData.position;
-  if (pos) {
-    const posSize = Number.parseFloat(pos.size);
-    const sideLabel =
-      posSize > 0 ? style.wrap("LONG", "bold", "green")
-      : posSize < 0 ? style.wrap("SHORT", "bold", "red")
-      : style.wrap("FLAT", "dim");
-    const sizeVal = style.wrap(
-      pos.size,
-      posSize > 0 ? "green"
-      : posSize < 0 ? "red"
-      : "dim",
-    );
-    const entryVal = pos.entryPrice ?? "-";
-    const markVal = pos.markPrice ?? "-";
-
-    lines.push(
-      boxRow(
-        `${sideLabel} ${sizeVal}  ${style.token("dim")}Entry:${style.token("reset")} ${entryVal}  ${style.token("dim")}Mark:${style.token("reset")} ${markVal}`,
-        width,
-      ),
-    );
-
-    // Position PnL row
-    const posUPnlNum = pos.unrealizedPnl ? Number.parseFloat(pos.unrealizedPnl) : null;
-    const posRPnlNum = pos.realisedPnl ? Number.parseFloat(pos.realisedPnl) : null;
-    const posUPnlColor = colorValue(posUPnlNum);
-    const posRPnlColor = colorValue(posRPnlNum);
-    const liqVal = pos.liquidationPrice ?? "-";
-    const posLevVal = pos.leverage ? `${pos.leverage}x` : "-";
-
-    lines.push(
-      boxRow(
-        `${style.token("dim")}uPnL:${style.token("reset")} ${posUPnlColor}${fmtUsd(posUPnlNum)}${style.token("reset")}  ${style.token("dim")}rPnL:${style.token("reset")} ${posRPnlColor}${fmtUsd(posRPnlNum)}${style.token("reset")}  ${style.token("dim")}Liq:${style.token("reset")} ${liqVal}  ${style.token("dim")}Lev:${style.token("reset")} ${posLevVal}`,
-        width,
-      ),
-    );
-  } else {
-    lines.push(boxRow(`${style.wrap("NO POSITION", "dim")}`, width));
-  }
-
-  // Open orders
-  const ordersLabel = `${style.token("dim")}Open Orders:${style.token("reset")}`;
-  const ordersVal = sdkData.openOrdersCount !== undefined ? String(sdkData.openOrdersCount) : "-";
-  lines.push(boxRow(`${ordersLabel} ${ordersVal}`, width));
 
   lines.push(layout.boxLine(width, "middle"));
   return lines;
 }
 
-function renderPnlChartSection(width: number): string[] {
+function renderTrendsSection(width: number): string[] {
   const lines: string[] = [];
 
-  const sectionTitle = style.wrap("PNL CHART (7d)", "bold", "green");
+  const sectionTitle = style.wrap(`TRENDS (${TREND_WINDOW_HOURS}h, hourly)`, "bold", "blue");
   lines.push(layout.sectionHeader(sectionTitle, width));
 
-  const pnlHistory = sdkData.pnlHistory ?? [];
-  const equityHistory = sdkData.equityHistory ?? [];
-
-  if (pnlHistory.length === 0 && equityHistory.length === 0) {
-    lines.push(boxRow(`${style.token("dim")}No history data available${style.token("reset")}`, width));
+  const trend = dbData.trend ?? [];
+  if (trend.length === 0) {
+    lines.push(boxRow(`${style.token("dim")}No trend data available${style.token("reset")}`, width));
     lines.push(layout.boxLine(width, "middle"));
     return lines;
   }
 
   const innerWidth = width - 4;
-  const chartWidth = Math.min(innerWidth - 25, 60);
+  const rawWidth = innerWidth - 28;
+  const chartWidth = Math.max(MIN_CHART_WIDTH, Math.min(rawWidth, 60));
 
-  // PnL sparkline
-  if (pnlHistory.length > 0) {
-    const pnlValues = pnlHistory.map(p => Number.parseFloat(p.value));
-    const pnlMin = Math.min(...pnlValues);
-    const pnlMax = Math.max(...pnlValues);
-    const pnlLast = pnlValues[pnlValues.length - 1];
-    const pnlChange = pnlValues.length >= 2 ? pnlLast - pnlValues[0] : 0;
+  const markoutUsd = trend.map(p => p.markout10sUsd ?? 0);
+  const edgeUsd = trend.map(p => p.edgeT0Usd ?? 0);
+  const fills = trend.map(p => p.fillCount);
+  const retention = trend.map(p => computeRetentionPct(p.edgeT0Usd, p.markout10sUsd) ?? 0);
 
-    const pnlColor = pnlLast >= 0 ? style.token("green") : style.token("red");
-    const changeColor = colorValue(pnlChange);
-    const chart = sparkline(pnlValues, chartWidth);
+  const lastMarkout = markoutUsd[markoutUsd.length - 1] ?? 0;
+  const lastEdge = edgeUsd[edgeUsd.length - 1] ?? 0;
+  const lastRet = retention[retention.length - 1] ?? 0;
+  const lastFills = fills[fills.length - 1] ?? 0;
 
-    lines.push(
-      boxRow(
-        `${style.token("dim")}Total PnL:${style.token("reset")} ${pnlColor}${chart}${style.token("reset")}`,
-        width,
-      ),
-    );
-    lines.push(
-      boxRow(
-        `  ${style.token("dim")}Current:${style.token("reset")} ${pnlColor}${fmtUsd(pnlLast)}${style.token("reset")}  ${style.token("dim")}Change:${style.token("reset")} ${changeColor}${fmtUsd(pnlChange)}${style.token("reset")}  ${style.token("dim")}Min:${style.token("reset")} ${fmtUsd(pnlMin)}  ${style.token("dim")}Max:${style.token("reset")} ${fmtUsd(pnlMax)}`,
-        width,
-      ),
-    );
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Net Markout ($):${style.token("reset")} ${colorValue(lastMarkout)}${sparkline(markoutUsd, chartWidth)}${style.token("reset")}  ` +
+        `${style.token("dim")}last:${style.token("reset")} ${fmtUsd(lastMarkout)}`,
+      width,
+    ),
+  );
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Edge ($):       ${style.token("reset")} ${colorValue(lastEdge)}${sparkline(edgeUsd, chartWidth)}${style.token("reset")}  ` +
+        `${style.token("dim")}last:${style.token("reset")} ${fmtUsd(lastEdge)}`,
+      width,
+    ),
+  );
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Retention (%):  ${style.token("reset")} ${style.token("cyan")}${sparkline(retention, chartWidth)}${style.token("reset")}  ` +
+        `${style.token("dim")}last:${style.token("reset")} ${fmtPct(lastRet)}`,
+      width,
+    ),
+  );
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Fills (count):  ${style.token("reset")} ${style.token("yellow")}${sparkline(fills, chartWidth)}${style.token("reset")}  ` +
+        `${style.token("dim")}last:${style.token("reset")} ${String(lastFills)}`,
+      width,
+    ),
+  );
+
+  lines.push(layout.boxLine(width, "middle"));
+  return lines;
+}
+
+function renderSpreadRevenueSection(width: number): string[] {
+  const lines: string[] = [];
+
+  const sectionTitle = style.wrap("ALL-TIME REVENUE BREAKDOWN (DB)", "bold", "green");
+  lines.push(layout.sectionHeader(sectionTitle, width));
+
+  if (dbData.error) {
+    lines.push(boxRow(`${style.wrap("Error:", "red")} ${dbData.error}`, width));
+    lines.push(layout.boxLine(width, "middle"));
+    return lines;
   }
 
-  // Equity sparkline
-  if (equityHistory.length > 0) {
-    const eqValues = equityHistory.map(p => Number.parseFloat(p.value));
-    const eqMin = Math.min(...eqValues);
-    const eqMax = Math.max(...eqValues);
-    const eqLast = eqValues[eqValues.length - 1];
-    const eqChange = eqValues.length >= 2 ? eqLast - eqValues[0] : 0;
+  const allTime = dbData.allTime;
 
-    const eqColor = style.token("cyan");
-    const changeColor = colorValue(eqChange);
-    const chart = sparkline(eqValues, chartWidth);
+  // All-time summary
+  if (allTime && allTime.fillCount > 0) {
+    const dateRange =
+      allTime.firstFillTs && allTime.lastFillTs ?
+        `${allTime.firstFillTs.toLocaleDateString()} - ${allTime.lastFillTs.toLocaleDateString()}`
+      : "-";
 
-    lines.push(boxRow("", width)); // spacer
-    lines.push(
-      boxRow(`${style.token("dim")}Equity:${style.token("reset")}    ${eqColor}${chart}${style.token("reset")}`, width),
-    );
     lines.push(
       boxRow(
-        `  ${style.token("dim")}Current:${style.token("reset")} ${eqColor}$${fmtNum(eqLast, 2)}${style.token("reset")}  ${style.token("dim")}Change:${style.token("reset")} ${changeColor}${fmtUsd(eqChange)}${style.token("reset")}  ${style.token("dim")}Min:${style.token("reset")} $${fmtNum(eqMin, 2)}  ${style.token("dim")}Max:${style.token("reset")} $${fmtNum(eqMax, 2)}`,
+        `${style.token("dim")}ALL TIME:${style.token("reset")} ${style.wrap(dateRange, "dim")}  ${style.token("dim")}Fills:${style.token("reset")} ${style.wrap(String(allTime.fillCount), "bold")}`,
         width,
       ),
     );
+
+    // Spread capture breakdown
+    const edgeColor = colorValue(allTime.edgeT0Usd);
+    const advColor = colorValue(allTime.priceMove10sUsd, "red");
+    const netColor = colorValue(allTime.markout10sUsd);
+    const feeColor = style.token("yellow");
+
+    lines.push(
+      boxRow(
+        `  ${style.token("dim")}Spread Captured:${style.token("reset")} ${edgeColor}${fmtUsd(allTime.edgeT0Usd)}${style.token("reset")}  ${style.token("dim")}Adverse Selection:${style.token("reset")} ${advColor}${fmtUsd(allTime.priceMove10sUsd)}${style.token("reset")}`,
+        width,
+      ),
+    );
+    lines.push(
+      boxRow(
+        `  ${style.token("dim")}Net Markout:${style.token("reset")} ${netColor}${fmtUsd(allTime.markout10sUsd)}${style.token("reset")}  ${style.token("dim")}Fees Paid:${style.token("reset")} ${feeColor}${fmtUsd(allTime.totalFees ? -allTime.totalFees : null)}${style.token("reset")}  ${style.token("dim")}Net After Fees:${style.token("reset")} ${colorValue(allTime.netAfterFees)}${fmtUsd(allTime.netAfterFees)}${style.token("reset")}`,
+        width,
+      ),
+    );
+
+    // Revenue efficiency
+    if (allTime.edgeT0Usd && allTime.edgeT0Usd > 0) {
+      const retentionRate = allTime.markout10sUsd !== null ? (allTime.markout10sUsd / allTime.edgeT0Usd) * 100 : null;
+      const advSelectionRate =
+        allTime.priceMove10sUsd !== null ? Math.abs(allTime.priceMove10sUsd / allTime.edgeT0Usd) * 100 : null;
+      const retColor =
+        retentionRate !== null ?
+          retentionRate >= 50 ? style.token("green")
+          : retentionRate >= 25 ? style.token("yellow")
+          : style.token("red")
+        : style.token("dim");
+
+      lines.push(
+        boxRow(
+          `  ${style.token("dim")}Spread Retention:${style.token("reset")} ${retColor}${fmtPct(retentionRate)}${style.token("reset")}  ${style.token("dim")}Adverse Selection %:${style.token("reset")} ${fmtPct(advSelectionRate)}`,
+          width,
+        ),
+      );
+    }
+  } else {
+    lines.push(boxRow(`${style.token("dim")}No fill data available${style.token("reset")}`, width));
   }
 
   lines.push(layout.boxLine(width, "middle"));
@@ -990,52 +930,69 @@ function renderPerformanceSection(width: number): string[] {
     return lines;
   }
 
-  // Header row
-  const hdr = `${style.token("dim")}${"".padEnd(8)}  ${"Fills".padStart(6)}  ${"Notional".padStart(10)}  ${"Edge".padStart(10)}  ${"PrcMv".padStart(10)}  ${"M10s".padStart(10)}  ${"M60s".padStart(10)}  ${"Edge(bps)".padStart(10)}  ${"M10s(bps)".padStart(10)}${style.token("reset")}`;
-  lines.push(boxRow(hdr, width));
+  // Helper to render a performance row
+  const renderPerfRow = (label: string, labelColor: string, p: DbPerformanceWindow | undefined) => {
+    if (!p) return;
 
-  // 1h row
-  const p1h = dbData.perf1h;
-  if (p1h) {
-    const edgeColor = colorValue(p1h.edgeT0Usd);
-    const priceMoveColor = colorValue(p1h.priceMove10sUsd, "red"); // negative is good for price move
-    const m10sColor = colorValue(p1h.markout10sUsd);
-    const m60sColor = colorValue(p1h.markout60sUsd);
+    const edgeColor = colorValue(p.edgeT0Usd);
+    const advColor = colorValue(p.priceMove10sUsd, "red");
+    const netColor = colorValue(p.markout10sUsd);
+    const winColor =
+      p.winRate !== null ?
+        p.winRate >= 60 ? style.token("green")
+        : p.winRate >= 45 ? style.token("yellow")
+        : style.token("red")
+      : style.token("dim");
 
-    const row = [
-      style.wrap("1h", "bold", "cyan").padEnd(8),
-      String(p1h.fillCount).padStart(6),
-      (p1h.totalNotional ? `$${fmtNum(p1h.totalNotional, 0)}` : "-").padStart(10),
-      `${edgeColor}${fmtUsd(p1h.edgeT0Usd)}${style.token("reset")}`.padStart(10 + 10), // extra for ANSI
-      `${priceMoveColor}${fmtUsd(p1h.priceMove10sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      `${m10sColor}${fmtUsd(p1h.markout10sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      `${m60sColor}${fmtUsd(p1h.markout60sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      fmtBps(p1h.edgeT0BpsVwap).padStart(10),
-      fmtBps(p1h.markout10sBpsVwap).padStart(10),
-    ].join("  ");
-    lines.push(boxRow(row, width));
+    // Row 1: Core metrics
+    lines.push(
+      boxRow(
+        `${style.wrap(label, "bold", labelColor as "cyan" | "yellow" | "green")}  ${style.token("dim")}Fills:${style.token("reset")}${String(p.fillCount).padStart(4)} (B:${p.buyCount} S:${p.sellCount})  ${style.token("dim")}Vol:${style.token("reset")}${p.totalNotional ? `$${fmtNum(p.totalNotional / 1000, 0)}k` : "-"}  ${style.token("dim")}WinRate:${style.token("reset")}${winColor}${fmtPct(p.winRate)}${style.token("reset")}`,
+        width,
+      ),
+    );
+
+    // Row 2: Revenue breakdown
+    lines.push(
+      boxRow(
+        `     ${style.token("dim")}Edge:${style.token("reset")}${edgeColor}${fmtUsd(p.edgeT0Usd).padStart(10)}${style.token("reset")} ${style.token("dim")}(${fmtBps(p.edgeT0BpsVwap)})${style.token("reset")}  ${style.token("dim")}AdvSel:${style.token("reset")}${advColor}${fmtUsd(p.priceMove10sUsd).padStart(10)}${style.token("reset")}  ${style.token("dim")}Net:${style.token("reset")}${netColor}${fmtUsd(p.markout10sUsd).padStart(10)}${style.token("reset")}  ${style.token("dim")}Fees:${style.token("reset")}${fmtUsd(p.totalFees ? -p.totalFees : null)}`,
+        width,
+      ),
+    );
+  };
+
+  renderPerfRow("1h ", "cyan", dbData.perf1h);
+  renderPerfRow("24h", "yellow", dbData.perf24h);
+  renderPerfRow("7d ", "green", dbData.perf7d);
+
+  lines.push(layout.boxLine(width, "middle"));
+  return lines;
+}
+
+function renderBySideSection(width: number): string[] {
+  const lines: string[] = [];
+
+  const sectionTitle = style.wrap("BY SIDE (1h)", "bold", "blue");
+  lines.push(layout.sectionHeader(sectionTitle, width));
+
+  const bySide = dbData.bySide1h;
+  if (!bySide || bySide.length === 0) {
+    lines.push(boxRow(`${style.token("dim")}No data${style.token("reset")}`, width));
+    lines.push(layout.boxLine(width, "middle"));
+    return lines;
   }
 
-  // 24h row
-  const p24h = dbData.perf24h;
-  if (p24h) {
-    const edgeColor = colorValue(p24h.edgeT0Usd);
-    const priceMoveColor = colorValue(p24h.priceMove10sUsd, "red");
-    const m10sColor = colorValue(p24h.markout10sUsd);
-    const m60sColor = colorValue(p24h.markout60sUsd);
+  for (const s of bySide) {
+    const sideColor = s.side === "BUY" ? style.token("green") : style.token("red");
+    const edgeColor = colorValue(s.edgeT0Usd);
+    const netColor = colorValue(s.markout10sUsd);
 
-    const row = [
-      style.wrap("24h", "bold", "yellow").padEnd(8),
-      String(p24h.fillCount).padStart(6),
-      (p24h.totalNotional ? `$${fmtNum(p24h.totalNotional, 0)}` : "-").padStart(10),
-      `${edgeColor}${fmtUsd(p24h.edgeT0Usd)}${style.token("reset")}`.padStart(10 + 10),
-      `${priceMoveColor}${fmtUsd(p24h.priceMove10sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      `${m10sColor}${fmtUsd(p24h.markout10sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      `${m60sColor}${fmtUsd(p24h.markout60sUsd)}${style.token("reset")}`.padStart(10 + 10),
-      fmtBps(p24h.edgeT0BpsVwap).padStart(10),
-      fmtBps(p24h.markout10sBpsVwap).padStart(10),
-    ].join("  ");
-    lines.push(boxRow(row, width));
+    lines.push(
+      boxRow(
+        `${sideColor}${s.side.padEnd(4)}${style.token("reset")} ${style.token("dim")}Fills:${style.token("reset")}${String(s.fillCount).padStart(4)}  ${style.token("dim")}Edge:${style.token("reset")}${edgeColor}${fmtUsd(s.edgeT0Usd).padStart(9)}${style.token("reset")} ${style.token("dim")}(${fmtBps(s.edgeT0BpsVwap)})${style.token("reset")}  ${style.token("dim")}Net:${style.token("reset")}${netColor}${fmtUsd(s.markout10sUsd).padStart(9)}${style.token("reset")} ${style.token("dim")}(${fmtBps(s.markout10sBpsVwap)})${style.token("reset")}`,
+        width,
+      ),
+    );
   }
 
   lines.push(layout.boxLine(width, "middle"));
@@ -1045,7 +1002,7 @@ function renderPerformanceSection(width: number): string[] {
 function renderQualitySection(width: number): string[] {
   const lines: string[] = [];
 
-  const sectionTitle = style.wrap("QUALITY (1h)", "bold", "cyan");
+  const sectionTitle = style.wrap("FILL QUALITY (1h)", "bold", "cyan");
   lines.push(layout.sectionHeader(sectionTitle, width));
 
   const q = dbData.quality1h;
@@ -1060,17 +1017,32 @@ function renderQualitySection(width: number): string[] {
   const p50Color = colorValue(q.markout10sP50);
   const p90Color = colorValue(q.markout10sP90);
 
-  const pctlRow = `${style.token("dim")}Markout10s:${style.token("reset")} P10=${p10Color}${fmtBps(q.markout10sP10)}${style.token("reset")}  P50=${p50Color}${fmtBps(q.markout10sP50)}${style.token("reset")}  P90=${p90Color}${fmtBps(q.markout10sP90)}${style.token("reset")}`;
-  lines.push(boxRow(pctlRow, width));
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Markout10s Distribution:${style.token("reset")} P10=${p10Color}${fmtBps(q.markout10sP10)}${style.token("reset")}  P50=${p50Color}${fmtBps(q.markout10sP50)}${style.token("reset")}  P90=${p90Color}${fmtBps(q.markout10sP90)}${style.token("reset")}`,
+      width,
+    ),
+  );
 
-  // Worst fills
-  if (q.worstFills.length > 0) {
-    lines.push(boxRow(`${style.token("dim")}Worst Fills (by markout):${style.token("reset")}`, width));
-    for (const f of q.worstFills.slice(0, 3)) {
-      const sideStr = f.side.toUpperCase() === "BUY" ? style.wrap("BUY", "green") : style.wrap("SELL", "red");
-      const mkoColor = colorValue(f.markout10sBps);
-      const row = `  ${sideStr} sz=${f.fillSz} ${mkoColor}${fmtBps(f.markout10sBps)}${style.token("reset")} id=${f.fillId.slice(0, 8)}...`;
-      lines.push(boxRow(row, width));
+  // Best and Worst fills side by side
+  const formatFill = (f: { fillId: string; side: string; markout10sBps: number | null; fillSz: string }) => {
+    const sideStr = f.side.toUpperCase() === "BUY" ? style.wrap("B", "green") : style.wrap("S", "red");
+    const mkoColor = colorValue(f.markout10sBps);
+    return `${sideStr} ${mkoColor}${fmtBps(f.markout10sBps).padStart(10)}${style.token("reset")} sz=${f.fillSz}`;
+  };
+
+  if (q.worstFills.length > 0 || (q.bestFills && q.bestFills.length > 0)) {
+    lines.push(
+      boxRow(`${style.wrap("Worst Fills:", "red")}                    ${style.wrap("Best Fills:", "green")}`, width),
+    );
+
+    const maxRows = Math.max(q.worstFills.length, q.bestFills?.length ?? 0, 3);
+    for (let i = 0; i < Math.min(maxRows, 3); i++) {
+      const worst = q.worstFills[i];
+      const best = q.bestFills?.[i];
+      const worstStr = worst ? formatFill(worst) : "".padEnd(25);
+      const bestStr = best ? formatFill(best) : "";
+      lines.push(boxRow(`  ${worstStr}        ${bestStr}`, width));
     }
   }
 
@@ -1081,7 +1053,7 @@ function renderQualitySection(width: number): string[] {
 function renderOpsSection(width: number): string[] {
   const lines: string[] = [];
 
-  const sectionTitle = style.wrap("OPS (1h)", "bold", "yellow");
+  const sectionTitle = style.wrap("OPERATIONS (1h)", "bold", "yellow");
   lines.push(layout.sectionHeader(sectionTitle, width));
 
   const ops = dbData.ops1h;
@@ -1091,13 +1063,49 @@ function renderOpsSection(width: number): string[] {
     return lines;
   }
 
-  const cancelLabel = `${style.token("dim")}Cancels:${style.token("reset")}`;
-  const pauseLabel = `${style.token("dim")}Pauses:${style.token("reset")}`;
-  const feeLabel = `${style.token("dim")}Fees:${style.token("reset")}`;
-  const makerLabel = `${style.token("dim")}Maker%:${style.token("reset")}`;
+  // Activity recency (data health)
+  const nowMs = Date.now();
+  const lastFillAge = ops.lastFillTs ? layout.formatAgeMs(nowMs, ops.lastFillTs.getTime()) : "-";
+  const lastEvtAge = ops.lastOrderEventTs ? layout.formatAgeMs(nowMs, ops.lastOrderEventTs.getTime()) : "-";
+  lines.push(
+    boxRow(
+      `${style.token("dim")}Last fill:${style.token("reset")} ${lastFillAge}  ` +
+        `${style.token("dim")}Last order event:${style.token("reset")} ${lastEvtAge}`,
+      width,
+    ),
+  );
 
+  // Order statistics
+  const orderLabel = `${style.token("dim")}Orders:${style.token("reset")}`;
+  const cancelLabel = `${style.token("dim")}Cancels:${style.token("reset")}`;
+  const fillRateLabel = `${style.token("dim")}FillRate:${style.token("reset")}`;
+  const pauseLabel = `${style.token("dim")}Pauses:${style.token("reset")}`;
+
+  const orderVal = String(ops.orderCount);
   const cancelVal = String(ops.cancelCount);
+  const fillRateVal =
+    ops.fillRate !== null ?
+      style.wrap(
+        fmtPct(ops.fillRate),
+        ops.fillRate >= 50 ? "green"
+        : ops.fillRate >= 25 ? "yellow"
+        : "red",
+      )
+    : "-";
   const pauseVal = ops.pauseCount > 0 ? style.wrap(String(ops.pauseCount), "yellow") : String(ops.pauseCount);
+
+  lines.push(
+    boxRow(
+      `${orderLabel} ${orderVal}  ${cancelLabel} ${cancelVal}  ${fillRateLabel} ${fillRateVal}  ${pauseLabel} ${pauseVal}`,
+      width,
+    ),
+  );
+
+  // Liquidity and fees
+  const feeLabel = `${style.token("dim")}Fees Paid:${style.token("reset")}`;
+  const makerLabel = `${style.token("dim")}Maker:${style.token("reset")}`;
+  const takerLabel = `${style.token("dim")}Taker:${style.token("reset")}`;
+
   const feeVal = ops.feeSum !== null ? `$${fmtNum(ops.feeSum)}` : "-";
   const makerVal =
     ops.makerRate !== null ?
@@ -1108,13 +1116,9 @@ function renderOpsSection(width: number): string[] {
         : "red",
       )
     : "-";
+  const takerVal = ops.takerRate !== null ? fmtPct(ops.takerRate) : "-";
 
-  lines.push(
-    boxRow(
-      `${cancelLabel} ${cancelVal}  ${pauseLabel} ${pauseVal}  ${feeLabel} ${feeVal}  ${makerLabel} ${makerVal}`,
-      width,
-    ),
-  );
+  lines.push(boxRow(`${feeLabel} ${feeVal}  ${makerLabel} ${makerVal}  ${takerLabel} ${takerVal}`, width));
 
   lines.push(layout.boxLine(width, "middle"));
   return lines;
@@ -1174,14 +1178,16 @@ function renderLogsSection(width: number): string[] {
 
 function render(): void {
   const nowMs = Date.now();
-  const W = Math.min(layout.getTerminalWidth(), 140);
+  const W = Math.min(layout.getTerminalWidth(), 160);
 
   const lines: string[] = [];
 
   lines.push(...renderHeader(nowMs, W));
-  lines.push(...renderAccountSection(nowMs, W));
-  lines.push(...renderPnlChartSection(W));
+  lines.push(...renderKpiSummarySection(W));
+  lines.push(...renderTrendsSection(W));
+  lines.push(...renderSpreadRevenueSection(W));
   lines.push(...renderPerformanceSection(W));
+  lines.push(...renderBySideSection(W));
   lines.push(...renderQualitySection(W));
   lines.push(...renderOpsSection(W));
   lines.push(...renderLogsSection(W));
@@ -1215,46 +1221,20 @@ async function init(): Promise<boolean> {
     dbData = { error: msg };
   }
 
-  // Initialize SDK (optional - can run without it)
-  if (EXTENDED_API_KEY && EXTENDED_STARK_PRIVATE_KEY && EXTENDED_STARK_PUBLIC_KEY && EXTENDED_VAULT_ID) {
-    try {
-      await initWasm();
-
-      const starkAccount = new StarkPerpetualAccount(
-        EXTENDED_VAULT_ID,
-        EXTENDED_STARK_PRIVATE_KEY,
-        EXTENDED_STARK_PUBLIC_KEY,
-        EXTENDED_API_KEY,
-      );
-
-      const endpointConfig = EXTENDED_NETWORK === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
-      tradingClient = new PerpetualTradingClient(endpointConfig, starkAccount);
-
-      pushLog(LogLevel.INFO, "SDK initialized", { network: EXTENDED_NETWORK });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      pushLog(LogLevel.WARN, `SDK init failed: ${msg}`);
-      sdkData = { error: msg };
-    }
-  } else {
-    pushLog(LogLevel.WARN, "SDK credentials not configured - running in DB-only mode");
-    sdkData = { error: "SDK credentials not configured" };
-  }
-
   return true;
 }
 
 async function runDataFetchers(nowMs: number): Promise<void> {
-  // Fetch SDK data
-  if (nowMs - lastSdkFetchMs >= SDK_FETCH_INTERVAL_MS && tradingClient) {
-    lastSdkFetchMs = nowMs;
-    void fetchSdkData();
-  }
-
   // Fetch DB data
   if (nowMs - lastDbFetchMs >= DB_FETCH_INTERVAL_MS && db) {
-    lastDbFetchMs = nowMs;
-    void fetchDbData();
+    if (isFetchingDb) return;
+    isFetchingDb = true;
+    try {
+      await fetchDbData();
+      lastDbFetchMs = Date.now();
+    } finally {
+      isFetchingDb = false;
+    }
   }
 }
 
@@ -1280,9 +1260,7 @@ async function main(): Promise<void> {
   pushLog(LogLevel.INFO, "Dashboard started", { exchange: EXCHANGE, symbol: SYMBOL });
 
   // Initial fetch
-  await fetchSdkData();
   await fetchDbData();
-  lastSdkFetchMs = Date.now();
   lastDbFetchMs = Date.now();
 
   const shutdown = () => {

@@ -22,6 +22,7 @@ export * from "./ex-fill";
 
 // Analytics
 export * from "./fills-enriched";
+export * from "./fills-edge-views";
 
 // Strategy Configuration
 export * from "./strategy-params";

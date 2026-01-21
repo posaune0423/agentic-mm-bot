@@ -10,7 +10,7 @@
  * API Docs: https://api.docs.extended.exchange/
  */
 
-import { TESTNET_CONFIG, MAINNET_CONFIG } from "extended-typescript-sdk";
+import { TESTNET_CONFIG, MAINNET_CONFIG, PerpetualTradingClient, StarkPerpetualAccount } from "extended-typescript-sdk";
 import type { EndpointConfig } from "extended-typescript-sdk";
 import { err, ok } from "neverthrow";
 import type { Result } from "neverthrow";
@@ -22,6 +22,7 @@ import type { WsConnectionFactory, IWsConnection } from "./ws-connection";
 import type {
   BboEvent,
   FundingRateEvent,
+  OpenInterestEvent,
   MarketDataError,
   MarketDataEvent,
   MarketDataPort,
@@ -33,6 +34,10 @@ import type { ExtendedConfig } from "./types";
 
 const EXCHANGE_NAME = "extended";
 const log = logger;
+
+interface MarketInfoClient {
+  getMarkets: (args: { marketNames: string[] }) => Promise<unknown>;
+}
 
 // ============================================================================
 // Extended WS Message Types (from API docs)
@@ -139,6 +144,7 @@ const DEFAULT_RECONNECT_CONFIG: ReconnectConfig = {
 
 type StreamType = "orderbook" | "trades" | "markPrice" | "indexPrice" | "fundingRate";
 
+// Events produced by WS stream normalization (open interest is polled separately via REST)
 type NormalizedMarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent;
 
 type StreamMessage =
@@ -169,10 +175,23 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   private config: ExtendedConfig;
   private endpointConfig: EndpointConfig;
   private connectionFactory: WsConnectionFactory<StreamMessage>;
+  private marketInfoClient: MarketInfoClient;
 
   private eventHandlers: ((event: MarketDataEvent) => void)[] = [];
   private subscriptions: MarketDataSubscription[] = [];
   private activeStreams: Map<string, StreamState> = new Map();
+  private openInterestPollers: Map<
+    string,
+    {
+      intervalId: ReturnType<typeof setInterval>;
+      abort: AbortController;
+      lastEmitted?: { openInterest?: string; openInterestUsd?: string };
+      warnedNoFields?: boolean;
+      lastErrorLogAtMs?: number;
+    }
+  > = new Map();
+  private fundingSeen: Set<string> = new Set();
+  private fundingBootstrapDone: Set<string> = new Set();
   private reconnectConfig: ReconnectConfig;
   private reconnectAttempt = 0;
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -203,11 +222,13 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
    * @param config - Extended exchange configuration
    * @param reconnectConfig - Reconnection configuration
    * @param connectionFactory - Optional factory for creating WebSocket connections (for testing)
+   * @param marketInfoClient - Optional SDK-backed market info client (for testing)
    */
   constructor(
     config: ExtendedConfig,
     reconnectConfig: ReconnectConfig = DEFAULT_RECONNECT_CONFIG,
     connectionFactory?: WsConnectionFactory<StreamMessage>,
+    marketInfoClient?: MarketInfoClient,
   ) {
     this.config = config;
     this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
@@ -216,6 +237,24 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     // Use provided factory or default to WsConnection
     this.connectionFactory =
       connectionFactory ?? ((url, headers, label) => new WsConnection<StreamMessage>({ url, headers, label }));
+
+    // Market info client (SDK) for OI polling.
+    // Default uses extended-typescript-sdk's PerpetualTradingClient.marketsInfo.getMarkets.
+    // This does not require WASM init (signing only), and for OI we only call public info endpoints.
+    this.marketInfoClient =
+      marketInfoClient ??
+      (() => {
+        const acct = new StarkPerpetualAccount(
+          this.config.vaultId,
+          this.config.starkPrivateKey,
+          this.config.starkPublicKey,
+          this.config.apiKey,
+        );
+        const client = new PerpetualTradingClient(this.endpointConfig, acct);
+        return {
+          getMarkets: async (args: { marketNames: string[] }) => client.marketsInfo.getMarkets(args),
+        };
+      })();
   }
 
   subscribe(subscription: MarketDataSubscription): Result<void, MarketDataError> {
@@ -277,6 +316,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     // Clear sequence tracking so a reconnect doesn't immediately trip seq-break.
     this.lastSeq.clear();
     this.lastTopOfBook.clear();
+    this.fundingSeen.clear();
+    this.fundingBootstrapDone.clear();
 
     this.isConnected_ = false;
     this.isReconnecting_ = false;
@@ -306,6 +347,14 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     const symbol = subscription.symbol;
 
     for (const channel of subscription.channels) {
+      if (channel === "oi") {
+        this.startOpenInterestPoller(symbol);
+        continue;
+      }
+      if (channel === "funding") {
+        // Funding updates can be infrequent; bootstrap once via SDK for better UX on startup.
+        void this.bootstrapFundingOnce(symbol);
+      }
       const streamTypes = this.channelToStreamTypes(channel);
 
       for (const streamType of streamTypes) {
@@ -329,7 +378,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
   }
 
-  private channelToStreamTypes(channel: "bbo" | "trades" | "prices" | "funding"): StreamType[] {
+  private channelToStreamTypes(channel: "bbo" | "trades" | "prices" | "funding" | "oi"): StreamType[] {
     switch (channel) {
       case "bbo":
         return ["orderbook"];
@@ -340,6 +389,9 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         return ["markPrice", "indexPrice"];
       case "funding":
         return ["fundingRate"];
+      case "oi":
+        // OI has no documented WS stream; we poll via REST.
+        return [];
       default:
         return [];
     }
@@ -478,6 +530,10 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
 
   private stopStreamsForSubscription(subscription: MarketDataSubscription): void {
     for (const channel of subscription.channels) {
+      if (channel === "oi") {
+        this.stopOpenInterestPoller(subscription.symbol);
+        continue;
+      }
       const streamTypes = this.channelToStreamTypes(channel);
 
       for (const streamType of streamTypes) {
@@ -505,6 +561,11 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
 
     await Promise.allSettled(closePromises);
+
+    // Stop REST pollers too.
+    for (const sym of this.openInterestPollers.keys()) {
+      this.stopOpenInterestPoller(sym);
+    }
   }
 
   // ============================================================================
@@ -519,6 +580,253 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         log.error("Event handler threw an error", { error });
       }
     }
+  }
+
+  // ============================================================================
+  // Open Interest (SDK poll)
+  // ============================================================================
+
+  private startOpenInterestPoller(symbol: string): void {
+    if (this.openInterestPollers.has(symbol)) return;
+    // Guard: only poll when "connected" (otherwise disconnect/reconnect loops would keep polling).
+    if (!this.isConnected_) return;
+
+    const abort = new AbortController();
+    const intervalMs = 5_000;
+
+    const intervalId = setInterval(() => {
+      void this.pollOpenInterestOnce(symbol, abort);
+    }, intervalMs);
+
+    this.openInterestPollers.set(symbol, { intervalId, abort });
+    log.info("OI polling started", { symbol, intervalMs });
+
+    // Fire first poll immediately (best-effort).
+    void this.pollOpenInterestOnce(symbol, abort);
+  }
+
+  private stopOpenInterestPoller(symbol: string): void {
+    const p = this.openInterestPollers.get(symbol);
+    if (!p) return;
+    clearInterval(p.intervalId);
+    p.abort.abort();
+    this.openInterestPollers.delete(symbol);
+  }
+
+  private async pollOpenInterestOnce(symbol: string, pollAbort: AbortController): Promise<void> {
+    // If we're not connected anymore, don't emit any new events.
+    if (!this.isConnected_) return;
+
+    try {
+      const timeoutMs = 2500;
+      const res: unknown = await Promise.race([
+        this.marketInfoClient.getMarkets({ marketNames: [symbol] }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            reject(new Error("oi_poll_timeout"));
+          }, timeoutMs),
+        ),
+      ]);
+
+      const first = this.getFirstDataItem(res);
+      const extracted = this.extractOpenInterest(first ?? res);
+      const last = this.openInterestPollers.get(symbol)?.lastEmitted;
+      const changed =
+        extracted.openInterest !== last?.openInterest || extracted.openInterestUsd !== last?.openInterestUsd;
+
+      // If we can't find fields at all, warn once (helps diagnose "No data" without spamming).
+      if (extracted.openInterest === undefined && extracted.openInterestUsd === undefined && last === undefined) {
+        const entry = this.openInterestPollers.get(symbol);
+        if (entry && !entry.warnedNoFields) {
+          entry.warnedNoFields = true;
+          const keys =
+            first !== null && first !== undefined && typeof first === "object" ? Object.keys(first).slice(0, 30) : [];
+          log.warn("OI not found in market info payload (field mismatch?)", { symbol, keys });
+        }
+      }
+
+      // Emit only when we have any value, and either changed or first time.
+      if ((extracted.openInterest !== undefined || extracted.openInterestUsd !== undefined) && changed) {
+        const entry = this.openInterestPollers.get(symbol);
+        if (entry) entry.lastEmitted = extracted;
+
+        const event: OpenInterestEvent = {
+          type: "oi",
+          exchange: EXCHANGE_NAME,
+          symbol,
+          ts: new Date(),
+          openInterest: extracted.openInterest,
+          openInterestUsd: extracted.openInterestUsd,
+          raw: res,
+        };
+        this.emitEvent(event);
+      }
+    } catch (error) {
+      // Best-effort polling; log at most once per 30s to keep dashboards readable.
+      const entry = this.openInterestPollers.get(symbol);
+      const now = Date.now();
+      const lastLog = entry?.lastErrorLogAtMs ?? 0;
+      if (entry && now - lastLog >= 30_000) {
+        entry.lastErrorLogAtMs = now;
+        log.warn("OI polling failed (will retry)", {
+          symbol,
+          errorType: error instanceof Error ? error.name : typeof error,
+          message: error instanceof Error ? error.message : undefined,
+        });
+      }
+    }
+  }
+
+  private getFirstDataItem(res: unknown): unknown {
+    if (res === null || res === undefined || typeof res !== "object") return undefined;
+    if (!("data" in res)) return undefined;
+    const data = (res as { data?: unknown }).data;
+    if (!Array.isArray(data) || data.length === 0) return undefined;
+    return data[0];
+  }
+
+  private extractOpenInterest(json: unknown): { openInterest?: string; openInterestUsd?: string } {
+    const asObj = (v: unknown): Record<string, unknown> | null =>
+      v !== null && v !== undefined && typeof v === "object" ? (v as Record<string, unknown>) : null;
+
+    const readNumish = (obj: Record<string, unknown> | null, keys: string[]): string | undefined => {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
+        const v = obj[k];
+        if (typeof v === "string" && v !== "") return v;
+        if (typeof v === "number" && Number.isFinite(v)) return String(v);
+      }
+      return undefined;
+    };
+
+    // Common shapes:
+    // - { data: [{ ... openInterest ... }] }
+    // - { data: { ... stats: { openInterest ... } } }
+    // - { ... } (flat)
+    const root = asObj(json);
+    const data = root ? root.data : undefined;
+
+    const candidates: Record<string, unknown>[] = [];
+    const dataObj = asObj(data);
+    if (dataObj) candidates.push(dataObj);
+    if (Array.isArray(data) && data.length > 0) {
+      const first = asObj(data[0]);
+      if (first) candidates.push(first);
+    }
+    if (root) candidates.push(root);
+
+    // Add nested stats objects if present.
+    for (const c of candidates.slice()) {
+      const stats = asObj(c.stats);
+      if (stats) candidates.push(stats);
+    }
+
+    const oiKeys = ["openInterest", "open_interest", "oi", "openInterestBase", "open_interest_base"];
+    const oiUsdKeys = [
+      "openInterestUsd",
+      "open_interest_usd",
+      "openInterestUSD",
+      "open_interest_value",
+      "openInterestValue",
+    ];
+
+    for (const c of candidates) {
+      const openInterest = readNumish(c, oiKeys);
+      const openInterestUsd = readNumish(c, oiUsdKeys);
+      if (openInterest !== undefined || openInterestUsd !== undefined) return { openInterest, openInterestUsd };
+    }
+
+    return {};
+  }
+
+  private async bootstrapFundingOnce(symbol: string): Promise<void> {
+    if (this.fundingBootstrapDone.has(symbol)) return;
+    if (!this.isConnected_) return;
+    this.fundingBootstrapDone.add(symbol);
+
+    try {
+      const timeoutMs = 2500;
+      const res: unknown = await Promise.race([
+        this.marketInfoClient.getMarkets({ marketNames: [symbol] }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("funding_bootstrap_timeout")), timeoutMs)),
+      ]);
+
+      const first = this.getFirstDataItem(res);
+      const fundingRate = this.extractFundingRate(first ?? res);
+      if (!fundingRate) return;
+
+      // If we already saw funding from WS, don't overwrite with bootstrap.
+      if (this.fundingSeen.has(symbol)) return;
+
+      this.fundingSeen.add(symbol);
+      this.emitEvent({
+        type: "funding",
+        exchange: EXCHANGE_NAME,
+        symbol,
+        ts: new Date(),
+        fundingRate,
+        raw: res,
+      });
+      log.info("Funding bootstrap emitted from market info", { symbol });
+    } catch (error) {
+      // Best-effort; keep logs minimal.
+      log.debug("Funding bootstrap failed (will rely on WS)", {
+        symbol,
+        errorType: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }
+
+  private extractFundingRate(json: unknown): string | undefined {
+    const asObj = (v: unknown): Record<string, unknown> | null =>
+      v !== null && v !== undefined && typeof v === "object" ? (v as Record<string, unknown>) : null;
+
+    const readNumish = (obj: Record<string, unknown> | null, keys: string[]): string | undefined => {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
+        const v = obj[k];
+        if (typeof v === "string" && v !== "") return v;
+        if (typeof v === "number" && Number.isFinite(v)) return String(v);
+      }
+      return undefined;
+    };
+
+    const root = asObj(json);
+    const data = root ? root.data : undefined;
+
+    const candidates: Record<string, unknown>[] = [];
+    const dataObj = asObj(data);
+    if (dataObj) candidates.push(dataObj);
+    if (Array.isArray(data) && data.length > 0) {
+      const first = asObj(data[0]);
+      if (first) candidates.push(first);
+    }
+    if (root) candidates.push(root);
+
+    // Some payloads nest stats-like objects.
+    for (const c of candidates.slice()) {
+      const stats = asObj(c.stats);
+      if (stats) candidates.push(stats);
+    }
+
+    const keys = [
+      "fundingRate",
+      "funding_rate",
+      "funding",
+      "currentFundingRate",
+      "current_funding_rate",
+      "nextFundingRate",
+      "next_funding_rate",
+    ];
+
+    for (const c of candidates) {
+      const v = readNumish(c, keys);
+      if (v !== undefined) return v;
+    }
+    return undefined;
   }
 
   private handleDisconnect(reason?: string, meta?: Record<string, unknown>): void {
@@ -878,6 +1186,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       raw: message,
     };
 
+    this.fundingSeen.add(symbol);
     return [event];
   }
 }

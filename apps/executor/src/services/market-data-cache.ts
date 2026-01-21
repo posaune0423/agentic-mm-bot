@@ -8,7 +8,7 @@
  */
 
 import type { Ms, PriceStr, Snapshot, SizeStr, MidSnapshot, TradeData } from "@agentic-mm-bot/core";
-import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, OpenInterestEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
 const MID_SNAPSHOTS_WINDOW_MS = 10_000; // 10 seconds
@@ -30,6 +30,9 @@ export class MarketDataCache {
   private indexPx?: PriceStr;
   private fundingRate?: string;
   private fundingTsMs?: Ms;
+  private openInterest?: string;
+  private openInterestUsd?: string;
+  private openInterestTsMs?: Ms;
   private lastUpdateMs: Ms = 0;
 
   private trades: TradeData[] = [];
@@ -88,12 +91,32 @@ export class MarketDataCache {
   }
 
   /**
+   * Update from open interest event
+   */
+  updateOpenInterest(event: OpenInterestEvent): void {
+    if (event.openInterest !== undefined) this.openInterest = event.openInterest;
+    if (event.openInterestUsd !== undefined) this.openInterestUsd = event.openInterestUsd;
+    this.openInterestTsMs = event.ts.getTime();
+  }
+
+  /**
    * Get current funding rate info for dashboard display
    */
   getFunding(): { rate?: string; tsMs?: Ms } {
     return {
       rate: this.fundingRate,
       tsMs: this.fundingTsMs,
+    };
+  }
+
+  /**
+   * Get current open interest info for dashboard display
+   */
+  getOpenInterest(): { openInterest?: string; openInterestUsd?: string; tsMs?: Ms } {
+    return {
+      openInterest: this.openInterest,
+      openInterestUsd: this.openInterestUsd,
+      tsMs: this.openInterestTsMs,
     };
   }
 

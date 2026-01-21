@@ -7,7 +7,7 @@
  * - Throttle decisions (why BBO was written or skipped)
  * - DB buffers / dead letter size
  */
-import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, OpenInterestEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 import {
   BOX,
   createDashboardControl,
@@ -69,6 +69,7 @@ export class IngestorCliDashboard {
   private lastTrade?: TradeEvent;
   private lastPrice?: PriceEvent;
   private lastFunding?: FundingRateEvent;
+  private lastOi?: OpenInterestEvent;
 
   private lastBboDecision?: BboDecision;
 
@@ -192,6 +193,11 @@ export class IngestorCliDashboard {
     this.lastReceiveAtMs = Date.now();
   }
 
+  onOpenInterest(event: OpenInterestEvent): void {
+    this.lastOi = event;
+    this.lastReceiveAtMs = Date.now();
+  }
+
   pushEvent(level: LogLevel, message: string, data?: unknown): void {
     const fields =
       data !== null && data !== undefined && typeof data === "object" ?
@@ -239,6 +245,7 @@ export class IngestorCliDashboard {
       tradeReceived: this.metrics.tradeReceived - this.lastMetricsSample.tradeReceived,
       priceReceived: this.metrics.priceReceived - this.lastMetricsSample.priceReceived,
       fundingReceived: this.metrics.fundingReceived - this.lastMetricsSample.fundingReceived,
+      oiReceived: this.metrics.oiReceived - this.lastMetricsSample.oiReceived,
     };
     if (dtMs >= 1000) {
       this.lastMetricsSampleAtMs = nowMs;
@@ -426,7 +433,32 @@ export class IngestorCliDashboard {
         ),
       );
     } else {
-      lines.push(this.boxRow(`${this.style.token("dim")}Funding: No data${this.style.token("reset")}`, width));
+      lines.push(
+        this.boxRow(
+          `${this.style.token("dim")}Funding:${this.style.token("reset")} ${this.style.wrap("waiting (updates infrequently)", "dim")}`,
+          width,
+        ),
+      );
+    }
+
+    // Open Interest
+    if (this.lastOi) {
+      const oiAge = this.layout.formatAgeMs(nowMs, this.lastOi.ts.getTime());
+      const oi = this.lastOi.openInterest ?? "-";
+      const oiUsd = this.lastOi.openInterestUsd ?? "-";
+      lines.push(
+        this.boxRow(
+          `${this.style.token("dim")}OI:${this.style.token("reset")} base=${oi}  ${this.style.token("dim")}usd:${this.style.token("reset")}${oiUsd}  ${this.style.token("dim")}age:${this.style.token("reset")}${oiAge}`,
+          width,
+        ),
+      );
+    } else {
+      lines.push(
+        this.boxRow(
+          `${this.style.token("dim")}OI:${this.style.token("reset")} ${this.style.wrap("polling (waiting first sample)", "dim")}`,
+          width,
+        ),
+      );
     }
 
     lines.push(this.layout.boxLine(width, "middle"));
@@ -504,6 +536,7 @@ export class IngestorCliDashboard {
       tradeReceived: number;
       priceReceived: number;
       fundingReceived: number;
+      oiReceived: number;
     },
     perSec: (d: number) => number,
   ): string[] {
@@ -536,10 +569,12 @@ export class IngestorCliDashboard {
     const priceRate = `${this.style.token("dim")}(${fmtNum(perSec(delta.priceReceived), 1)}/s)${this.style.token("reset")}`;
     const fundRecv = this.style.wrap(String(this.metrics.fundingReceived), "bold");
     const fundRate = `${this.style.token("dim")}(${fmtNum(perSec(delta.fundingReceived), 2)}/s)${this.style.token("reset")}`;
+    const oiRecv = this.style.wrap(String(this.metrics.oiReceived), "bold");
+    const oiRate = `${this.style.token("dim")}(${fmtNum(perSec(delta.oiReceived), 2)}/s)${this.style.token("reset")}`;
 
     lines.push(
       this.boxRow(
-        `${this.style.token("dim")}Trade:${this.style.token("reset")} ${tradeRecv} ${tradeRate}  ${this.style.token("dim")}Price:${this.style.token("reset")} ${priceRecv} ${priceRate}  ${this.style.token("dim")}Fund:${this.style.token("reset")} ${fundRecv} ${fundRate}`,
+        `${this.style.token("dim")}Trade:${this.style.token("reset")} ${tradeRecv} ${tradeRate}  ${this.style.token("dim")}Price:${this.style.token("reset")} ${priceRecv} ${priceRate}  ${this.style.token("dim")}Fund:${this.style.token("reset")} ${fundRecv} ${fundRate}  ${this.style.token("dim")}OI:${this.style.token("reset")} ${oiRecv} ${oiRate}`,
         width,
       ),
     );

@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun -e \"console.log('Backtest dev: skipped (use: bun run start).'); setInterval(() => {}, 1 << 30)\"",
     "start": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- bun run src/main.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

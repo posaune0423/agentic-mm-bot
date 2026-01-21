@@ -13,7 +13,7 @@ import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { z } from "zod";
 
 import type { LlmInputSummary, LlmProposalOutput } from "../types";
-import { extractFirstJsonObject, snippet } from "./llm-output-parser";
+import { extractFirstJsonObject, parseJsonLenient, snippet } from "./llm-output-parser";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -190,7 +190,7 @@ export function generateProposal(
 
       let parsedJson: unknown;
       try {
-        parsedJson = JSON.parse(jsonText);
+        parsedJson = parseJsonLenient(jsonText);
       } catch (e) {
         return errAsync({
           type: "INVALID_RESPONSE" as const,
