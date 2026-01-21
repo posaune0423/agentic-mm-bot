@@ -275,10 +275,35 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
 }
 
 /**
- * Clamp price to avoid crossing the BBO (post-only protection).
+ * Safety buffer for post-only clamping (in basis points of mid price).
  *
- * - BUY: if price >= bestAsk, clamp to bestBid
- * - SELL: if price <= bestBid, clamp to bestAsk
+ * This buffer accounts for:
+ * - Network latency between reading BBO and order submission
+ * - Market movement during order processing
+ * - Price rounding in the adapter
+ *
+ * A 1 bps buffer on a $100 price = $0.01 safety margin.
+ * This allows quoting inside the spread while avoiding crossing.
+ */
+const POST_ONLY_SAFETY_BUFFER_BPS = 1;
+
+/**
+ * Clamp price to avoid crossing the BBO with a safety buffer.
+ *
+ * For post-only to succeed, the order must NOT take liquidity:
+ * - BUY: price must be strictly BELOW bestAsk
+ * - SELL: price must be strictly ABOVE bestBid
+ *
+ * Safe zones (never clamped):
+ * - BUY at or below bestBid → always safe, passive maker
+ * - SELL at or above bestAsk → always safe, passive maker
+ *
+ * Inside the spread, we add a small safety buffer:
+ * - BUY: clamp if price > bestBid AND price >= (bestAsk - buffer)
+ * - SELL: clamp if price < bestAsk AND price <= (bestBid + buffer)
+ *
+ * This allows the strategy to quote inside the spread (for tighter spreads and better fills)
+ * while maintaining a safety margin to avoid post-only rejections.
  *
  * Returns the (possibly adjusted) price and a flag indicating if clamping occurred.
  */
@@ -297,14 +322,27 @@ function clampPriceToBbo(
     return { adjustedPrice: price, clamped: false };
   }
 
+  const mid = (bestBid + bestAsk) / 2;
+  const bufferPrice = (mid * POST_ONLY_SAFETY_BUFFER_BPS) / 10_000;
+
   if (side === "buy") {
-    // BUY order would cross if price >= bestAsk
-    if (priceNum >= bestAsk) {
+    // BUY at or below bestBid is always safe (passive maker)
+    if (priceNum <= bestBid) {
+      return { adjustedPrice: price, clamped: false };
+    }
+    // BUY inside spread: clamp if too close to bestAsk (within buffer)
+    const threshold = bestAsk - bufferPrice;
+    if (priceNum >= threshold) {
       return { adjustedPrice: bestBidPx, clamped: true };
     }
   } else {
-    // SELL order would cross if price <= bestBid
-    if (priceNum <= bestBid) {
+    // SELL at or above bestAsk is always safe (passive maker)
+    if (priceNum >= bestAsk) {
+      return { adjustedPrice: price, clamped: false };
+    }
+    // SELL inside spread: clamp if too close to bestBid (within buffer)
+    const threshold = bestBid + bufferPrice;
+    if (priceNum <= threshold) {
       return { adjustedPrice: bestAskPx, clamped: true };
     }
   }
