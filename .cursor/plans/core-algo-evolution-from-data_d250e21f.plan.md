@@ -29,12 +29,13 @@ todos:
 
 ## 現状の客観診断（docker postgres / 直近データ）
 
+- **データセット期間**: 2026-01-20 00:00 – 2026-01-21 00:00 UTC（24時間窓）
 - `v_fills_edge_decomposition` 平均（概算）
 - edge_t0_bps ≈ +1.37bps
 - markout10s_bps ≈ +1.12bps
 - markout60s_bps ≈ -1.57bps
 - つまり「スプレッドは取れているが、60sスケールで在庫負け」
-- 直近24hの約定列ベース推定では p50 |pos| ≈ 0.097 BTC、max |pos| ≈ 0.328 BTC。
+- 上記24時間窓の約定列ベース推定では p50 |pos| ≈ 0.097 BTC、max |pos| ≈ 0.328 BTC。
 - `strategy_params.is_current` の `maxInventory=1` だと、one-sided/在庫制限がほぼ発火しない（ガードが実質無効）。
 
 ## 進化の狙い（シンプルに直す）

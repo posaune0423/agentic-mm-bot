@@ -39,7 +39,7 @@ executor が Hot path（メモリ上）で更新し、core は以下の入力を
 - **mark_index_div_bps**: `(abs(mark - index) / mid) * 10_000`
 - **liq_count_10s**: 10秒窓の liq/delev 件数
 - **data_stale**: `now - lastUpdate > staleCancelMs`
-- **open_interest_shock_bps**（Phase 3）: OI の急変を検知するための指標（オプション、リスクスコアに影響）
+- **open_interest_shock_bps**: OI の急変を検知するための指標（オプション、リスクスコアに影響）。Phase 3（高度なリスク指標の展開段階）で導入予定。
 
 ### 3) RiskPolicy（PAUSE/DEFENSIVE 判定）
 
@@ -81,7 +81,7 @@ executor が Hot path（メモリ上）で更新し、core は以下の入力を
 - **Unwind（在庫の自動解消）**:
   - ポジションを一定時間保持（`unwindTriggerMs`、デフォルト `30_000ms`）したら
   - `unwindSizeRatio`（デフォルト `0.25`）だけ **reduce-only IOC** を追加してポジションを削ります
-  - `unwindCrossBps`（デフォルト `0`）で約定確率を上げるために BBO をクロスする量を設定可能
+  - `unwindCrossBps`（デフォルト `2`）で約定確率を上げるために BBO をクロスする量を設定可能
 
 ### 6) 出力（SET_ORDERS）
 
@@ -272,6 +272,7 @@ executor / ingestor は TTY 環境で **CLI ダッシュボード** を表示で
 | `EXTENDED_STARK_PRIVATE_KEY` | Stark 署名用秘密鍵           | ingestor, executor |
 | `EXECUTOR_DASHBOARD`         | CLI ダッシュボード有効化     | executor           |
 | `OI_POLL_INTERVAL_MS`        | Open Interest ポーリング間隔 | executor           |
+| `OI_POLL_TIMEOUT_MS`         | Open Interest ポーリング タイムアウト（デフォルト 2500ms） | ingestor, executor |
 | `OPENAI_API_KEY`             | OpenAI API キー              | llm-reflector      |
 | `ANTHROPIC_API_KEY`          | Anthropic API キー           | llm-reflector      |
 

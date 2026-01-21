@@ -244,7 +244,50 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   await periodicReconcileIfDue({ nowMs, symbol: snapshot.symbol, orderTracker, executionPort });
 
   if (shouldGuardrailCancelAll(orderTracker)) {
-    await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot, deps.onAction);
+    const guardrailAction: ExecutionAction = { type: "cancel_all" };
+    await executeAction(guardrailAction, executionPort, orderTracker, snapshot, deps.onAction);
+
+    // Emit the same state/debug notifications as the normal path so dashboards stay in sync.
+    // No quote orders are placed in guardrail path, so nextState is simply output.nextState.
+    const nextState = output.nextState;
+
+    deps.onTickDebug?.({
+      nowMs,
+      snapshot,
+      features,
+      stateBefore: currentState,
+      stateAfter: nextState,
+      output,
+      plannedActions: [guardrailAction],
+      targetQuote: undefined,
+    });
+
+    if (deps.onStateChange && nextState.mode !== currentState.mode) {
+      deps.onStateChange({
+        nextState,
+        reasonCodes: output.reasonCodes,
+        intents: output.intents,
+        debug: {
+          dataAgeMs: snapshot.lastUpdateMs > 0 ? nowMs - snapshot.lastUpdateMs : null,
+          lastUpdateMs: snapshot.lastUpdateMs,
+          midPx: features.midPx,
+          spreadBps: features.spreadBps,
+          realizedVol10s: features.realizedVol10s,
+          tradeImbalance1s: features.tradeImbalance1s,
+          markIndexDivBps: features.markIndexDivBps,
+          liqCount10s: features.liqCount10s,
+          positionSize: position.size,
+          activeOrders: orderTracker.getActiveOrders().length,
+        },
+      });
+    }
+
+    logger.debug("Tick completed (guardrail cancel_all)", {
+      mode: nextState.mode,
+      reasonCodes: output.reasonCodes,
+      intents: output.intents.length,
+    });
+
     deps.onPhase?.("IDLE");
     return output;
   }
