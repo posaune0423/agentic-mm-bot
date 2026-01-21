@@ -196,7 +196,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     const sellCount = orders.length - buyCount;
 
     if (orders.length > 2 || buyCount > 1 || sellCount > 1) {
-      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot.symbol, deps.onAction);
+      await executeAction({ type: "cancel_all" }, executionPort, orderTracker, snapshot, deps.onAction);
       deps.onPhase?.("IDLE");
       return output;
     }
@@ -226,7 +226,7 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
     }
 
     for (const action of actions) {
-      await executeAction(action, executionPort, orderTracker, snapshot.symbol, deps.onAction);
+      await executeAction(action, executionPort, orderTracker, snapshot, deps.onAction);
     }
   }
 
@@ -275,15 +275,54 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
 }
 
 /**
+ * Clamp price to avoid crossing the BBO (post-only protection).
+ *
+ * - BUY: if price >= bestAsk, clamp to bestBid
+ * - SELL: if price <= bestBid, clamp to bestAsk
+ *
+ * Returns the (possibly adjusted) price and a flag indicating if clamping occurred.
+ */
+function clampPriceToBbo(
+  side: "buy" | "sell",
+  price: string,
+  bestBidPx: string,
+  bestAskPx: string,
+): { adjustedPrice: string; clamped: boolean } {
+  const priceNum = Number.parseFloat(price);
+  const bestBid = Number.parseFloat(bestBidPx);
+  const bestAsk = Number.parseFloat(bestAskPx);
+
+  // Guard: if BBO is invalid, return original price
+  if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) {
+    return { adjustedPrice: price, clamped: false };
+  }
+
+  if (side === "buy") {
+    // BUY order would cross if price >= bestAsk
+    if (priceNum >= bestAsk) {
+      return { adjustedPrice: bestBidPx, clamped: true };
+    }
+  } else {
+    // SELL order would cross if price <= bestBid
+    if (priceNum <= bestBid) {
+      return { adjustedPrice: bestAskPx, clamped: true };
+    }
+  }
+
+  return { adjustedPrice: price, clamped: false };
+}
+
+/**
  * Execute a single action
  */
 async function executeAction(
   action: ExecutionAction,
   executionPort: ExecutionPort,
   orderTracker: OrderTracker,
-  symbol: string,
+  snapshot: Snapshot,
   onAction?: (args: { phase: "start" | "ok" | "err"; action: ExecutionAction; error?: unknown }) => void,
 ): Promise<void> {
+  const symbol = snapshot.symbol;
   const nowMs = Date.now();
   if (nowMs < rateLimitUntilMs) {
     // Skip API calls during backoff window.
@@ -377,11 +416,30 @@ async function executeAction(
     case "place": {
       onAction?.({ phase: "start", action });
       const clientOrderId = generateClientOrderId();
+
+      // Clamp price to BBO to prevent post-only rejection
+      const { adjustedPrice, clamped } = clampPriceToBbo(
+        action.side,
+        action.price,
+        snapshot.bestBidPx,
+        snapshot.bestAskPx,
+      );
+
+      if (clamped) {
+        logger.warn("Price clamped to avoid BBO crossing", {
+          side: action.side,
+          originalPrice: action.price,
+          adjustedPrice,
+          bestBidPx: snapshot.bestBidPx,
+          bestAskPx: snapshot.bestAskPx,
+        });
+      }
+
       const result = await executionPort.placeOrder({
         clientOrderId,
         symbol,
         side: action.side,
-        price: action.price,
+        price: adjustedPrice,
         size: action.size,
         postOnly: true,
       });
@@ -392,14 +450,15 @@ async function executeAction(
           clientOrderId,
           exchangeOrderId: result.value.exchangeOrderId,
           side: action.side,
-          price: action.price,
+          price: adjustedPrice,
           size: action.size,
           createdAtMs: Date.now(),
         });
         logger.debug("Placed order", {
           clientOrderId,
           side: action.side,
-          price: action.price,
+          price: adjustedPrice,
+          clamped,
         });
       } else {
         if (result.error.type === "rate_limit") {
