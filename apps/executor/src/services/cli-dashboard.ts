@@ -7,6 +7,7 @@
  * - What orders are currently live (price/size/age) vs target quote
  * - Recent actions (place/cancel/cancel_all, fills, rejects)
  */
+import { evaluateRisk } from "@agentic-mm-bot/core";
 import type { DecideOutput, Features, Snapshot, StrategyParams, StrategyState } from "@agentic-mm-bot/core";
 import type { ExecutionEvent } from "@agentic-mm-bot/adapters";
 import {
@@ -36,6 +37,8 @@ export interface PositionData {
   entryPrice?: string;
   unrealizedPnl?: string;
   lastUpdateMs: number;
+  /** Timestamp when position last changed from zero (for unwind timing / UI) */
+  positionSinceMs?: number;
 }
 
 export interface TickDebug {
@@ -57,6 +60,7 @@ export interface TickDebug {
     entryPrice?: string;
     unrealizedPnl?: string;
     lastUpdateMs: number;
+    positionSinceMs?: number;
   };
   orders: TrackedOrder[];
   targetQuote?: { bidPx: string; askPx: string; size: string };
@@ -508,6 +512,23 @@ export class ExecutorCliDashboard {
     const modeRow = `${this.style.token("dim")}Mode:${this.style.token("reset")} ${modeBadge}  ${pauseInfo}`;
     lines.push(this.boxRow(modeRow, width));
 
+    // Risk score (computed from features/position/params for better observability)
+    {
+      const posForRisk = {
+        size: (this.realtimePosition?.size ?? t.position.size) || "0",
+        positionSinceMs: t.position.positionSinceMs,
+      };
+      const risk = evaluateRisk(t.features, posForRisk, t.effectiveParams);
+      const pct = Math.round(risk.riskScore * 100);
+      const riskStyle: Parameters<Style["wrap"]>[1][] =
+        risk.riskScore >= 0.7 ? ["bold", "red"]
+        : risk.riskScore >= 0.4 ? ["bold", "yellow"]
+        : ["green"];
+      const riskVal = this.style.wrap(`${String(pct)}%`, ...riskStyle);
+      const riskRow = `${this.style.token("dim")}Risk:${this.style.token("reset")} ${riskVal}  ${this.style.token("dim")}pause:${this.style.token("reset")}${risk.shouldPause ? this.style.wrap("Y", "red") : this.style.wrap("n", "dim")}  ${this.style.token("dim")}def:${this.style.token("reset")}${risk.shouldDefensive ? this.style.wrap("Y", "yellow") : this.style.wrap("n", "dim")}`;
+      lines.push(this.boxRow(riskRow, width));
+    }
+
     // Reasons & Intents
     const reasons = t.output.reasonCodes;
     const intents = t.output.intents.map(i => i.type);
@@ -579,22 +600,79 @@ export class ExecutorCliDashboard {
       `${this.style.token("dim")}tox:${this.style.token("reset")}${t.dbParams.toxSpreadGain}`,
       `${this.style.token("dim")}skew:${this.style.token("reset")}${t.dbParams.inventorySkewGain}`,
       `${this.style.token("dim")}qUsd:${this.style.token("reset")}${this.style.wrap(t.dbParams.quoteSizeUsd, "bold")}`,
+      `${this.style.token("dim")}defSpr:${this.style.token("reset")}${t.dbParams.defensiveSpreadMultiplier ?? "1.5"}`,
+      `${this.style.token("dim")}defSz:${this.style.token("reset")}${t.dbParams.defensiveSizeMultiplier ?? "0.5"}`,
+      `${this.style.token("dim")}oneSide:${this.style.token("reset")}${t.dbParams.oneSidedThreshold ?? "0.3"}`,
+      `${this.style.token("dim")}unwind:${this.style.token("reset")}${String(t.dbParams.unwindTriggerMs ?? 30000)}ms@${t.dbParams.unwindSizeRatio ?? "0.25"}`,
       `${this.style.token("dim")}overlay:${this.style.token("reset")}${overlayActive ? this.style.wrap("ON", "green") : this.style.wrap("OFF", "dim")}`,
     ].join("  ");
     lines.push(this.boxRow(paramsCompact, width));
 
-    // Target quote
-    const q = t.targetQuote;
-    if (q) {
-      const tgtBid = this.style.wrap(q.bidPx, "green");
-      const tgtAsk = this.style.wrap(q.askPx, "red");
-      const tgtSz = this.style.wrap(q.size, "bold");
-      lines.push(
-        this.boxRow(
-          `${this.style.token("dim")}Target:${this.style.token("reset")} ${tgtBid} / ${tgtAsk}  ${this.style.token("dim")}size:${this.style.token("reset")} ${tgtSz}`,
-          width,
-        ),
-      );
+    // Desired orders (from SET_ORDERS intent). This handles one-sided quoting + unwind.
+    {
+      const desired = t.output.intents.flatMap(i => i.orders);
+      const bid = desired.find(o => o.kind === "quote" && o.side === "buy");
+      const ask = desired.find(o => o.kind === "quote" && o.side === "sell");
+      const unwind = desired.find(o => o.kind === "unwind");
+
+      if (bid || ask) {
+        if (bid && ask) {
+          const tgtBid = this.style.wrap(bid.price, "green");
+          const tgtAsk = this.style.wrap(ask.price, "red");
+          const tgtSz = this.style.wrap(bid.size, "bold");
+          lines.push(
+            this.boxRow(
+              `${this.style.token("dim")}Quote:${this.style.token("reset")} ${tgtBid} / ${tgtAsk}  ${this.style.token("dim")}size:${this.style.token("reset")} ${tgtSz}`,
+              width,
+            ),
+          );
+        } else {
+          const oneSidedBadge = this.style.badge("ONE-SIDED", "bgYellow", "white", "bold");
+          const side = bid ? this.style.wrap("BID", "bold", "green") : this.style.wrap("ASK", "bold", "red");
+          const px = bid ? this.style.wrap(bid.price, "green") : this.style.wrap(ask?.price ?? "-", "red");
+          const sz = this.style.wrap(bid?.size ?? ask?.size ?? "-", "bold");
+          lines.push(
+            this.boxRow(
+              `${this.style.token("dim")}Quote:${this.style.token("reset")} ${oneSidedBadge}  ${side} ${px}  ${this.style.token("dim")}size:${this.style.token("reset")} ${sz}`,
+              width,
+            ),
+          );
+        }
+      } else if (t.targetQuote) {
+        // Back-compat fallback (older ticks / callers)
+        const q = t.targetQuote;
+        const tgtBid = this.style.wrap(q.bidPx, "green");
+        const tgtAsk = this.style.wrap(q.askPx, "red");
+        const tgtSz = this.style.wrap(q.size, "bold");
+        lines.push(
+          this.boxRow(
+            `${this.style.token("dim")}Quote:${this.style.token("reset")} ${tgtBid} / ${tgtAsk}  ${this.style.token("dim")}size:${this.style.token("reset")} ${tgtSz}`,
+            width,
+          ),
+        );
+      } else {
+        const msg =
+          t.stateAfter.mode === "PAUSE" ?
+            `${this.style.token("dim")}Quote:${this.style.token("reset")} ${this.style.wrap("none (PAUSE)", "dim")}`
+          : `${this.style.token("dim")}Quote:${this.style.token("reset")} ${this.style.wrap("none", "dim")}`;
+        lines.push(this.boxRow(msg, width));
+      }
+
+      if (unwind) {
+        const heldMs =
+          t.position.positionSinceMs !== undefined ? Math.max(0, t.nowMs - t.position.positionSinceMs) : null;
+        const heldStr = heldMs !== null ? this.layout.formatDurationMs(heldMs) : "-";
+        const side =
+          unwind.side === "buy" ? this.style.wrap("BUY", "bold", "green") : this.style.wrap("SELL", "bold", "red");
+        const px = this.style.wrap(unwind.price, "bold", "white");
+        const sz = this.style.wrap(unwind.size, "bold");
+        lines.push(
+          this.boxRow(
+            `${this.style.token("dim")}Unwind:${this.style.token("reset")} ${side} ${px} ${this.style.token("dim")}sz:${this.style.token("reset")}${sz}  ${this.style.token("dim")}held:${this.style.token("reset")}${heldStr}  ${this.style.token("dim")}tif:${this.style.token("reset")}${unwind.timeInForce}`,
+            width,
+          ),
+        );
+      }
     }
 
     // Features
@@ -695,7 +773,12 @@ export class ExecutorCliDashboard {
 
     // Position row 2: Skew, Entry, uPnL, Max
     const posRow2 = `${this.style.token("dim")}Skew:${this.style.token("reset")} ${skewStr}  ${this.style.token("dim")}Entry:${this.style.token("reset")} ${posEntry}  ${this.style.token("dim")}uPnL:${this.style.token("reset")} ${pnlStr}  ${this.style.token("dim")}Max:${this.style.token("reset")} ${t.effectiveParams.maxInventory}`;
-    lines.push(this.boxRow(posRow2, width));
+    const heldMs = pos.positionSinceMs !== undefined && posSize !== 0 ? Math.max(0, nowMs - pos.positionSinceMs) : null;
+    const heldInfo =
+      heldMs !== null ?
+        `  ${this.style.token("dim")}Held:${this.style.token("reset")} ${this.style.wrap(this.layout.formatDurationMs(heldMs), "dim")}`
+      : "";
+    lines.push(this.boxRow(`${posRow2}${heldInfo}`, width));
 
     lines.push(this.layout.boxLine(width, "middle"));
     return lines;

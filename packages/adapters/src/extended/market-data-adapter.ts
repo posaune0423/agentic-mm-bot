@@ -39,6 +39,11 @@ interface MarketInfoClient {
   getMarkets: (args: { marketNames: string[] }) => Promise<unknown>;
 }
 
+const OI_POLL_INTERVAL_MS = 5_000;
+const OI_POLL_TIMEOUT_MS = 2_500;
+const OI_WARN_THROTTLE_MS = 30_000;
+const OI_ERROR_ESCALATE_MS = 30_000;
+
 // ============================================================================
 // Extended WS Message Types (from API docs)
 // ============================================================================
@@ -185,9 +190,16 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     {
       intervalId: ReturnType<typeof setInterval>;
       abort: AbortController;
+      startedAtMs?: number;
+      lastAttemptAtMs?: number;
+      attempts?: number;
+      successCount?: number;
+      consecutiveFailures?: number;
+      lastFailureReason?: string;
       lastEmitted?: { openInterest?: string; openInterestUsd?: string };
       warnedNoFields?: boolean;
       lastErrorLogAtMs?: number;
+      escalatedError?: boolean;
     }
   > = new Map();
   private fundingSeen: Set<string> = new Set();
@@ -582,6 +594,57 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
   }
 
+  private asObj(v: unknown): Record<string, unknown> | null {
+    return v !== null && v !== undefined && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  }
+
+  private readNumish(obj: Record<string, unknown> | null, keys: string[]): string | undefined {
+    if (!obj) return undefined;
+    for (const k of keys) {
+      // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
+      const v = obj[k];
+      if (typeof v === "string" && v !== "") return v;
+      if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    }
+    return undefined;
+  }
+
+  /**
+   * Collect likely "market stats" objects from an SDK/API payload.
+   * Handles shapes like:
+   * - { data: [MarketModel] }
+   * - { status: "OK", data: { ...marketStats } }
+   * - { marketStats: { ... } } / { market_stats: { ... } } / { stats: { ... } }
+   */
+  private collectMarketStatCandidates(input: unknown): Record<string, unknown>[] {
+    const out: Record<string, unknown>[] = [];
+    const root = this.asObj(input);
+    if (!root) return out;
+
+    out.push(root);
+
+    // Common response envelope: { data: ... }
+    const data = root.data;
+    const dataObj = this.asObj(data);
+    if (dataObj) out.push(dataObj);
+    if (Array.isArray(data) && data.length > 0) {
+      const first = this.asObj(data[0]);
+      if (first) out.push(first);
+    }
+
+    // Pull nested stats-ish objects.
+    for (const c of out.slice()) {
+      const stats = this.asObj(c.stats);
+      if (stats) out.push(stats);
+      const marketStats = this.asObj(c.marketStats);
+      if (marketStats) out.push(marketStats);
+      const marketStatsSnake = this.asObj(c.market_stats);
+      if (marketStatsSnake) out.push(marketStatsSnake);
+    }
+
+    return out;
+  }
+
   // ============================================================================
   // Open Interest (SDK poll)
   // ============================================================================
@@ -592,13 +655,25 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     if (!this.isConnected_) return;
 
     const abort = new AbortController();
-    const intervalMs = 5_000;
+    const intervalMs = OI_POLL_INTERVAL_MS;
 
     const intervalId = setInterval(() => {
       void this.pollOpenInterestOnce(symbol, abort);
     }, intervalMs);
 
-    this.openInterestPollers.set(symbol, { intervalId, abort });
+    this.openInterestPollers.set(symbol, {
+      intervalId,
+      abort,
+      startedAtMs: Date.now(),
+      lastAttemptAtMs: undefined,
+      attempts: 0,
+      successCount: 0,
+      consecutiveFailures: 0,
+      lastFailureReason: undefined,
+      warnedNoFields: false,
+      lastErrorLogAtMs: undefined,
+      escalatedError: false,
+    });
     log.info("OI polling started", { symbol, intervalMs });
 
     // Fire first poll immediately (best-effort).
@@ -617,8 +692,15 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     // If we're not connected anymore, don't emit any new events.
     if (!this.isConnected_) return;
 
+    const entry0 = this.openInterestPollers.get(symbol);
+    const now0 = Date.now();
+    if (entry0) {
+      entry0.attempts = (entry0.attempts ?? 0) + 1;
+      entry0.lastAttemptAtMs = now0;
+    }
+
     try {
-      const timeoutMs = 2500;
+      const timeoutMs = OI_POLL_TIMEOUT_MS;
       const res: unknown = await Promise.race([
         this.marketInfoClient.getMarkets({ marketNames: [symbol] }),
         new Promise<never>((_, reject) =>
@@ -639,16 +721,30 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         const entry = this.openInterestPollers.get(symbol);
         if (entry && !entry.warnedNoFields) {
           entry.warnedNoFields = true;
-          const keys =
-            first !== null && first !== undefined && typeof first === "object" ? Object.keys(first).slice(0, 30) : [];
-          log.warn("OI not found in market info payload (field mismatch?)", { symbol, keys });
+          const objKeys =
+            first !== null && first !== undefined && typeof first === "object" ? Object.keys(first).slice(0, 40) : [];
+          const marketStatsKeys =
+            first !== null && first !== undefined && typeof first === "object" && "marketStats" in first ?
+              (() => {
+                const ms = (first as Record<string, unknown>).marketStats;
+                return ms !== null && ms !== undefined && typeof ms === "object" ? Object.keys(ms).slice(0, 40) : [];
+              })()
+            : [];
+          log.warn("OI not found in market info payload (field mismatch?)", { symbol, keys: objKeys, marketStatsKeys });
+          entry.lastFailureReason = "field_mismatch";
         }
       }
 
       // Emit only when we have any value, and either changed or first time.
       if ((extracted.openInterest !== undefined || extracted.openInterestUsd !== undefined) && changed) {
         const entry = this.openInterestPollers.get(symbol);
-        if (entry) entry.lastEmitted = extracted;
+        if (entry) {
+          entry.lastEmitted = extracted;
+          entry.successCount = (entry.successCount ?? 0) + 1;
+          entry.consecutiveFailures = 0;
+          entry.lastFailureReason = undefined;
+          entry.escalatedError = false;
+        }
 
         const event: OpenInterestEvent = {
           type: "oi",
@@ -666,13 +762,31 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       const entry = this.openInterestPollers.get(symbol);
       const now = Date.now();
       const lastLog = entry?.lastErrorLogAtMs ?? 0;
-      if (entry && now - lastLog >= 30_000) {
+      if (entry) {
+        entry.consecutiveFailures = (entry.consecutiveFailures ?? 0) + 1;
+        entry.lastFailureReason = error instanceof Error ? error.message : "unknown_error";
+      }
+      if (entry && now - lastLog >= OI_WARN_THROTTLE_MS) {
         entry.lastErrorLogAtMs = now;
         log.warn("OI polling failed (will retry)", {
           symbol,
           errorType: error instanceof Error ? error.name : typeof error,
           message: error instanceof Error ? error.message : undefined,
         });
+      }
+
+      // Escalate once to ERROR if we still have zero successes after startup.
+      if (entry && (entry.successCount ?? 0) === 0 && entry.startedAtMs !== undefined) {
+        const waitedMs = now - entry.startedAtMs;
+        if (waitedMs >= OI_ERROR_ESCALATE_MS && entry.escalatedError !== true) {
+          entry.escalatedError = true;
+          log.error("OI still unavailable after startup (check SDK response fields / connectivity)", {
+            symbol,
+            waitedMs,
+            attempts: entry.attempts ?? 0,
+            lastFailureReason: entry.lastFailureReason ?? null,
+          });
+        }
       }
     }
   }
@@ -686,54 +800,42 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   }
 
   private extractOpenInterest(json: unknown): { openInterest?: string; openInterestUsd?: string } {
-    const asObj = (v: unknown): Record<string, unknown> | null =>
-      v !== null && v !== undefined && typeof v === "object" ? (v as Record<string, unknown>) : null;
+    const candidates = this.collectMarketStatCandidates(json);
 
-    const readNumish = (obj: Record<string, unknown> | null, keys: string[]): string | undefined => {
-      if (!obj) return undefined;
-      for (const k of keys) {
-        // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
-        const v = obj[k];
-        if (typeof v === "string" && v !== "") return v;
-        if (typeof v === "number" && Number.isFinite(v)) return String(v);
-      }
-      return undefined;
-    };
-
-    // Common shapes:
-    // - { data: [{ ... openInterest ... }] }
-    // - { data: { ... stats: { openInterest ... } } }
-    // - { ... } (flat)
-    const root = asObj(json);
-    const data = root ? root.data : undefined;
-
-    const candidates: Record<string, unknown>[] = [];
-    const dataObj = asObj(data);
-    if (dataObj) candidates.push(dataObj);
-    if (Array.isArray(data) && data.length > 0) {
-      const first = asObj(data[0]);
-      if (first) candidates.push(first);
-    }
-    if (root) candidates.push(root);
-
-    // Add nested stats objects if present.
-    for (const c of candidates.slice()) {
-      const stats = asObj(c.stats);
-      if (stats) candidates.push(stats);
-    }
-
-    const oiKeys = ["openInterest", "open_interest", "oi", "openInterestBase", "open_interest_base"];
-    const oiUsdKeys = [
-      "openInterestUsd",
-      "open_interest_usd",
-      "openInterestUSD",
-      "open_interest_value",
-      "openInterestValue",
+    // Extended docs/SDK commonly provide:
+    // - marketStats.openInterestBase  (base units)
+    // - marketStats.openInterest      (collateral/quote units)
+    // Historical endpoint may use i/I keys.
+    const oiBaseKeys = [
+      "openInterestBase",
+      "open_interest_base",
+      "openInterestSynthetic",
+      "open_interest_synthetic",
+      "I", // history payload
     ];
+    const oiQuoteKeys = [
+      "openInterest",
+      "open_interest",
+      "openInterestCollateral",
+      "open_interest_collateral",
+      "openInterestValue",
+      "open_interest_value",
+      "i", // history payload
+    ];
+    const oiUsdKeys = ["openInterestUsd", "open_interest_usd", "openInterestUSD"];
 
     for (const c of candidates) {
-      const openInterest = readNumish(c, oiKeys);
-      const openInterestUsd = readNumish(c, oiUsdKeys);
+      // Prefer explicit base/quote fields when available.
+      const base = this.readNumish(c, oiBaseKeys);
+      const quote = this.readNumish(c, oiQuoteKeys);
+      const usd = this.readNumish(c, oiUsdKeys);
+
+      // Map into our event fields:
+      // - openInterest      => base units (preferred)
+      // - openInterestUsd   => USD/quote/collateral value if available
+      const openInterest = base ?? quote;
+      const openInterestUsd = usd ?? (base !== undefined ? quote : undefined);
+
       if (openInterest !== undefined || openInterestUsd !== undefined) return { openInterest, openInterestUsd };
     }
 
@@ -749,7 +851,11 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       const timeoutMs = 2500;
       const res: unknown = await Promise.race([
         this.marketInfoClient.getMarkets({ marketNames: [symbol] }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("funding_bootstrap_timeout")), timeoutMs)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            reject(new Error("funding_bootstrap_timeout"));
+          }, timeoutMs),
+        ),
       ]);
 
       const first = this.getFirstDataItem(res);
@@ -780,37 +886,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
   }
 
   private extractFundingRate(json: unknown): string | undefined {
-    const asObj = (v: unknown): Record<string, unknown> | null =>
-      v !== null && v !== undefined && typeof v === "object" ? (v as Record<string, unknown>) : null;
-
-    const readNumish = (obj: Record<string, unknown> | null, keys: string[]): string | undefined => {
-      if (!obj) return undefined;
-      for (const k of keys) {
-        // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
-        const v = obj[k];
-        if (typeof v === "string" && v !== "") return v;
-        if (typeof v === "number" && Number.isFinite(v)) return String(v);
-      }
-      return undefined;
-    };
-
-    const root = asObj(json);
-    const data = root ? root.data : undefined;
-
-    const candidates: Record<string, unknown>[] = [];
-    const dataObj = asObj(data);
-    if (dataObj) candidates.push(dataObj);
-    if (Array.isArray(data) && data.length > 0) {
-      const first = asObj(data[0]);
-      if (first) candidates.push(first);
-    }
-    if (root) candidates.push(root);
-
-    // Some payloads nest stats-like objects.
-    for (const c of candidates.slice()) {
-      const stats = asObj(c.stats);
-      if (stats) candidates.push(stats);
-    }
+    const candidates = this.collectMarketStatCandidates(json);
 
     const keys = [
       "fundingRate",
@@ -823,7 +899,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     ];
 
     for (const c of candidates) {
-      const v = readNumish(c, keys);
+      const v = this.readNumish(c, keys);
       if (v !== undefined) return v;
     }
     return undefined;

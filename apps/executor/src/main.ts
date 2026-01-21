@@ -157,6 +157,7 @@ async function main(): Promise<void> {
         entryPrice: positionTracker.getEntryPrice(),
         unrealizedPnl: positionTracker.getUnrealizedPnl(),
         lastUpdateMs: positionTracker.getLastUpdateMs(),
+        positionSinceMs: positionTracker.getPositionSinceMs(),
       });
 
       if (pos) {
@@ -310,6 +311,7 @@ async function main(): Promise<void> {
           entryPrice: positionTracker.getEntryPrice(),
           unrealizedPnl: positionTracker.getUnrealizedPnl(),
           lastUpdateMs: positionTracker.getLastUpdateMs(),
+          positionSinceMs: positionTracker.getPositionSinceMs(),
         });
 
         // Notify overlay manager (resets spread tightening on fill)
@@ -388,6 +390,10 @@ async function main(): Promise<void> {
     symbol: env.SYMBOL,
     channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
+  // Show subscription + expected cadence in dashboard logs (does not depend on LOG_LEVEL).
+  const MARKET_DATA_SUB_LOG =
+    "subscribed market data: bbo,trades,prices,funding,oi (funding updates infrequently; oi polls every ~5s until first sample)";
+  dashboard.pushEvent(LogLevel.INFO, MARKET_DATA_SUB_LOG, { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Connect to private stream
   logger.info("Connecting to private stream...");
@@ -471,6 +477,7 @@ async function main(): Promise<void> {
                 entryPrice: positionTracker.getEntryPrice(),
                 unrealizedPnl: positionTracker.getUnrealizedPnl(),
                 lastUpdateMs: positionTracker.getLastUpdateMs(),
+                positionSinceMs: positionTracker.getPositionSinceMs(),
               },
               funding: marketDataCache.getFunding(),
               openInterest: marketDataCache.getOpenInterest(),

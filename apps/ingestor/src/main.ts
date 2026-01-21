@@ -363,6 +363,10 @@ async function main(): Promise<void> {
     channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
   dashboard.enterPhase("SUBSCRIBED");
+  // Show subscription + expected cadence in dashboard logs (does not depend on LOG_LEVEL).
+  const MARKET_DATA_SUB_LOG =
+    "subscribed market data: bbo,trades,prices,funding,oi (funding updates infrequently; oi polls every ~5s until first sample)";
+  dashboard.pushEvent(LogLevel.INFO, MARKET_DATA_SUB_LOG, { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   logger.info("Subscribed to market data", {
     exchange: env.EXCHANGE,

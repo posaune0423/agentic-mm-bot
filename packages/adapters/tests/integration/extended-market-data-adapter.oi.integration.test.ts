@@ -32,15 +32,17 @@ test("ExtendedMarketDataAdapter emits OI via SDK marketInfo client (no fetch)", 
       getMarkets: async (args: { marketNames: string[] }) => {
         calls++;
         lastArgs = args;
-        // Mimic SDK response shape: { data: [MarketModel] }
+        // Mimic market statistics API shape (status + data object)
         return {
-          data: [
-            {
-              market: args.marketNames[0],
-              openInterest: "123.45",
-              openInterestUsd: "67890.12",
-            },
-          ],
+          status: "OK",
+          data: {
+            // From provided example:
+            // - openInterestBase: base units
+            // - openInterest: quote/collateral units (we map to openInterestUsd when no explicit USD field)
+            openInterestBase: "11600.4344",
+            openInterest: "35827242.257619",
+            fundingRate: "-0.000059",
+          },
         };
       },
     };
@@ -78,8 +80,8 @@ test("ExtendedMarketDataAdapter emits OI via SDK marketInfo client (no fetch)", 
       expect(lastArgs).toEqual({ marketNames: ["BTC-USD"] });
       expect(oi.exchange).toBe("extended");
       expect(oi.symbol).toBe("BTC-USD");
-      expect(oi.openInterest).toBe("123.45");
-      expect(oi.openInterestUsd).toBe("67890.12");
+      expect(oi.openInterest).toBe("11600.4344");
+      expect(oi.openInterestUsd).toBe("35827242.257619");
     } finally {
       await adapter.disconnect();
     }
