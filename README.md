@@ -264,17 +264,17 @@ executor / ingestor は TTY 環境で **CLI ダッシュボード** を表示で
 
 ### 主な環境変数
 
-| 変数                         | 説明                         | 使用アプリ         |
-| ---------------------------- | ---------------------------- | ------------------ |
-| `DATABASE_URL`               | PostgreSQL 接続 URL          | 全アプリ           |
-| `EXTENDED_NETWORK`           | testnet / mainnet            | ingestor, executor |
-| `EXTENDED_API_KEY`           | Extended 取引所 API キー     | ingestor, executor |
-| `EXTENDED_STARK_PRIVATE_KEY` | Stark 署名用秘密鍵           | ingestor, executor |
-| `EXECUTOR_DASHBOARD`         | CLI ダッシュボード有効化     | executor           |
-| `OI_POLL_INTERVAL_MS`        | Open Interest ポーリング間隔 | executor           |
+| 変数                         | 説明                                                       | 使用アプリ         |
+| ---------------------------- | ---------------------------------------------------------- | ------------------ |
+| `DATABASE_URL`               | PostgreSQL 接続 URL                                        | 全アプリ           |
+| `EXTENDED_NETWORK`           | testnet / mainnet                                          | ingestor, executor |
+| `EXTENDED_API_KEY`           | Extended 取引所 API キー                                   | ingestor, executor |
+| `EXTENDED_STARK_PRIVATE_KEY` | Stark 署名用秘密鍵                                         | ingestor, executor |
+| `EXECUTOR_DASHBOARD`         | CLI ダッシュボード有効化                                   | executor           |
+| `OI_POLL_INTERVAL_MS`        | Open Interest ポーリング間隔                               | executor           |
 | `OI_POLL_TIMEOUT_MS`         | Open Interest ポーリング タイムアウト（デフォルト 2500ms） | ingestor, executor |
-| `OPENAI_API_KEY`             | OpenAI API キー              | llm-reflector      |
-| `ANTHROPIC_API_KEY`          | Anthropic API キー           | llm-reflector      |
+| `OPENAI_API_KEY`             | OpenAI API キー                                            | llm-reflector      |
+| `ANTHROPIC_API_KEY`          | Anthropic API キー                                         | llm-reflector      |
 
 詳細は各 `apps/<app>/src/env.ts` のスキーマ定義を参照してください。
 
