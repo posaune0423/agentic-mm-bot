@@ -83,6 +83,8 @@ async function main(): Promise<void> {
     starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
     starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
     vaultId: env.EXTENDED_VAULT_ID,
+    oiPollIntervalMs: env.OI_POLL_INTERVAL_MS,
+    oiPollTimeoutMs: env.OI_POLL_TIMEOUT_MS,
   });
 
   const executionAdapter = new ExtendedExecutionAdapter({

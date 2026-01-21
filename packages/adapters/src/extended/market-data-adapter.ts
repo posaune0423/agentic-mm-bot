@@ -30,7 +30,8 @@ import type {
   PriceEvent,
   TradeEvent,
 } from "../ports";
-import type { ExtendedConfig } from "./types";
+import { ExtendedConfigSchema } from "./types";
+import type { ExtendedConfig, ExtendedResolvedConfig } from "./types";
 
 const EXCHANGE_NAME = "extended";
 const log = logger;
@@ -38,11 +39,6 @@ const log = logger;
 interface MarketInfoClient {
   getMarkets: (args: { marketNames: string[] }) => Promise<unknown>;
 }
-
-const OI_POLL_INTERVAL_MS = 5_000;
-const OI_POLL_TIMEOUT_MS = 2_500;
-const OI_WARN_THROTTLE_MS = 30_000;
-const OI_ERROR_ESCALATE_MS = 30_000;
 
 // ============================================================================
 // Extended WS Message Types (from API docs)
@@ -177,7 +173,7 @@ interface StreamState {
  * Implements MarketDataPort for Extended exchange using direct WebSocket connections
  */
 export class ExtendedMarketDataAdapter implements MarketDataPort {
-  private config: ExtendedConfig;
+  private config: ExtendedResolvedConfig;
   private endpointConfig: EndpointConfig;
   private connectionFactory: WsConnectionFactory<StreamMessage>;
   private marketInfoClient: MarketInfoClient;
@@ -242,8 +238,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     connectionFactory?: WsConnectionFactory<StreamMessage>,
     marketInfoClient?: MarketInfoClient,
   ) {
-    this.config = config;
-    this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.config = ExtendedConfigSchema.parse(config);
+    this.endpointConfig = this.config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
     this.reconnectConfig = reconnectConfig;
 
     // Use provided factory or default to WsConnection
@@ -655,7 +651,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     if (!this.isConnected_) return;
 
     const abort = new AbortController();
-    const intervalMs = OI_POLL_INTERVAL_MS;
+    const intervalMs = this.config.oiPollIntervalMs;
 
     const intervalId = setInterval(() => {
       void this.pollOpenInterestOnce(symbol, abort);
@@ -700,7 +696,7 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
     }
 
     try {
-      const timeoutMs = OI_POLL_TIMEOUT_MS;
+      const timeoutMs = this.config.oiPollTimeoutMs;
       const res: unknown = await Promise.race([
         this.marketInfoClient.getMarkets({ marketNames: [symbol] }),
         new Promise<never>((_, reject) =>
@@ -766,7 +762,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
         entry.consecutiveFailures = (entry.consecutiveFailures ?? 0) + 1;
         entry.lastFailureReason = error instanceof Error ? error.message : "unknown_error";
       }
-      if (entry && now - lastLog >= OI_WARN_THROTTLE_MS) {
+      const warnThrottleMs = this.config.oiWarnThrottleMs;
+      if (entry && now - lastLog >= warnThrottleMs) {
         entry.lastErrorLogAtMs = now;
         log.warn("OI polling failed (will retry)", {
           symbol,
@@ -778,7 +775,8 @@ export class ExtendedMarketDataAdapter implements MarketDataPort {
       // Escalate once to ERROR if we still have zero successes after startup.
       if (entry && (entry.successCount ?? 0) === 0 && entry.startedAtMs !== undefined) {
         const waitedMs = now - entry.startedAtMs;
-        if (waitedMs >= OI_ERROR_ESCALATE_MS && entry.escalatedError !== true) {
+        const errorEscalateMs = this.config.oiErrorEscalateMs;
+        if (waitedMs >= errorEscalateMs && entry.escalatedError !== true) {
           entry.escalatedError = true;
           log.error("OI still unavailable after startup (check SDK response fields / connectivity)", {
             symbol,

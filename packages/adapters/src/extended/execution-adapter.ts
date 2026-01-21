@@ -42,7 +42,14 @@ import type {
   PlaceOrderRequest,
   PositionInfo,
 } from "../ports";
-import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, ExtendedTradeUpdate } from "./types";
+import { ExtendedConfigSchema } from "./types";
+import type {
+  ExtendedConfig,
+  ExtendedResolvedConfig,
+  ExtendedAccountStreamData,
+  ExtendedOrderUpdate,
+  ExtendedTradeUpdate,
+} from "./types";
 
 /**
  * Extended Execution Adapter
@@ -51,7 +58,7 @@ import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, Ex
  * and direct WebSocket connection for account stream.
  */
 export class ExtendedExecutionAdapter implements ExecutionPort {
-  private config: ExtendedConfig;
+  private config: ExtendedResolvedConfig;
   private endpointConfig: EndpointConfig;
   private starkAccount: StarkPerpetualAccount;
   private tradingClient: PerpetualTradingClient;
@@ -81,14 +88,14 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private lastFillByExchangeOrderId: Map<string, { filledQty: Decimal; paidFee: Decimal }> = new Map();
 
   constructor(config: ExtendedConfig) {
-    this.config = config;
-    this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.config = ExtendedConfigSchema.parse(config);
+    this.endpointConfig = this.config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
 
     this.starkAccount = new StarkPerpetualAccount(
-      config.vaultId,
-      config.starkPrivateKey,
-      config.starkPublicKey,
-      config.apiKey,
+      this.config.vaultId,
+      this.config.starkPrivateKey,
+      this.config.starkPublicKey,
+      this.config.apiKey,
     );
 
     this.tradingClient = new PerpetualTradingClient(this.endpointConfig, this.starkAccount);
@@ -384,8 +391,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         })(),
         this.mapError,
       ).map(response => ({
-        clientOrderId: response.data?.id ?? request.clientOrderId,
-        exchangeOrderId: response.data?.id,
+        clientOrderId: request.clientOrderId,
+        exchangeOrderId: response.data?.id.toString(),
         status: this.mapOrderStatus(response.data?.status),
         ts: new Date(response.data?.createdTime ?? Date.now()),
       })),

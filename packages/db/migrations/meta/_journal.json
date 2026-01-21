@@ -15,6 +15,13 @@
       "when": 1737475200000,
       "tag": "0001_spread_edge_views",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768982400000,
+      "tag": "0002_md_open_interest",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 
 import { OrderTracker } from "../../src/services/order-tracker";
-import type { OpenOrder } from "@agentic-mm-bot/adapters";
+import type { OpenOrder, OrderUpdateEvent } from "@agentic-mm-bot/adapters";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper factories
@@ -193,6 +193,69 @@ describe("OrderTracker.syncFromOpenOrders", () => {
     tracker.syncFromOpenOrders([]);
 
     expect(tracker.getActiveOrders().length).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateFromOrderEvent / updateFromFill Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("OrderTracker.updateFromOrderEvent / updateFromFill", () => {
+  let tracker: OrderTracker;
+
+  beforeEach(() => {
+    tracker = new OrderTracker();
+  });
+
+  test("should remove by exchangeOrderId when clientOrderId does not match", () => {
+    tracker.addOrder({
+      clientOrderId: "ord_real_1",
+      exchangeOrderId: "777",
+      side: "buy",
+      price: "95000",
+      size: "0.1",
+      createdAtMs: Date.now(),
+    });
+
+    const event: OrderUpdateEvent = {
+      type: "order_update",
+      ts: new Date(),
+      // Simulate missing/incorrect externalId in stream → fallback key
+      clientOrderId: "__ext_777",
+      exchangeOrderId: "777",
+      status: "rejected",
+      reason: "POST_ONLY_REJECTED",
+    };
+
+    tracker.updateFromOrderEvent(event);
+    expect(tracker.getOrder("ord_real_1")).toBeUndefined();
+    expect(tracker.getActiveOrders().length).toBe(0);
+  });
+
+  test("should update fill by exchangeOrderId when clientOrderId does not match", () => {
+    tracker.addOrder({
+      clientOrderId: "ord_real_2",
+      exchangeOrderId: "888",
+      side: "buy",
+      price: "95000",
+      size: "0.1",
+      createdAtMs: Date.now(),
+    });
+
+    tracker.updateFromFill({
+      type: "fill",
+      ts: new Date(),
+      clientOrderId: "__ext_888",
+      exchangeOrderId: "888",
+      symbol: "BTC-USD",
+      side: "buy",
+      price: "95000",
+      size: "0.05",
+    });
+
+    const updated = tracker.getOrder("ord_real_2");
+    expect(updated).toBeDefined();
+    expect(updated?.filledSize).toBe("0.05");
   });
 });
 

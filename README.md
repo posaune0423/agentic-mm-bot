@@ -16,6 +16,77 @@
 
 - **用語集 / パラメータ**: `docs/taxonomy.md`（`quote` / `skew` / `baseHalf` / `rollbackConditions` など、repo内の用語と略語の対応）
 
+## 戦略アルゴリズム（現行 / core）
+
+中核ロジックは `packages/core` にあり、executor/backtest から同一の「意思決定（decide）→ 注文集合（SET_ORDERS）」を呼びます。
+
+### 1) 状態機械（3モード）
+
+- **NORMAL**: 両側 post-only クォート（基本）
+- **DEFENSIVE**: リスクが高いときに **スプレッドを広げ、サイズを落とす**
+- **PAUSE**: **板を出さず cancel_all（注文集合を空にする）**。ポジションが残っている場合は unwind（reduce-only IOC）だけ出す場合があります
+
+遷移の優先順位は **PAUSE > DEFENSIVE > NORMAL**。PAUSE からの復帰は安全のため **DEFENSIVE に戻ります**（いきなり NORMAL には戻りません）。また PAUSE は最短 \(10s\) 維持します（`PAUSE_MIN_DURATION_MS = 10_000`）。
+
+### 2) 特徴量（Features）
+
+executor が Hot path（メモリ上）で更新し、core は以下の入力を使います（実装: `packages/core/src/feature-calculator.ts`）。
+
+- **mid**: `(bid + ask) / 2`
+- **spread_bps**: `((ask - bid) / mid) * 10_000`
+- **trade_imbalance_1s**: `((buyVol - sellVol) / max(totalVol, eps))`（side 不明時は価格 vs mid で推定）
+- **realized_vol_10s**: `std(ln(mid(t) / mid(t-1))) * 10_000`
+- **mark_index_div_bps**: `(abs(mark - index) / mid) * 10_000`
+- **liq_count_10s**: 10秒窓の liq/delev 件数
+- **data_stale**: `now - lastUpdate > staleCancelMs`
+
+### 3) RiskPolicy（PAUSE/DEFENSIVE 判定）
+
+実装: `packages/core/src/risk-policy.ts`
+
+- **PAUSE トリガ（最優先）**:
+  - data_stale
+  - mark/index 乖離（`markIndexDivBps >= pauseMarkIndexBps`）
+  - 清算スパイク（`liqCount10s >= pauseLiqCount10s`）
+  - 在庫上限（`abs(position) > maxInventory`）
+- **DEFENSIVE トリガ**（PAUSEでない場合）:
+  - realized_vol_10s が閾値以上（現行は 50bps）
+  - trade_imbalance_1s が閾値以上（現行は 0.7）
+
+### 4) クォート計算（基本）
+
+実装: `packages/core/src/quote-calculator.ts`
+
+- **half_spread_bps**:
+  - `baseHalfSpreadBps + volSpreadGain * realizedVol10s + toxSpreadGain * abs(tradeImbalance1s)`
+- **skew_bps**:
+  - `inventorySkewGain * inventory`
+- **価格**（bps を価格へ変換して適用）:
+  - `bid = mid - halfSpread - skew`
+  - `ask = mid + halfSpread - skew`
+
+### 5) Attack-Defense（新アルゴリズム）
+
+従来の「両側クォート」を土台に、リスクと在庫に応じて **守りを自動で強める** ロジックを追加しています（実装: `packages/core/src/quote-calculator.ts` の `generateDesiredOrders()`）。
+
+- **DEFENSIVE 時の調整**:
+  - スプレッド: `defensiveSpreadMultiplier`（デフォルト `1.5`）で拡張
+  - サイズ: `defensiveSizeMultiplier`（デフォルト `0.5`）で縮小
+  - さらに `riskScore`（0〜1）により、通常↔防御の間を **連続的に補間**します
+- **One-sided quoting（片側化）**:
+  - `abs(inventory) > oneSidedThreshold * maxInventory`（デフォルト `0.3`）で片側化
+  - ロングなら **買い（bid）を止めて ask のみ**、ショートなら **売り（ask）を止めて bid のみ**
+- **Unwind（在庫の自動解消）**:
+  - ポジションを一定時間保持（`unwindTriggerMs`、デフォルト `30_000ms`）したら
+  - `unwindSizeRatio`（デフォルト `0.25`）だけ **reduce-only IOC** を追加してポジションを削ります
+
+### 6) 出力（SET_ORDERS）
+
+core の出力 intent は **`SET_ORDERS` に統一**されています（実装: `packages/core/src/types.ts`, `packages/core/src/strategy-engine.ts`）。
+
+- **空配列**: cancel_all（PAUSE相当）
+- **最大2本の quote（bid/ask） + 任意で unwind（IOC）**: desired order set
+
 ## 技術スタック
 
 - **Runtime**: Bun

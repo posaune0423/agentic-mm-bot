@@ -24,6 +24,16 @@ import type { PositionTracker } from "../services/position-tracker";
 import { generateClientOrderId, planExecution } from "../services/execution-planner";
 import type { ExecutionAction } from "../services/execution-planner";
 
+type DecisionCycleMarketDataCache = Pick<
+  MarketDataCache,
+  "getSnapshot" | "getTradesInWindow" | "getMidSnapshotsInWindow"
+> & {
+  /**
+   * Optional for backward-compatibility: some tests/mocks may not implement this method.
+   */
+  getOpenInterestShockBps?: MarketDataCache["getOpenInterestShockBps"];
+};
+
 /**
  * cancel_all throttling
  *
@@ -50,7 +60,7 @@ let rateLimitUntilMs = 0;
 type ExecutorPhase = "IDLE" | "READ" | "DECIDE" | "PLAN" | "EXECUTE" | "PERSIST";
 
 export interface DecisionCycleDeps {
-  marketDataCache: MarketDataCache;
+  marketDataCache: DecisionCycleMarketDataCache;
   orderTracker: OrderTracker;
   positionTracker: PositionTracker;
   executionPort: ExecutionPort;
@@ -120,7 +130,9 @@ export async function executeTick(deps: DecisionCycleDeps, currentState: Strateg
   const midSnapshots10s = marketDataCache.getMidSnapshotsInWindow(nowMs, 10_000);
 
   // Step 3: Compute features
-  const features = computeFeatures(snapshot, trades1s, trades10s, midSnapshots10s, params);
+  const baseFeatures = computeFeatures(snapshot, trades1s, trades10s, midSnapshots10s, params);
+  const oiShockBps = marketDataCache.getOpenInterestShockBps?.(nowMs, 5 * 60 * 1000);
+  const features = oiShockBps ? { ...baseFeatures, openInterestShockBps: oiShockBps } : baseFeatures;
 
   // Step 4: Get position
   const position = positionTracker.getPosition();
@@ -448,7 +460,20 @@ async function executeAction(
           rateLimitUntilMs = Date.now() + (result.error.retryAfterMs ?? 1000);
         }
         onAction?.({ phase: "err", action, error: result.error });
-        logger.error("Failed to cancel order", result.error);
+        // Best-effort cleanup: if the exchange says the order doesn't exist, drop it from the tracker.
+        if (
+          result.error.type === "exchange_error" &&
+          /not\s*found|does\s*not\s*exist|unknown\s*order|order\s*.*not\s*found/i.test(result.error.message)
+        ) {
+          const removed = orderTracker.removeOrder(action.clientOrderId);
+          logger.warn("Cancel failed (order missing); removed from tracker", {
+            clientOrderId: action.clientOrderId,
+            removedFromTracker: removed,
+            message: result.error.message,
+          });
+        } else {
+          logger.error("Failed to cancel order", result.error);
+        }
       }
       break;
     }
@@ -492,6 +517,19 @@ async function executeAction(
 
       if (result.isOk()) {
         onAction?.({ phase: "ok", action });
+        if (result.value.status === "rejected") {
+          // Some venues can return an immediate reject while the request itself succeeded.
+          logger.warn("Order placement returned rejected; will not track", {
+            clientOrderId,
+            side: action.side,
+            price: finalPrice,
+            postOnly,
+            reduceOnly,
+            timeInForce,
+            reason: result.value.reason,
+          });
+          break;
+        }
         // Only track GTC orders (IOC orders fill immediately or cancel)
         if (timeInForce === "GTC") {
           orderTracker.addOrder({

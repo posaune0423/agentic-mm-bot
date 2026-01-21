@@ -162,6 +162,28 @@ export const env = createEnv({
     EXTENDED_VAULT_ID: z.coerce.number(),
 
     // =========================================================================
+    // Market Data Polling (Open Interest)
+    // =========================================================================
+
+    /**
+     * Open Interest ポーリング間隔 (ms)
+     *
+     * Extended は OI の WS ストリームがないため market statistics を SDK 経由でポーリングします。
+     *
+     * `.encrypted.local`（または指定された暗号化ファイル）の OI_POLL_INTERVAL_MS を参照
+     * デフォルト: 5,000ms (5秒)
+     */
+    OI_POLL_INTERVAL_MS: z.coerce.number().default(5_000),
+
+    /**
+     * Open Interest ポーリングのタイムアウト (ms)
+     *
+     * `.encrypted.local`（または指定された暗号化ファイル）の OI_POLL_TIMEOUT_MS を参照
+     * デフォルト: 2,500ms
+     */
+    OI_POLL_TIMEOUT_MS: z.coerce.number().default(2_500),
+
+    // =========================================================================
     // Executor Configuration
     // =========================================================================
 

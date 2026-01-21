@@ -183,6 +183,14 @@ export interface Features {
 
   /** Whether data is stale (last update too old) */
   dataStale: boolean;
+
+  /**
+   * Open interest "shock" over a recent window (bps).
+   *
+   * Optional (Phase 3 plan): executor can supply this from OI polling/history.
+   * When absent, riskScore behavior is unchanged.
+   */
+  openInterestShockBps?: BpsStr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -40,6 +40,7 @@ function calculateRiskScore(features: Features, position: Position, params: Stra
   const tox = Math.abs(Number.parseFloat(features.tradeImbalance1s));
   const absPosition = Math.abs(Number.parseFloat(position.size));
   const maxInventory = Number.parseFloat(params.maxInventory);
+  const oiShockBps = Math.abs(Number.parseFloat(features.openInterestShockBps ?? "0"));
 
   // Volatility: normalized by defensive threshold, capped at 1
   const volThreshold = Number.parseFloat(DEFENSIVE_VOL_THRESHOLD_BPS);
@@ -52,8 +53,14 @@ function calculateRiskScore(features: Features, position: Position, params: Stra
   // Inventory: normalized by maxInventory, capped at 1
   const invScore = maxInventory > 0 ? Math.min(absPosition / maxInventory, 1) : 0;
 
-  // Weighted combination
-  return volScore * 0.4 + toxScore * 0.4 + invScore * 0.2;
+  // Open interest: optional regime signal (Phase 3 plan)
+  // Interpret as relative change in bps over a recent window, normalized by a conservative cap.
+  // When absent, oiShockBps=0 and behavior is unchanged.
+  const OI_SHOCK_CAP_BPS = 500; // 5% change in the window => full score
+  const oiScore = Math.min(oiShockBps / OI_SHOCK_CAP_BPS, 1) * 0.2;
+
+  // Weighted combination (cap to [0, 1])
+  return Math.min(volScore * 0.4 + toxScore * 0.4 + invScore * 0.2 + oiScore, 1);
 }
 
 /**

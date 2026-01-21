@@ -83,6 +83,8 @@ async function main(): Promise<void> {
     starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
     starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
     vaultId: env.EXTENDED_VAULT_ID,
+    oiPollIntervalMs: env.OI_POLL_INTERVAL_MS,
+    oiPollTimeoutMs: env.OI_POLL_TIMEOUT_MS,
   });
 
   // Local debug-only counters (no secrets).
@@ -205,6 +207,17 @@ async function main(): Promise<void> {
     metrics.oiReceived++;
     dashboard.enterPhase("RECEIVING");
     dashboard.onOpenInterest(event);
+
+    // Append OI timeseries (Phase 3 plan: md_open_interest).
+    // Note: adapter emits only when value changes (best-effort), so this remains low-volume.
+    eventWriter.addOpenInterest({
+      ts: event.ts,
+      exchange: event.exchange,
+      symbol: event.symbol,
+      openInterest: event.openInterest,
+      openInterestUsd: event.openInterestUsd,
+      rawJson: event.raw,
+    });
   };
 
   // ============================================================================

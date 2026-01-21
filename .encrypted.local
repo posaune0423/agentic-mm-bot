@@ -83,6 +83,19 @@ OPENAI_API_KEY=encrypted:BJl3Kp6ouG/cMan0x5yNsVfYRNQoRpPR1IzPoiOWybUwewu+4qaqt8m
 # Ingestor Configuration
 # =============================================================================
 
+# =============================================================================
+# Market Data Polling (Open Interest)
+# =============================================================================
+
+# OI ポーリング間隔 (ms)
+# - Extended は OI の WS ストリームがないため market statistics を SDK 経由でポーリングします
+# - 推奨: 60000 (60秒) / デフォルト: 5000 (5秒)
+OI_POLL_INTERVAL_MS=60000
+
+# OI ポーリングのタイムアウト (ms)
+# デフォルト: 2500
+OI_POLL_TIMEOUT_MS=2500
+
 # BBO 書き込みスロットル間隔 (ms)
 BBO_THROTTLE_MS=100
 
