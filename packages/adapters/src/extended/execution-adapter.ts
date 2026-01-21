@@ -27,6 +27,10 @@ import {
   DEFAULT_FEES,
 } from "extended-typescript-sdk";
 import type { EndpointConfig, MarketModel, OpenOrderModel, PositionModel } from "extended-typescript-sdk";
+// SDK's internal HTTP utilities for direct API calls with limit parameter
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - Internal SDK utility, not exported from main entry
+import { getUrl, sendGetRequest } from "extended-typescript-sdk/dist/esm/utils/http.js";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { logger } from "@agentic-mm-bot/utils";
 
@@ -437,56 +441,46 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
   getOpenOrders(symbol: string): ResultAsync<OpenOrder[], ExecutionError> {
     // SDK's getOpenOrders does not support the `limit` parameter, causing the API
-    // to return only a small default number of orders. We call the API directly
-    // with an explicit limit to ensure all open orders are fetched.
-    const url = `${this.endpointConfig.apiBaseUrl}/api/v1/user/orders?market=${encodeURIComponent(symbol)}&limit=100`;
+    // to return only a small default number of orders. We use SDK's internal
+    // HTTP utilities to call the API directly with an explicit limit.
+    const url = getUrl(`${this.endpointConfig.apiBaseUrl}/api/v1/user/orders`, {
+      query: {
+        market: [symbol],
+        limit: "100",
+      },
+    });
 
-    return ResultAsync.fromPromise(
-      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Bun supports fetch natively
-      fetch(url, {
-        method: "GET",
-        headers: {
-          "X-Api-Key": this.config.apiKey,
-          "Content-Type": "application/json",
-        },
-      }).then(async res => {
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`HTTP ${String(res.status)}: ${text}`);
-        }
-        return res.json() as Promise<{ data?: OpenOrderModel[] }>;
-      }),
-      this.mapError,
-    ).map(response =>
-      (response.data ?? []).map((o: OpenOrderModel) => {
-        const exchangeOrderId = o.id.toString();
+    return ResultAsync.fromPromise(sendGetRequest<OpenOrderModel[]>(url, this.config.apiKey), this.mapError).map(
+      response =>
+        (response.data ?? []).map((o: OpenOrderModel) => {
+          const exchangeOrderId = o.id.toString();
 
-        // Normalize clientOrderId: try multiple field names for externalId
-        // The SDK uses `externalId`, but API responses might use variations
-        const raw = o as unknown as Record<string, unknown>;
-        const externalId =
-          (raw.externalId as string | undefined) ??
-          (raw.externalID as string | undefined) ??
-          (raw.external_id as string | undefined) ??
-          (raw.clientOrderId as string | undefined);
+          // Normalize clientOrderId: try multiple field names for externalId
+          // The SDK uses `externalId`, but API responses might use variations
+          const raw = o as unknown as Record<string, unknown>;
+          const externalId =
+            (raw.externalId as string | undefined) ??
+            (raw.externalID as string | undefined) ??
+            (raw.external_id as string | undefined) ??
+            (raw.clientOrderId as string | undefined);
 
-        // If no externalId found, generate a fallback key from exchangeOrderId
-        // This prevents multiple orders collapsing to the same Map key in OrderTracker
-        const clientOrderId =
-          externalId !== undefined && externalId.trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
+          // If no externalId found, generate a fallback key from exchangeOrderId
+          // This prevents multiple orders collapsing to the same Map key in OrderTracker
+          const clientOrderId =
+            externalId !== undefined && externalId.trim() !== "" ? externalId : `__ext_${exchangeOrderId}`;
 
-        return {
-          clientOrderId,
-          exchangeOrderId,
-          symbol: o.market,
-          side: (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
-          price: o.price.toString(),
-          size: o.qty.toString(),
-          filledSize: o.filledQty?.toString() ?? "0",
-          status: this.mapOrderStatus(o.status),
-          createdAt: new Date(o.createdTime),
-        };
-      }),
+          return {
+            clientOrderId,
+            exchangeOrderId,
+            symbol: o.market,
+            side: (o.side as string) === "BUY" ? ("buy" as const) : ("sell" as const),
+            price: o.price.toString(),
+            size: o.qty.toString(),
+            filledSize: o.filledQty?.toString() ?? "0",
+            status: this.mapOrderStatus(o.status),
+            createdAt: new Date(o.createdTime),
+          };
+        }),
     );
   }
 
