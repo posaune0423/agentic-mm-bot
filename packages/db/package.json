@@ -12,8 +12,10 @@
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit generate",
+    "db:migrate": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit migrate",
     "db:push": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit push",
+    "db:pull": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit pull",
     "db:studio": "dotenvx run -f ../../.encrypted.local -fk ../../.env.keys -- drizzle-kit studio",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
