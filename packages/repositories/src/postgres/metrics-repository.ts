@@ -177,6 +177,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
               inventorySkewGain: "5",
               pauseMarkIndexBps: "50",
               pauseLiqCount10s: 3,
+              // Attack-defense parameters (defaults)
+              defensiveSpreadMultiplier: null,
+              defensiveSizeMultiplier: null,
+              oneSidedThreshold: null,
+              oneSidedOnNonZeroInventory: null,
+              unwindTriggerMs: null,
+              unwindSizeRatio: null,
+              unwindCrossBps: null,
             }),
           );
         }
@@ -195,6 +203,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             inventorySkewGain: row.inventorySkewGain,
             pauseMarkIndexBps: row.pauseMarkIndexBps,
             pauseLiqCount10s: row.pauseLiqCount10s,
+            // Attack-defense parameters (optional, may be null)
+            defensiveSpreadMultiplier: row.defensiveSpreadMultiplier ?? null,
+            defensiveSizeMultiplier: row.defensiveSizeMultiplier ?? null,
+            oneSidedThreshold: row.oneSidedThreshold ?? null,
+            oneSidedOnNonZeroInventory: row.oneSidedOnNonZeroInventory ?? null,
+            unwindTriggerMs: row.unwindTriggerMs ?? null,
+            unwindSizeRatio: row.unwindSizeRatio ?? null,
+            unwindCrossBps: row.unwindCrossBps ?? null,
           }),
         );
       });

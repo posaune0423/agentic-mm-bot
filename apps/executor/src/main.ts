@@ -199,6 +199,14 @@ async function main(): Promise<void> {
     inventorySkewGain: p.inventorySkewGain,
     pauseMarkIndexBps: p.pauseMarkIndexBps,
     pauseLiqCount10s: p.pauseLiqCount10s,
+    // Attack-defense parameters (optional, use DB value or undefined for core defaults)
+    defensiveSpreadMultiplier: p.defensiveSpreadMultiplier ?? undefined,
+    defensiveSizeMultiplier: p.defensiveSizeMultiplier ?? undefined,
+    oneSidedThreshold: p.oneSidedThreshold ?? undefined,
+    oneSidedOnNonZeroInventory: p.oneSidedOnNonZeroInventory ?? undefined,
+    unwindTriggerMs: p.unwindTriggerMs ?? undefined,
+    unwindSizeRatio: p.unwindSizeRatio ?? undefined,
+    unwindCrossBps: p.unwindCrossBps ?? undefined,
   });
 
   // Strategy params (live, refreshable)

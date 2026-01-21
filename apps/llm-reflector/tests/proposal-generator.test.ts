@@ -49,6 +49,14 @@ describe("proposal-generator", () => {
           inventorySkewGain: "0.2",
           pauseMarkIndexBps: "50",
           pauseLiqCount10s: 5,
+          // Attack-defense parameters (null = use defaults)
+          defensiveSpreadMultiplier: null,
+          defensiveSizeMultiplier: null,
+          oneSidedThreshold: null,
+          oneSidedOnNonZeroInventory: null,
+          unwindTriggerMs: null,
+          unwindSizeRatio: null,
+          unwindCrossBps: null,
         },
       },
     );

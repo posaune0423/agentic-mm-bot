@@ -284,6 +284,20 @@ export interface StrategyParams {
    * Default: "0.25"
    */
   unwindSizeRatio?: BpsStr;
+
+  /**
+   * Unwind cross bps: additional bps to cross BBO for unwind orders
+   * e.g., 2 means unwind price crosses BBO by 2 bps (more aggressive fill)
+   * Default: "0"
+   */
+  unwindCrossBps?: BpsStr;
+
+  /**
+   * One-sided on non-zero inventory: when true, stop quoting on inventory-increasing side
+   * immediately when position != 0 (ignores oneSidedThreshold)
+   * Default: false
+   */
+  oneSidedOnNonZeroInventory?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -243,7 +243,10 @@ describe("ALLOWED_PARAM_KEYS", () => {
     expect(ALLOWED_PARAM_KEYS).toContain("unwindSizeRatio");
   });
 
-  test("should have exactly 15 keys", () => {
-    expect(ALLOWED_PARAM_KEYS.length).toBe(15);
+  test("should have exactly 17 keys", () => {
+    expect(ALLOWED_PARAM_KEYS.length).toBe(17);
+    // Verify new attack-defense keys are present
+    expect(ALLOWED_PARAM_KEYS).toContain("unwindCrossBps");
+    expect(ALLOWED_PARAM_KEYS).toContain("oneSidedOnNonZeroInventory");
   });
 });

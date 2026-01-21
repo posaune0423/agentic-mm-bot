@@ -405,5 +405,177 @@ describe("generateDesiredOrders", () => {
       expect(unwindOrders).toHaveLength(1);
       expect(unwindOrders[0].side).toBe("buy"); // Short position → buy to unwind
     });
+
+    test("should place unwind price at BBO side when spreadBps > 0 (long position)", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        unwindTriggerMs: 30000,
+        unwindSizeRatio: "0.25",
+        unwindCrossBps: "0", // No additional crossing
+      };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        midPx: "50000",
+        spreadBps: "10", // 10 bps spread → ~5 bps half spread
+      };
+      const nowMs = Date.now();
+      const position: Position = {
+        size: "1.0", // Long
+        positionSinceMs: nowMs - 35000,
+      };
+      const risk = createDefaultRisk();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      const unwindOrders = orders.filter(o => o.kind === "unwind");
+      expect(unwindOrders).toHaveLength(1);
+
+      // For long position, sell unwind should be at estimated bid (mid - halfSpread)
+      // mid = 50000, spreadBps = 10 → halfSpread = 5 bps = 50000 * 5 / 10000 = 25
+      // estimated bid = 50000 - 25 = 49975
+      const unwindPrice = parseFloat(unwindOrders[0].price);
+      expect(unwindPrice).toBeCloseTo(49975, 0);
+      expect(unwindPrice).toBeLessThan(50000); // Should be below mid
+    });
+
+    test("should place unwind price at BBO side when spreadBps > 0 (short position)", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        unwindTriggerMs: 30000,
+        unwindSizeRatio: "0.25",
+        unwindCrossBps: "0",
+      };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        midPx: "50000",
+        spreadBps: "10", // 10 bps spread
+      };
+      const nowMs = Date.now();
+      const position: Position = {
+        size: "-1.0", // Short
+        positionSinceMs: nowMs - 35000,
+      };
+      const risk = createDefaultRisk();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      const unwindOrders = orders.filter(o => o.kind === "unwind");
+      expect(unwindOrders).toHaveLength(1);
+
+      // For short position, buy unwind should be at estimated ask (mid + halfSpread)
+      // estimated ask = 50000 + 25 = 50025
+      const unwindPrice = parseFloat(unwindOrders[0].price);
+      expect(unwindPrice).toBeCloseTo(50025, 0);
+      expect(unwindPrice).toBeGreaterThan(50000); // Should be above mid
+    });
+
+    test("should apply unwindCrossBps for more aggressive fill", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        unwindTriggerMs: 30000,
+        unwindSizeRatio: "0.25",
+        unwindCrossBps: "5", // Cross by 5 bps
+      };
+      const features: Features = {
+        ...createDefaultFeatures(),
+        midPx: "50000",
+        spreadBps: "10",
+      };
+      const nowMs = Date.now();
+      const position: Position = {
+        size: "1.0", // Long
+        positionSinceMs: nowMs - 35000,
+      };
+      const risk = createDefaultRisk();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      const unwindOrders = orders.filter(o => o.kind === "unwind");
+      expect(unwindOrders).toHaveLength(1);
+
+      // estimated bid = 50000 - 25 = 49975
+      // with 5 bps cross: 49975 - (50000 * 5 / 10000) = 49975 - 25 = 49950
+      const unwindPrice = parseFloat(unwindOrders[0].price);
+      expect(unwindPrice).toBeCloseTo(49950, 0);
+    });
+  });
+
+  describe("one-sided early activation (oneSidedOnNonZeroInventory)", () => {
+    test("should stop buying immediately when long position with oneSidedOnNonZeroInventory=true", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        maxInventory: "1.0",
+        oneSidedThreshold: "0.3", // This would require 0.3+ for threshold-based
+        oneSidedOnNonZeroInventory: true, // Early activation
+      };
+      const features = createDefaultFeatures();
+      const position: Position = { size: "0.1" }; // Small long (< threshold)
+      const risk = createDefaultRisk();
+      const nowMs = Date.now();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      // With early activation, even small position should stop buying
+      const quoteOrders = orders.filter(o => o.kind === "quote");
+      expect(quoteOrders).toHaveLength(1);
+      expect(quoteOrders[0].side).toBe("sell"); // Only ask
+    });
+
+    test("should stop selling immediately when short position with oneSidedOnNonZeroInventory=true", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        maxInventory: "1.0",
+        oneSidedThreshold: "0.3",
+        oneSidedOnNonZeroInventory: true,
+      };
+      const features = createDefaultFeatures();
+      const position: Position = { size: "-0.1" }; // Small short (< threshold)
+      const risk = createDefaultRisk();
+      const nowMs = Date.now();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      // With early activation, even small position should stop selling
+      const quoteOrders = orders.filter(o => o.kind === "quote");
+      expect(quoteOrders).toHaveLength(1);
+      expect(quoteOrders[0].side).toBe("buy"); // Only bid
+    });
+
+    test("should quote both sides when zero position with oneSidedOnNonZeroInventory=true", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        maxInventory: "1.0",
+        oneSidedOnNonZeroInventory: true,
+      };
+      const features = createDefaultFeatures();
+      const position: Position = { size: "0" }; // No position
+      const risk = createDefaultRisk();
+      const nowMs = Date.now();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      // Zero position should still quote both sides
+      const quoteOrders = orders.filter(o => o.kind === "quote");
+      expect(quoteOrders).toHaveLength(2);
+    });
+
+    test("should use threshold-based one-sided when oneSidedOnNonZeroInventory=false", () => {
+      const params: StrategyParams = {
+        ...createDefaultParams(),
+        maxInventory: "1.0",
+        oneSidedThreshold: "0.3",
+        oneSidedOnNonZeroInventory: false, // Disabled (default behavior)
+      };
+      const features = createDefaultFeatures();
+      const position: Position = { size: "0.1" }; // Small long (< 0.3 threshold)
+      const risk = createDefaultRisk();
+      const nowMs = Date.now();
+
+      const orders = generateDesiredOrders(params, features, position, risk, nowMs);
+
+      // Without early activation, small position should quote both sides
+      const quoteOrders = orders.filter(o => o.kind === "quote");
+      expect(quoteOrders).toHaveLength(2);
+    });
   });
 });

@@ -183,6 +183,7 @@ const DEFAULT_DEFENSIVE_SIZE_MULTIPLIER = 0.5;
 const DEFAULT_ONE_SIDED_THRESHOLD = 0.3;
 const DEFAULT_UNWIND_TRIGGER_MS = 30_000;
 const DEFAULT_UNWIND_SIZE_RATIO = 0.25;
+const DEFAULT_UNWIND_CROSS_BPS = 0;
 
 /**
  * Calculate adjusted half spread for defensive mode
@@ -216,12 +217,25 @@ function calculateDefensiveSize(baseSizeUsd: number, risk: RiskEvaluation, defen
 /**
  * Determine if one-sided quoting should be applied
  *
+ * Two modes:
+ * 1. oneSidedOnNonZeroInventory=true: stop quoting on inventory-increasing side immediately when pos!=0
+ * 2. oneSidedOnNonZeroInventory=false (default): apply threshold-based one-sided quoting
+ *
  * @returns 'bid' if only bid should quote, 'ask' if only ask, null if both
  */
 function getOneSidedMode(position: Position, params: StrategyParams): "bid" | "ask" | null {
   // Validate and sanitize inputs to avoid forcing single-sided quoting on NaN/out-of-range values
   const posSize = toFiniteNumber(position.size, 0);
 
+  // Early one-sided: if enabled and position is non-zero, stop quoting on side that increases inventory
+  const oneSidedOnNonZero = params.oneSidedOnNonZeroInventory === true;
+  if (oneSidedOnNonZero && posSize !== 0) {
+    // Long position → stop buying (only ask)
+    // Short position → stop selling (only bid)
+    return posSize > 0 ? "ask" : "bid";
+  }
+
+  // Threshold-based one-sided quoting
   const maxInventory = toFiniteNumber(params.maxInventory, 0);
   if (maxInventory <= 0) return null; // Both sides active when maxInventory is invalid
 
@@ -406,8 +420,37 @@ export function generateDesiredOrders(
     if (unwindSize > 0) {
       // Unwind opposite to position: long → sell, short → buy
       const unwindSide = posSize > 0 ? "sell" : "buy";
-      // Use mid price for IOC (will fill at market or better)
-      const unwindPrice = formatPrice(mid);
+
+      // Calculate unwind price using spreadBps to estimate BBO
+      // long解消（sell unwind）: price ~= mid - spread/2 - crossBps  (概算bid以下)
+      // short解消（buy unwind）: price ~= mid + spread/2 + crossBps  (概算ask以上)
+      const spreadBpsNum = toFiniteNumber(features.spreadBps, 0);
+      const halfSpreadBpsForUnwind = spreadBpsNum / 2;
+      const unwindCrossBps = toFiniteNumber(
+        params.unwindCrossBps ?? String(DEFAULT_UNWIND_CROSS_BPS),
+        DEFAULT_UNWIND_CROSS_BPS,
+      );
+
+      let unwindPriceNum: number;
+      if (posSize > 0) {
+        // Sell unwind: place at or below estimated bid to fill quickly
+        // estimated_bid = mid - halfSpread, then cross further by unwindCrossBps
+        const estimatedBid = mid - bpsToPrice(mid, halfSpreadBpsForUnwind);
+        unwindPriceNum = estimatedBid - bpsToPrice(mid, unwindCrossBps);
+      } else {
+        // Buy unwind: place at or above estimated ask to fill quickly
+        // estimated_ask = mid + halfSpread, then cross further by unwindCrossBps
+        const estimatedAsk = mid + bpsToPrice(mid, halfSpreadBpsForUnwind);
+        unwindPriceNum = estimatedAsk + bpsToPrice(mid, unwindCrossBps);
+      }
+
+      // Ensure price is valid
+      if (!Number.isFinite(unwindPriceNum) || unwindPriceNum <= 0) {
+        // Fallback to mid price if calculation fails
+        unwindPriceNum = mid;
+      }
+
+      const unwindPrice = formatPrice(unwindPriceNum);
 
       orders.push({
         side: unwindSide,

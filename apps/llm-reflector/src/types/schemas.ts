@@ -29,6 +29,14 @@ export const ParamNameSchema = z.enum([
   "inventorySkewGain",
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
+  // Attack-defense parameters
+  "defensiveSpreadMultiplier",
+  "defensiveSizeMultiplier",
+  "oneSidedThreshold",
+  "oneSidedOnNonZeroInventory",
+  "unwindTriggerMs",
+  "unwindSizeRatio",
+  "unwindCrossBps",
 ]);
 
 export type ParamName = z.infer<typeof ParamNameSchema>;
@@ -72,6 +80,14 @@ export const ChangesSchema = z
     inventorySkewGain: z.union([z.string(), z.number()]).optional(),
     pauseMarkIndexBps: z.union([z.string(), z.number()]).optional(),
     pauseLiqCount10s: z.number().optional(),
+    // Attack-defense parameters
+    defensiveSpreadMultiplier: z.union([z.string(), z.number()]).optional(),
+    defensiveSizeMultiplier: z.union([z.string(), z.number()]).optional(),
+    oneSidedThreshold: z.union([z.string(), z.number()]).optional(),
+    oneSidedOnNonZeroInventory: z.boolean().optional(),
+    unwindTriggerMs: z.number().optional(),
+    unwindSizeRatio: z.union([z.string(), z.number()]).optional(),
+    unwindCrossBps: z.union([z.string(), z.number()]).optional(),
   })
   .refine(
     data => {

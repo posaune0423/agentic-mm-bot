@@ -46,4 +46,12 @@ export interface CurrentParamsSummary {
   inventorySkewGain: string;
   pauseMarkIndexBps: string;
   pauseLiqCount10s: number;
+  // Attack-defense parameters (optional, may be null if not set in DB)
+  defensiveSpreadMultiplier: string | null;
+  defensiveSizeMultiplier: string | null;
+  oneSidedThreshold: string | null;
+  oneSidedOnNonZeroInventory: boolean | null;
+  unwindTriggerMs: number | null;
+  unwindSizeRatio: string | null;
+  unwindCrossBps: string | null;
 }
