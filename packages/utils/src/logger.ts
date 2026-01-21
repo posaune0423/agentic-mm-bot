@@ -33,12 +33,15 @@ function logLevelPriority(level: LogLevel): number {
       return 0;
     case LogLevel.WARN:
       return 1;
-    case LogLevel.LOG:
-      return 2;
     case LogLevel.INFO:
-      return 3;
+      return 2;
     case LogLevel.DEBUG:
+      return 3;
+    case LogLevel.LOG:
       return 4;
+    default:
+      // Fallback: lowest priority (should be unreachable for LogLevel)
+      return Number.MAX_SAFE_INTEGER;
   }
 }
 

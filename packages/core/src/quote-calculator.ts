@@ -301,6 +301,8 @@ export function generateDesiredOrders(
   const baseSizeUsd = Number.parseFloat(params.quoteSizeUsd);
   const adjustedSizeUsd = calculateDefensiveSize(baseSizeUsd, risk, defensiveSizeMult);
   const size = usdToBaseSize(String(adjustedSizeUsd), features.midPx);
+  const sizeNum = Number.parseFloat(size);
+  const shouldGenerateQuotes = adjustedSizeUsd > 0 && Number.isFinite(sizeNum) && sizeNum > 0;
 
   // Check one-sided mode
   const oneSidedMode = getOneSidedMode(position, params);
@@ -309,7 +311,7 @@ export function generateDesiredOrders(
   const quoteReasonCodes = risk.reasonCodes;
 
   // Generate quote orders based on one-sided mode
-  if (oneSidedMode !== "ask") {
+  if (shouldGenerateQuotes && oneSidedMode !== "ask") {
     // Generate bid (unless one-sided ask only)
     orders.push({
       side: "buy",
@@ -323,7 +325,7 @@ export function generateDesiredOrders(
     });
   }
 
-  if (oneSidedMode !== "bid") {
+  if (shouldGenerateQuotes && oneSidedMode !== "bid") {
     // Generate ask (unless one-sided bid only)
     orders.push({
       side: "sell",

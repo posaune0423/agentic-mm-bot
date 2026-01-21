@@ -62,7 +62,7 @@ function fillToCsvRow(fill: EnrichedFill): string {
  * @param fills - Enriched fills with markout
  * @param outputPath - Output file path
  */
-export function writeFillsCsv(fills: EnrichedFill[], outputPath: string): void {
+export async function writeFillsCsv(fills: EnrichedFill[], outputPath: string): Promise<void> {
   const lines: string[] = [];
 
   // Header
@@ -75,8 +75,7 @@ export function writeFillsCsv(fills: EnrichedFill[], outputPath: string): void {
 
   // Write to file
   // Use Bun APIs to avoid non-literal-fs-filename lint warnings.
-  // This function remains sync-ish for callers; we deliberately fire-and-forget here.
-  void Bun.write(outputPath, `${lines.join("\n")}\n`);
+  await Bun.write(outputPath, `${lines.join("\n")}\n`);
 }
 
 /**

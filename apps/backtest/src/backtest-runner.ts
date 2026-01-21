@@ -178,7 +178,7 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   // Step 6: Output CSV if path specified
   if (outputCsvPath !== undefined && outputCsvPath !== "") {
     logger.info("Writing fills to CSV", { path: outputCsvPath });
-    writeFillsCsv(enrichedFills, outputCsvPath);
+    await writeFillsCsv(enrichedFills, outputCsvPath);
   }
 
   // Step 7: Get metrics

@@ -53,32 +53,90 @@ const DB_FETCH_INTERVAL_MS = 10_000;
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface BalanceData {
+  collateralName?: string;
+  balance?: string; // Wallet balance
+  equity?: string;
+  availableForTrade?: string;
+  availableForWithdrawal?: string;
+  unrealisedPnl?: string;
+  initialMargin?: string;
+  marginRatio?: string;
+  exposure?: string;
+  leverage?: string;
+  updatedTime?: number;
+}
+
+interface PositionData {
+  size: string;
+  entryPrice?: string;
+  unrealizedPnl?: string;
+  side?: string;
+  markPrice?: string;
+  liquidationPrice?: string;
+  leverage?: string;
+  value?: string;
+  margin?: string;
+  realisedPnl?: string;
+}
+
+interface AccountInfo {
+  accountId?: number;
+  status?: string;
+  l2Vault?: number;
+  description?: string;
+}
+
+interface PnlDataPoint {
+  date: string;
+  value: string;
+}
+
 interface SdkData {
-  balance?: {
-    equity?: string;
-    availableBalance?: string;
-    marginUsed?: string;
-  };
-  position?: {
-    size: string;
-    entryPrice?: string;
-    unrealizedPnl?: string;
-    side?: string;
-  };
+  accountInfo?: AccountInfo;
+  balance?: BalanceData;
+  position?: PositionData;
   openOrdersCount?: number;
+  pnlHistory?: PnlDataPoint[];
+  equityHistory?: PnlDataPoint[];
   lastFetchMs?: number;
   error?: string;
 }
 
 interface DbPerformanceWindow {
   fillCount: number;
+  buyCount: number;
+  sellCount: number;
   totalNotional: number | null;
   edgeT0Usd: number | null;
   priceMove10sUsd: number | null;
+  priceMove60sUsd: number | null;
   markout10sUsd: number | null;
   markout60sUsd: number | null;
   edgeT0BpsVwap: number | null;
+  priceMove10sBpsVwap: number | null;
   markout10sBpsVwap: number | null;
+  markout60sBpsVwap: number | null;
+  // Win rate
+  winCount: number;
+  winRate: number | null;
+  // Avg fill size
+  avgFillSize: number | null;
+  // Fees
+  totalFees: number | null;
+  // Net after fees
+  netAfterFees: number | null;
+}
+
+interface DbBySide {
+  side: string;
+  fillCount: number;
+  totalNotional: number | null;
+  edgeT0BpsVwap: number | null;
+  priceMove10sBpsVwap: number | null;
+  markout10sBpsVwap: number | null;
+  edgeT0Usd: number | null;
+  markout10sUsd: number | null;
 }
 
 interface DbQuality {
@@ -91,18 +149,42 @@ interface DbQuality {
     markout10sBps: number | null;
     fillSz: string;
   }>;
+  bestFills: Array<{
+    fillId: string;
+    side: string;
+    markout10sBps: number | null;
+    fillSz: string;
+  }>;
 }
 
 interface DbOps {
   cancelCount: number;
   pauseCount: number;
+  orderCount: number;
+  fillRate: number | null;
   feeSum: number | null;
   makerRate: number | null;
+  takerRate: number | null;
+}
+
+interface DbAllTime {
+  fillCount: number;
+  totalNotional: number | null;
+  edgeT0Usd: number | null;
+  priceMove10sUsd: number | null;
+  markout10sUsd: number | null;
+  totalFees: number | null;
+  netAfterFees: number | null;
+  firstFillTs: Date | null;
+  lastFillTs: Date | null;
 }
 
 interface DbData {
   perf1h?: DbPerformanceWindow;
   perf24h?: DbPerformanceWindow;
+  perf7d?: DbPerformanceWindow;
+  allTime?: DbAllTime;
+  bySide1h?: DbBySide[];
   quality1h?: DbQuality;
   ops1h?: DbOps;
   lastFetchMs?: number;
@@ -132,9 +214,94 @@ let tradingClient: PerpetualTradingClient | null = null;
 let db: Db | null = null;
 let startedAtMs = Date.now();
 
+// API base URL for direct HTTP calls
+const API_BASE_URL =
+  EXTENDED_NETWORK === "mainnet" ?
+    "https://api.starknet.extended.exchange/api/v1"
+  : "https://api.starknet.sepolia.extended.exchange/api/v1";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SDK Data Fetcher
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Safely extract a string value from an object
+ */
+function safeString(obj: unknown, key: string): string | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  const val = (obj as Record<string, unknown>)[key];
+  if (val === null || val === undefined) return undefined;
+  if (typeof val === "string") return val;
+  if (typeof val === "number") return val.toString();
+  if (typeof val === "object" && "toString" in val) {
+    return (val as { toString: () => string }).toString();
+  }
+  return String(val);
+}
+
+/**
+ * Fetch PnL history directly via HTTP API
+ */
+async function fetchPnlHistory(accountId: number, interval: string, pnlType: string): Promise<PnlDataPoint[]> {
+  try {
+    const url = `${API_BASE_URL}/portfolio/charts/pnl?accountId=${accountId}&interval=${interval}&pnlType=${pnlType}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": EXTENDED_API_KEY,
+        "User-Agent": "agentic-mm-bot/1.0",
+      },
+    });
+
+    if (!res.ok) {
+      pushLog(LogLevel.DEBUG, `PnL history API returned ${res.status}`);
+      return [];
+    }
+
+    const json = (await res.json()) as { status?: string; data?: Array<{ date: string; value: string }> };
+    if (json.status !== "OK" || !Array.isArray(json.data)) {
+      return [];
+    }
+
+    return json.data;
+  } catch (err) {
+    pushLog(LogLevel.DEBUG, `PnL history fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch equity history directly via HTTP API
+ */
+async function fetchEquityHistory(accountId: number, interval: string): Promise<PnlDataPoint[]> {
+  try {
+    const url = `${API_BASE_URL}/portfolio/charts/equities?accountId=${accountId}&interval=${interval}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": EXTENDED_API_KEY,
+        "User-Agent": "agentic-mm-bot/1.0",
+      },
+    });
+
+    if (!res.ok) {
+      pushLog(LogLevel.DEBUG, `Equity history API returned ${res.status}`);
+      return [];
+    }
+
+    const json = (await res.json()) as { status?: string; data?: Array<{ date: string; value: string }> };
+    if (json.status !== "OK" || !Array.isArray(json.data)) {
+      return [];
+    }
+
+    return json.data;
+  } catch (err) {
+    pushLog(LogLevel.DEBUG, `Equity history fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
 
 async function fetchSdkData(): Promise<void> {
   if (!tradingClient) {
@@ -143,46 +310,106 @@ async function fetchSdkData(): Promise<void> {
   }
 
   try {
-    // Fetch balance
-    const balanceRes = await tradingClient.account.getBalance();
-    const balanceData = balanceRes.data as unknown as Record<string, unknown> | undefined;
+    // Fetch account info to get accountId
+    let accountInfo: AccountInfo | undefined;
+    try {
+      const accountRes = (await tradingClient.account.getAccount()) as unknown as {
+        data?: {
+          accountId?: number;
+          status?: string;
+          l2Vault?: number;
+          description?: string;
+        };
+      };
+      const acctData = accountRes.data;
+      if (acctData) {
+        accountInfo = {
+          accountId: acctData.accountId,
+          status: acctData.status,
+          l2Vault: acctData.l2Vault,
+          description: acctData.description,
+        };
+      }
+    } catch {
+      // Account info is optional
+    }
 
-    // Fetch positions
+    // Fetch balance with all fields
+    const balanceRes = await tradingClient.account.getBalance();
+    const balData = balanceRes.data as unknown as Record<string, unknown> | undefined;
+
+    const balance: BalanceData | undefined =
+      balData ?
+        {
+          collateralName: safeString(balData, "collateralName"),
+          balance: safeString(balData, "balance"),
+          equity: safeString(balData, "equity"),
+          availableForTrade: safeString(balData, "availableForTrade"),
+          availableForWithdrawal: safeString(balData, "availableForWithdrawal"),
+          unrealisedPnl: safeString(balData, "unrealisedPnl"),
+          initialMargin: safeString(balData, "initialMargin"),
+          marginRatio: safeString(balData, "marginRatio"),
+          exposure: safeString(balData, "exposure"),
+          leverage: safeString(balData, "leverage"),
+          updatedTime: typeof balData.updatedTime === "number" ? balData.updatedTime : undefined,
+        }
+      : undefined;
+
+    // Fetch positions with all fields
     const positionsRes = await tradingClient.account.getPositions({ marketNames: [SYMBOL] });
-    const positions = (positionsRes.data ?? []) as Array<{
-      market: string;
-      side: string;
-      size: { toString(): string };
-      openPrice: { toString(): string };
-      unrealisedPnl: { toString(): string };
-    }>;
-    const pos = positions[0];
+    const positions = (positionsRes.data ?? []) as Array<Record<string, unknown>>;
+    const rawPos = positions[0];
+
+    let position: PositionData | undefined;
+    if (rawPos) {
+      const side = safeString(rawPos, "side");
+      const sizeRaw = safeString(rawPos, "size") ?? "0";
+      const size = side === "SHORT" ? `-${sizeRaw}` : sizeRaw;
+
+      position = {
+        size,
+        side,
+        entryPrice: safeString(rawPos, "openPrice"),
+        unrealizedPnl: safeString(rawPos, "unrealisedPnl"),
+        markPrice: safeString(rawPos, "markPrice"),
+        liquidationPrice: safeString(rawPos, "liquidationPrice"),
+        leverage: safeString(rawPos, "leverage"),
+        value: safeString(rawPos, "value"),
+        margin: safeString(rawPos, "margin"),
+        realisedPnl: safeString(rawPos, "realisedPnl"),
+      };
+    }
 
     // Fetch open orders count
     const ordersRes = await tradingClient.account.getOpenOrders({ marketNames: [SYMBOL] });
     const orders = ordersRes.data ?? [];
 
+    // Fetch PnL and equity history if we have accountId
+    let pnlHistory: PnlDataPoint[] = [];
+    let equityHistory: PnlDataPoint[] = [];
+
+    if (accountInfo?.accountId) {
+      // Fetch WEEK interval for charts (7 days)
+      pnlHistory = await fetchPnlHistory(accountInfo.accountId, "WEEK", "TOTAL_PNL");
+      equityHistory = await fetchEquityHistory(accountInfo.accountId, "WEEK");
+    }
+
     sdkData = {
-      balance: {
-        equity: String(balanceData?.equity ?? "-"),
-        availableBalance: String(balanceData?.availableBalance ?? "-"),
-        marginUsed: String(balanceData?.marginUsed ?? "-"),
-      },
-      position:
-        pos ?
-          {
-            size: pos.side === "LONG" ? pos.size.toString() : `-${pos.size.toString()}`,
-            entryPrice: pos.openPrice.toString(),
-            unrealizedPnl: pos.unrealisedPnl.toString(),
-            side: pos.side,
-          }
-        : undefined,
+      accountInfo,
+      balance,
+      position,
       openOrdersCount: orders.length,
+      pnlHistory,
+      equityHistory,
       lastFetchMs: Date.now(),
       error: undefined,
     };
 
-    pushLog(LogLevel.DEBUG, "SDK data fetched", { orders: orders.length });
+    pushLog(LogLevel.DEBUG, "SDK data fetched", {
+      orders: orders.length,
+      pnlHistoryLen: pnlHistory.length,
+      equityHistoryLen: equityHistory.length,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     sdkData = { ...sdkData, error: msg, lastFetchMs: Date.now() };
@@ -435,6 +662,55 @@ function colorValue(n: number | null | undefined, positive: "green" | "red" = "g
   return style.token("dim");
 }
 
+/**
+ * Generate ASCII sparkline from values
+ * Uses block characters: ▁▂▃▄▅▆▇█
+ */
+function sparkline(values: number[], width: number): string {
+  if (values.length === 0) return "-".repeat(width);
+
+  const chars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+
+  // Sample values to fit width
+  const sampled: number[] = [];
+  if (values.length <= width) {
+    sampled.push(...values);
+  } else {
+    const step = values.length / width;
+    for (let i = 0; i < width; i++) {
+      const idx = Math.min(Math.floor(i * step), values.length - 1);
+      sampled.push(values[idx]);
+    }
+  }
+
+  // Convert to sparkline
+  const result = sampled.map(v => {
+    if (range === 0) return chars[4]; // Middle if all same
+    const normalized = (v - min) / range;
+    const idx = Math.min(Math.floor(normalized * chars.length), chars.length - 1);
+    return chars[idx];
+  });
+
+  // Pad if needed
+  while (result.length < width) {
+    result.unshift(" ");
+  }
+
+  return result.join("");
+}
+
+/**
+ * Generate ASCII bar chart (horizontal)
+ */
+function barChart(value: number, maxValue: number, width: number, fill = "█", empty = "░"): string {
+  if (maxValue <= 0 || !Number.isFinite(value)) return empty.repeat(width);
+  const fillWidth = Math.min(Math.round((Math.abs(value) / maxValue) * width), width);
+  return fill.repeat(fillWidth) + empty.repeat(width - fillWidth);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Render Sections
 // ─────────────────────────────────────────────────────────────────────────────
@@ -494,18 +770,92 @@ function renderAccountSection(nowMs: number, width: number): string[] {
     return lines;
   }
 
-  // Balance
   const bal = sdkData.balance;
+  const acct = sdkData.accountInfo;
+
+  // Account ID & Status row
+  if (acct?.accountId) {
+    const statusBadge =
+      acct.status === "ACTIVE" ?
+        style.badge("ACTIVE", "bgGreen", "white")
+      : style.badge(acct.status ?? "-", "bgYellow", "white");
+    lines.push(
+      boxRow(
+        `${style.token("dim")}Account:${style.token("reset")} #${acct.accountId}  ${statusBadge}  ${style.token("dim")}${acct.description ?? ""}${style.token("reset")}`,
+        width,
+      ),
+    );
+  }
+
+  // Main balance row: Equity + Balance + Unrealized PnL
+  const equityNum = bal?.equity ? Number.parseFloat(bal.equity) : null;
+  const walletBalNum = bal?.balance ? Number.parseFloat(bal.balance) : null;
+  const uPnlNum = bal?.unrealisedPnl ? Number.parseFloat(bal.unrealisedPnl) : null;
+
   const equityLabel = `${style.token("dim")}Equity:${style.token("reset")}`;
-  const equityVal = style.wrap(bal?.equity ?? "-", "bold", "white");
+  const equityVal = equityNum !== null ? style.wrap(`$${fmtNum(equityNum, 2)}`, "bold", "white") : "-";
+  const balLabel = `${style.token("dim")}Wallet:${style.token("reset")}`;
+  const balVal = walletBalNum !== null ? `$${fmtNum(walletBalNum, 2)}` : "-";
+  const uPnlLabel = `${style.token("dim")}Unrealized PnL:${style.token("reset")}`;
+  const uPnlColor = colorValue(uPnlNum);
+  const uPnlVal = uPnlNum !== null ? `${uPnlColor}${fmtUsd(uPnlNum, 2)}${style.token("reset")}` : "-";
+
+  lines.push(boxRow(`${equityLabel} ${equityVal}  ${balLabel} ${balVal}  ${uPnlLabel} ${uPnlVal}`, width));
+
+  // Available / Margin / Leverage row
+  const availTradeNum = bal?.availableForTrade ? Number.parseFloat(bal.availableForTrade) : null;
+  const initialMarginNum = bal?.initialMargin ? Number.parseFloat(bal.initialMargin) : null;
+  const leverageNum = bal?.leverage ? Number.parseFloat(bal.leverage) : null;
+  const marginRatioNum = bal?.marginRatio ? Number.parseFloat(bal.marginRatio) : null;
+  const exposureNum = bal?.exposure ? Number.parseFloat(bal.exposure) : null;
+
   const availLabel = `${style.token("dim")}Avail:${style.token("reset")}`;
-  const availVal = bal?.availableBalance ?? "-";
+  const availVal = availTradeNum !== null ? `$${fmtNum(availTradeNum, 2)}` : "-";
   const marginLabel = `${style.token("dim")}Margin:${style.token("reset")}`;
-  const marginVal = bal?.marginUsed ?? "-";
+  const marginVal = initialMarginNum !== null ? `$${fmtNum(initialMarginNum, 2)}` : "-";
+  const levLabel = `${style.token("dim")}Leverage:${style.token("reset")}`;
+  const levVal =
+    leverageNum !== null ?
+      style.wrap(
+        `${fmtNum(leverageNum, 2)}x`,
+        leverageNum > 10 ? "red"
+        : leverageNum > 5 ? "yellow"
+        : "green",
+      )
+    : "-";
+  const expLabel = `${style.token("dim")}Exposure:${style.token("reset")}`;
+  const expVal = exposureNum !== null ? `$${fmtNum(exposureNum, 0)}` : "-";
 
-  lines.push(boxRow(`${equityLabel} ${equityVal}  ${availLabel} ${availVal}  ${marginLabel} ${marginVal}`, width));
+  lines.push(
+    boxRow(
+      `${availLabel} ${availVal}  ${marginLabel} ${marginVal}  ${levLabel} ${levVal}  ${expLabel} ${expVal}`,
+      width,
+    ),
+  );
 
-  // Position
+  // Margin ratio bar
+  if (marginRatioNum !== null) {
+    const mrLabel = `${style.token("dim")}Margin Ratio:${style.token("reset")}`;
+    const mrPct = marginRatioNum * 100;
+    const mrColor =
+      mrPct > 80 ? style.token("red")
+      : mrPct > 50 ? style.token("yellow")
+      : style.token("green");
+    const mrBar = barChart(mrPct, 100, 20, "█", "░");
+    lines.push(
+      boxRow(
+        `${mrLabel} ${mrColor}${fmtPct(mrPct)}${style.token("reset")} ${mrColor}${mrBar}${style.token("reset")}`,
+        width,
+      ),
+    );
+  }
+
+  lines.push(layout.boxLine(width, "middle"));
+
+  // Position section
+  const posTitle = style.wrap("POSITION", "bold", "cyan");
+  lines.push(layout.sectionHeader(posTitle, width));
+
   const pos = sdkData.position;
   if (pos) {
     const posSize = Number.parseFloat(pos.size);
@@ -520,24 +870,109 @@ function renderAccountSection(nowMs: number, width: number): string[] {
       : "dim",
     );
     const entryVal = pos.entryPrice ?? "-";
-    const pnlNum = pos.unrealizedPnl ? Number.parseFloat(pos.unrealizedPnl) : null;
-    const pnlColor = colorValue(pnlNum);
-    const pnlVal = `${pnlColor}${pos.unrealizedPnl ?? "-"}${style.token("reset")}`;
+    const markVal = pos.markPrice ?? "-";
 
     lines.push(
       boxRow(
-        `${style.token("dim")}Position:${style.token("reset")} ${sideLabel} ${sizeVal}  ${style.token("dim")}Entry:${style.token("reset")} ${entryVal}  ${style.token("dim")}uPnL:${style.token("reset")} ${pnlVal}`,
+        `${sideLabel} ${sizeVal}  ${style.token("dim")}Entry:${style.token("reset")} ${entryVal}  ${style.token("dim")}Mark:${style.token("reset")} ${markVal}`,
+        width,
+      ),
+    );
+
+    // Position PnL row
+    const posUPnlNum = pos.unrealizedPnl ? Number.parseFloat(pos.unrealizedPnl) : null;
+    const posRPnlNum = pos.realisedPnl ? Number.parseFloat(pos.realisedPnl) : null;
+    const posUPnlColor = colorValue(posUPnlNum);
+    const posRPnlColor = colorValue(posRPnlNum);
+    const liqVal = pos.liquidationPrice ?? "-";
+    const posLevVal = pos.leverage ? `${pos.leverage}x` : "-";
+
+    lines.push(
+      boxRow(
+        `${style.token("dim")}uPnL:${style.token("reset")} ${posUPnlColor}${fmtUsd(posUPnlNum)}${style.token("reset")}  ${style.token("dim")}rPnL:${style.token("reset")} ${posRPnlColor}${fmtUsd(posRPnlNum)}${style.token("reset")}  ${style.token("dim")}Liq:${style.token("reset")} ${liqVal}  ${style.token("dim")}Lev:${style.token("reset")} ${posLevVal}`,
         width,
       ),
     );
   } else {
-    lines.push(boxRow(`${style.token("dim")}Position:${style.token("reset")} ${style.wrap("FLAT", "dim")}`, width));
+    lines.push(boxRow(`${style.wrap("NO POSITION", "dim")}`, width));
   }
 
   // Open orders
   const ordersLabel = `${style.token("dim")}Open Orders:${style.token("reset")}`;
   const ordersVal = sdkData.openOrdersCount !== undefined ? String(sdkData.openOrdersCount) : "-";
   lines.push(boxRow(`${ordersLabel} ${ordersVal}`, width));
+
+  lines.push(layout.boxLine(width, "middle"));
+  return lines;
+}
+
+function renderPnlChartSection(width: number): string[] {
+  const lines: string[] = [];
+
+  const sectionTitle = style.wrap("PNL CHART (7d)", "bold", "green");
+  lines.push(layout.sectionHeader(sectionTitle, width));
+
+  const pnlHistory = sdkData.pnlHistory ?? [];
+  const equityHistory = sdkData.equityHistory ?? [];
+
+  if (pnlHistory.length === 0 && equityHistory.length === 0) {
+    lines.push(boxRow(`${style.token("dim")}No history data available${style.token("reset")}`, width));
+    lines.push(layout.boxLine(width, "middle"));
+    return lines;
+  }
+
+  const innerWidth = width - 4;
+  const chartWidth = Math.min(innerWidth - 25, 60);
+
+  // PnL sparkline
+  if (pnlHistory.length > 0) {
+    const pnlValues = pnlHistory.map(p => Number.parseFloat(p.value));
+    const pnlMin = Math.min(...pnlValues);
+    const pnlMax = Math.max(...pnlValues);
+    const pnlLast = pnlValues[pnlValues.length - 1];
+    const pnlChange = pnlValues.length >= 2 ? pnlLast - pnlValues[0] : 0;
+
+    const pnlColor = pnlLast >= 0 ? style.token("green") : style.token("red");
+    const changeColor = colorValue(pnlChange);
+    const chart = sparkline(pnlValues, chartWidth);
+
+    lines.push(
+      boxRow(
+        `${style.token("dim")}Total PnL:${style.token("reset")} ${pnlColor}${chart}${style.token("reset")}`,
+        width,
+      ),
+    );
+    lines.push(
+      boxRow(
+        `  ${style.token("dim")}Current:${style.token("reset")} ${pnlColor}${fmtUsd(pnlLast)}${style.token("reset")}  ${style.token("dim")}Change:${style.token("reset")} ${changeColor}${fmtUsd(pnlChange)}${style.token("reset")}  ${style.token("dim")}Min:${style.token("reset")} ${fmtUsd(pnlMin)}  ${style.token("dim")}Max:${style.token("reset")} ${fmtUsd(pnlMax)}`,
+        width,
+      ),
+    );
+  }
+
+  // Equity sparkline
+  if (equityHistory.length > 0) {
+    const eqValues = equityHistory.map(p => Number.parseFloat(p.value));
+    const eqMin = Math.min(...eqValues);
+    const eqMax = Math.max(...eqValues);
+    const eqLast = eqValues[eqValues.length - 1];
+    const eqChange = eqValues.length >= 2 ? eqLast - eqValues[0] : 0;
+
+    const eqColor = style.token("cyan");
+    const changeColor = colorValue(eqChange);
+    const chart = sparkline(eqValues, chartWidth);
+
+    lines.push(boxRow("", width)); // spacer
+    lines.push(
+      boxRow(`${style.token("dim")}Equity:${style.token("reset")}    ${eqColor}${chart}${style.token("reset")}`, width),
+    );
+    lines.push(
+      boxRow(
+        `  ${style.token("dim")}Current:${style.token("reset")} ${eqColor}$${fmtNum(eqLast, 2)}${style.token("reset")}  ${style.token("dim")}Change:${style.token("reset")} ${changeColor}${fmtUsd(eqChange)}${style.token("reset")}  ${style.token("dim")}Min:${style.token("reset")} $${fmtNum(eqMin, 2)}  ${style.token("dim")}Max:${style.token("reset")} $${fmtNum(eqMax, 2)}`,
+        width,
+      ),
+    );
+  }
 
   lines.push(layout.boxLine(width, "middle"));
   return lines;
@@ -745,6 +1180,7 @@ function render(): void {
 
   lines.push(...renderHeader(nowMs, W));
   lines.push(...renderAccountSection(nowMs, W));
+  lines.push(...renderPnlChartSection(W));
   lines.push(...renderPerformanceSection(W));
   lines.push(...renderQualitySection(W));
   lines.push(...renderOpsSection(W));

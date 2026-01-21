@@ -17,6 +17,8 @@ import type { SimExecution, SimOrder } from "./sim-execution";
  */
 export type SimAction =
   | { type: "cancel_all" }
+  | { type: "cancel_bid" }
+  | { type: "cancel_ask" }
   | { type: "place_bid"; price: PriceStr; size: string }
   | { type: "place_ask"; price: PriceStr; size: string };
 
@@ -84,9 +86,8 @@ export function planSimActions(
       actions.push({ type: "place_bid", price: desiredBid.price, size: desiredBid.size });
     }
   } else if (currentBid) {
-    // No desired bid → cancel all (simplified sim)
-    actions.push({ type: "cancel_all" });
-    return actions;
+    // No desired bid → cancel only bid side
+    actions.push({ type: "cancel_bid" });
   }
 
   // Process ask side
@@ -103,8 +104,8 @@ export function planSimActions(
       actions.push({ type: "place_ask", price: desiredAsk.price, size: desiredAsk.size });
     }
   } else if (currentAsk) {
-    actions.push({ type: "cancel_all" });
-    return actions;
+    // No desired ask → cancel only ask side
+    actions.push({ type: "cancel_ask" });
   }
 
   return actions;
@@ -118,6 +119,12 @@ export function executeSimActions(actions: SimAction[], simExec: SimExecution, n
     switch (action.type) {
       case "cancel_all":
         simExec.cancelAll();
+        break;
+      case "cancel_bid":
+        simExec.cancelBid();
+        break;
+      case "cancel_ask":
+        simExec.cancelAsk();
         break;
       case "place_bid":
         simExec.placeBid(action.price, action.size, nowMs);

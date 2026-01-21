@@ -104,6 +104,22 @@ export class SimExecution {
   }
 
   /**
+   * Cancel bid order only
+   */
+  cancelBid(): void {
+    if (this.bidOrder) this.cancelCount++;
+    this.bidOrder = undefined;
+  }
+
+  /**
+   * Cancel ask order only
+   */
+  cancelAsk(): void {
+    if (this.askOrder) this.cancelCount++;
+    this.askOrder = undefined;
+  }
+
+  /**
    * Check trades for touch fill
    *
    * Requirements: 11.3

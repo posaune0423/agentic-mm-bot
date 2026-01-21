@@ -364,11 +364,10 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
             );
           }
 
-          // Map timeInForce: GTC -> GTT (Extended uses GTT for post-only), IOC stays as IOC
-          const tif =
-            request.timeInForce === "IOC" ? TimeInForce.IOC
-            : request.postOnly ? TimeInForce.GTT
-            : TimeInForce.IOC;
+          // Map timeInForce:
+          // - IOC stays IOC unless postOnly (postOnly implies GTT on Extended)
+          // - GTC (and any non-IOC) maps to GTT
+          const tif = request.timeInForce === "IOC" && !request.postOnly ? TimeInForce.IOC : TimeInForce.GTT;
 
           return this.tradingClient.placeOrder({
             marketName: request.symbol,
