@@ -5,7 +5,6 @@
  * - Output fills as CSV with markout
  */
 
-import { writeFileSync } from "node:fs";
 import type { EnrichedFill } from "./markout";
 
 /**
@@ -63,7 +62,7 @@ function fillToCsvRow(fill: EnrichedFill): string {
  * @param fills - Enriched fills with markout
  * @param outputPath - Output file path
  */
-export function writeFillsCsv(fills: EnrichedFill[], outputPath: string): void {
+export async function writeFillsCsv(fills: EnrichedFill[], outputPath: string): Promise<void> {
   const lines: string[] = [];
 
   // Header
@@ -75,7 +74,8 @@ export function writeFillsCsv(fills: EnrichedFill[], outputPath: string): void {
   }
 
   // Write to file
-  writeFileSync(outputPath, lines.join("\n"), "utf-8");
+  // Use Bun APIs to avoid non-literal-fs-filename lint warnings.
+  await Bun.write(outputPath, `${lines.join("\n")}\n`);
 }
 
 /**

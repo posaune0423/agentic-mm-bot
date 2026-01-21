@@ -8,6 +8,8 @@
 - **Language**: TypeScript（型安全を前提に実装）
 - **Monorepo**: Turborepo（`bun run dev|build|test|lint|typecheck` を横断実行）
 - **Lint/Format**: ESLint / Prettier（共有設定を packages として持つ）
+- **Typecheck**: `tsgo --noEmit`（各 package の `typecheck` で使用）
+- **Env/Secrets**: `dotenvx`（`.encrypted.local` を復号して実行する運用。鍵ファイルは Git 管理外）
 
 ## 主要ライブラリ / 技術選定（パターン）
 
@@ -35,6 +37,8 @@
 - **ネスト回避**: 早期リターンで読みやすさを優先
 - **Optional chaining**: `?.` / `??` を活用し冗長化を避ける
 - **テスト容易性**: 外部依存は注入し、ユニットテストで差し替え可能に
+- **互換性（ES/Node）**: lint で指定されている実行環境レンジを超える構文・APIは避ける（必要ならポリフィル/代替実装にする）
+- **Security lint**: `security/detect-object-injection` に抵触しやすい動的キーアクセスは、入力を制限する/明示的マップに落とす/局所的 disable に理由を添える
 
 ---
 

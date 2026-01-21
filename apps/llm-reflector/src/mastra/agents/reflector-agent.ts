@@ -50,14 +50,14 @@ Based on the provided performance data (fills, markout, pause events), suggest p
 Your response MUST be a JSON object with this exact structure:
 {
   "changes": {
-    "<paramName>": <newValue>,  // 1-2 parameters only, e.g. "baseHalfSpreadBps": "5.5"
+    "<paramName>": <newValue>
   },
   "rollbackConditions": {
-    "markout10sP50BelowBps": <number>,  // optional: rollback if markout P50 falls below this
-    "pauseCountAbove": <number>,         // optional: rollback if PAUSE count exceeds this
-    "maxDurationMs": <number>            // optional: rollback after this duration (ms)
+    "markout10sP50BelowBps": <number>,
+    "pauseCountAbove": <number>,
+    "maxDurationMs": <number>
   },
-  "reasoningTrace": ["reason1", "reason2", ...]  // explain your reasoning
+  "reasoningTrace": ["reason1", "reason2", ...]
 }
 
 IMPORTANT:

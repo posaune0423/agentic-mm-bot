@@ -38,9 +38,50 @@ export const ExtendedConfigSchema = z.object({
    * API key from Extended Exchange
    */
   apiKey: z.string().min(1),
+
+  // ===========================================================================
+  // Market statistics polling (Open Interest via REST/SDK)
+  // ===========================================================================
+
+  /**
+   * Open Interest polling interval (ms)
+   *
+   * Extended has no documented WS stream for OI, so we poll market statistics via SDK.
+   * Default: 5,000ms (5s)
+   */
+  oiPollIntervalMs: z.coerce.number().int().positive().default(5_000),
+
+  /**
+   * Open Interest polling timeout (ms)
+   *
+   * Default: 2,500ms
+   */
+  oiPollTimeoutMs: z.coerce.number().int().positive().default(2_500),
+
+  /**
+   * Throttle interval for OI warning logs (ms)
+   *
+   * Default: 30,000ms
+   */
+  oiWarnThrottleMs: z.coerce.number().int().positive().default(30_000),
+
+  /**
+   * Escalate OI availability to ERROR after this time since startup (ms)
+   *
+   * Default: 30,000ms
+   */
+  oiErrorEscalateMs: z.coerce.number().int().positive().default(30_000),
 });
 
-export type ExtendedConfig = z.infer<typeof ExtendedConfigSchema>;
+/**
+ * User-provided config shape (defaults are optional on input).
+ */
+export type ExtendedConfig = z.input<typeof ExtendedConfigSchema>;
+
+/**
+ * Resolved config shape (defaults applied).
+ */
+export type ExtendedResolvedConfig = z.output<typeof ExtendedConfigSchema>;
 
 /**
  * WebSocket message types from Extended

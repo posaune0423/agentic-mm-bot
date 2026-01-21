@@ -101,8 +101,10 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
 
   for (let tickMs = startMs; tickMs <= endMs; tickMs += tickIntervalMs) {
     // Process all events up to current tick time
-    while (eventIndex < events.length && events[eventIndex].ts.getTime() <= tickMs) {
+    while (eventIndex < events.length) {
+      // eslint-disable-next-line security/detect-object-injection -- bounded array index, not user-controlled
       const event = events[eventIndex];
+      if (event.ts.getTime() > tickMs) break;
       processEvent(event, marketState);
       eventIndex++;
     }
@@ -162,7 +164,7 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
       executeSimActions(actions, simExec, tickMs);
 
       // Update last quote time if we placed orders
-      if (intent.type === "QUOTE") {
+      if (actions.some(a => a.type === "place_bid" || a.type === "place_ask")) {
         lastQuoteMs = tickMs;
       }
     }
@@ -176,7 +178,7 @@ export async function runBacktest(repo: MarketDataRepository, config: BacktestCo
   // Step 6: Output CSV if path specified
   if (outputCsvPath !== undefined && outputCsvPath !== "") {
     logger.info("Writing fills to CSV", { path: outputCsvPath });
-    writeFillsCsv(enrichedFills, outputCsvPath);
+    await writeFillsCsv(enrichedFills, outputCsvPath);
   }
 
   // Step 7: Get metrics

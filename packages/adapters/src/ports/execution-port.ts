@@ -18,6 +18,11 @@ export type OrderSide = "buy" | "sell";
 export type OrderStatus = "pending" | "open" | "filled" | "cancelled" | "rejected";
 
 /**
+ * Time in force for orders
+ */
+export type TimeInForce = "GTC" | "IOC";
+
+/**
  * Place order request
  */
 export interface PlaceOrderRequest {
@@ -27,6 +32,10 @@ export interface PlaceOrderRequest {
   price: string;
   size: string;
   postOnly: boolean;
+  /** Reduce-only order (only reduces position, default: false) */
+  reduceOnly?: boolean;
+  /** Time in force (default: GTC) */
+  timeInForce?: TimeInForce;
 }
 
 /**

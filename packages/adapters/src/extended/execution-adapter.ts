@@ -42,7 +42,14 @@ import type {
   PlaceOrderRequest,
   PositionInfo,
 } from "../ports";
-import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, ExtendedTradeUpdate } from "./types";
+import { ExtendedConfigSchema } from "./types";
+import type {
+  ExtendedConfig,
+  ExtendedResolvedConfig,
+  ExtendedAccountStreamData,
+  ExtendedOrderUpdate,
+  ExtendedTradeUpdate,
+} from "./types";
 
 /**
  * Extended Execution Adapter
@@ -51,7 +58,7 @@ import type { ExtendedConfig, ExtendedAccountStreamData, ExtendedOrderUpdate, Ex
  * and direct WebSocket connection for account stream.
  */
 export class ExtendedExecutionAdapter implements ExecutionPort {
-  private config: ExtendedConfig;
+  private config: ExtendedResolvedConfig;
   private endpointConfig: EndpointConfig;
   private starkAccount: StarkPerpetualAccount;
   private tradingClient: PerpetualTradingClient;
@@ -81,14 +88,14 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   private lastFillByExchangeOrderId: Map<string, { filledQty: Decimal; paidFee: Decimal }> = new Map();
 
   constructor(config: ExtendedConfig) {
-    this.config = config;
-    this.endpointConfig = config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.config = ExtendedConfigSchema.parse(config);
+    this.endpointConfig = this.config.network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
 
     this.starkAccount = new StarkPerpetualAccount(
-      config.vaultId,
-      config.starkPrivateKey,
-      config.starkPublicKey,
-      config.apiKey,
+      this.config.vaultId,
+      this.config.starkPrivateKey,
+      this.config.starkPublicKey,
+      this.config.apiKey,
     );
 
     this.tradingClient = new PerpetualTradingClient(this.endpointConfig, this.starkAccount);
@@ -159,7 +166,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
   private getObjectProp(obj: unknown, key: string): unknown {
     if (obj === null || obj === undefined || typeof obj !== "object") return undefined;
-    if (!(key in obj)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) return undefined;
+    // eslint-disable-next-line security/detect-object-injection -- key is always a local constant (not user input)
     return (obj as Record<string, unknown>)[key];
   }
 
@@ -364,13 +372,19 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
             );
           }
 
+          // Map timeInForce:
+          // - IOC stays IOC unless postOnly (postOnly implies GTT on Extended)
+          // - GTC (and any non-IOC) maps to GTT
+          const tif = request.timeInForce === "IOC" && !request.postOnly ? TimeInForce.IOC : TimeInForce.GTT;
+
           return this.tradingClient.placeOrder({
             marketName: request.symbol,
             amountOfSynthetic: sizeFinal,
             price: priceRounded,
             side: request.side === "buy" ? ExtendedOrderSide.BUY : ExtendedOrderSide.SELL,
             postOnly: request.postOnly,
-            timeInForce: request.postOnly ? TimeInForce.GTT : TimeInForce.IOC,
+            reduceOnly: request.reduceOnly ?? false,
+            timeInForce: tif,
             expireTime: undefined,
             selfTradeProtectionLevel: SelfTradeProtectionLevel.ACCOUNT,
             externalId: request.clientOrderId,
@@ -378,7 +392,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         })(),
         this.mapError,
       ).map(response => ({
-        clientOrderId: response.data?.id ?? request.clientOrderId,
+        clientOrderId: request.clientOrderId,
         exchangeOrderId: response.data?.id,
         status: this.mapOrderStatus(response.data?.status),
         ts: new Date(response.data?.createdTime ?? Date.now()),
@@ -422,8 +436,26 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
   }
 
   getOpenOrders(symbol: string): ResultAsync<OpenOrder[], ExecutionError> {
+    // SDK's getOpenOrders does not support the `limit` parameter, causing the API
+    // to return only a small default number of orders. We call the API directly
+    // with an explicit limit to ensure all open orders are fetched.
+    const url = `${this.endpointConfig.apiBaseUrl}/user/orders?market=${encodeURIComponent(symbol)}&limit=100`;
+
     return ResultAsync.fromPromise(
-      this.tradingClient.account.getOpenOrders({ marketNames: [symbol] }),
+      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Bun supports fetch natively
+      fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Api-Key": this.config.apiKey,
+          "Content-Type": "application/json",
+        },
+      }).then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${String(res.status)}: ${text}`);
+        }
+        return res.json() as Promise<{ data?: OpenOrderModel[] }>;
+      }),
       this.mapError,
     ).map(response =>
       (response.data ?? []).map((o: OpenOrderModel) => {

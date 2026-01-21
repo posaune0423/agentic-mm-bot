@@ -68,26 +68,68 @@ export type ReasonCode =
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Cancel all orders intent
+ * Order kind distinguishes the purpose of an order
+ * - quote: standard market-making quote
+ * - unwind: position reduction order (reduce-only)
  */
-export interface CancelAllIntent {
-  type: "CANCEL_ALL";
+export type OrderKind = "quote" | "unwind";
+
+/**
+ * Time in force for orders
+ * - GTC: Good Till Cancel (default for post-only quotes)
+ * - IOC: Immediate Or Cancel (for unwind orders)
+ */
+export type TimeInForce = "GTC" | "IOC";
+
+/**
+ * A single desired order in the target order set
+ *
+ * This represents what the strategy wants to have on the order book.
+ * The executor will diff against current orders to determine actions.
+ */
+export interface DesiredOrder {
+  /** Order side */
+  side: Side;
+  /** Target price */
+  price: PriceStr;
+  /** Order size */
+  size: SizeStr;
+  /** Post-only flag (true for quotes, false for IOC unwind) */
+  postOnly: boolean;
+  /** Reduce-only flag (true for unwind orders) */
+  reduceOnly: boolean;
+  /** Time in force */
+  timeInForce: TimeInForce;
+  /** Order kind for audit/analysis */
+  kind: OrderKind;
+  /** Reason codes for this order */
   reasonCodes: ReasonCode[];
 }
 
 /**
- * Quote intent (post-only bid and ask)
+ * SET_ORDERS intent - the new unified intent type
+ *
+ * Contains the complete desired order set. The executor diffs
+ * this against current orders to generate cancel/place actions.
+ *
+ * - Empty array means cancel all orders (PAUSE behavior)
+ * - Up to 2 quote orders (bid + ask) + optional unwind order
  */
-export interface QuoteIntent {
-  type: "QUOTE";
-  bidPx: PriceStr;
-  askPx: PriceStr;
-  size: SizeStr;
-  postOnly: true;
+export interface SetOrdersIntent {
+  type: "SET_ORDERS";
+  /** Desired orders to maintain on the order book */
+  orders: DesiredOrder[];
+  /** Aggregate reason codes for this decision */
   reasonCodes: ReasonCode[];
 }
 
-export type OrderIntent = CancelAllIntent | QuoteIntent;
+/**
+ * Strategy outputs a single unified intent type: SET_ORDERS.
+ *
+ * - Empty orders array means "cancel all"
+ * - Orders may include quotes and/or unwind IOC
+ */
+export type OrderIntent = SetOrdersIntent;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Market Data Snapshot
@@ -141,6 +183,14 @@ export interface Features {
 
   /** Whether data is stale (last update too old) */
   dataStale: boolean;
+
+  /**
+   * Open interest "shock" over a recent window (bps).
+   *
+   * Optional (Phase 3 plan): executor can supply this from OI polling/history.
+   * When absent, riskScore behavior is unchanged.
+   */
+  openInterestShockBps?: BpsStr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +203,8 @@ export interface Features {
 export interface Position {
   /** Position size (positive = long, negative = short) */
   size: SizeStr;
+  /** Timestamp when position last changed from zero (for unwind timing) */
+  positionSinceMs?: Ms;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,7 +212,7 @@ export interface Position {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Strategy parameters (10 parameters)
+ * Strategy parameters (extended for attack-defense)
  *
  * Requirements: 7.1
  */
@@ -194,6 +246,58 @@ export interface StrategyParams {
 
   /** Liquidation count threshold for PAUSE */
   pauseLiqCount10s: number;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attack-Defense Parameters (new)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Defensive spread multiplier (applied when shouldDefensive=true)
+   * e.g., 1.5 means spread is 1.5x wider in defensive mode
+   * Default: "1.5"
+   */
+  defensiveSpreadMultiplier?: BpsStr;
+
+  /**
+   * Defensive size multiplier (applied when shouldDefensive=true)
+   * e.g., 0.5 means quote size is halved in defensive mode
+   * Default: "0.5"
+   */
+  defensiveSizeMultiplier?: BpsStr;
+
+  /**
+   * One-sided threshold: start one-sided quoting when inventory exceeds this ratio of maxInventory
+   * e.g., 0.3 means start one-sided when abs(inventory) > 0.3 * maxInventory
+   * Default: "0.3"
+   */
+  oneSidedThreshold?: BpsStr;
+
+  /**
+   * Unwind trigger time in ms: start unwind IOC orders when position held longer than this
+   * Default: 30000 (30 seconds, based on markout analysis)
+   */
+  unwindTriggerMs?: Ms;
+
+  /**
+   * Unwind size ratio: fraction of position to unwind per IOC order
+   * e.g., 0.25 means unwind 25% of position
+   * Default: "0.25"
+   */
+  unwindSizeRatio?: BpsStr;
+
+  /**
+   * Unwind cross bps: additional bps to cross BBO for unwind orders
+   * e.g., 2 means unwind price crosses BBO by 2 bps (more aggressive fill)
+   * Default: "0"
+   */
+  unwindCrossBps?: BpsStr;
+
+  /**
+   * One-sided on non-zero inventory: when true, stop quoting on inventory-increasing side
+   * immediately when position != 0 (ignores oneSidedThreshold)
+   * Default: false
+   */
+  oneSidedOnNonZeroInventory?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,7 +334,7 @@ export interface DecideInput {
  */
 export interface DecideOutput {
   nextState: StrategyState;
-  intents: OrderIntent[];
+  intents: SetOrdersIntent[];
   reasonCodes: ReasonCode[];
 }
 
@@ -245,4 +349,10 @@ export interface RiskEvaluation {
   shouldPause: boolean;
   shouldDefensive: boolean;
   reasonCodes: ReasonCode[];
+  /**
+   * Normalized risk score [0, 1] for dynamic spread/size adjustment
+   * 0 = low risk (aggressive quoting)
+   * 1 = high risk (defensive quoting)
+   */
+  riskScore: number;
 }

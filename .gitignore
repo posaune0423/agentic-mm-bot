@@ -48,3 +48,4 @@ logs
 
 debug.log
 .tmp
+.bun-cache

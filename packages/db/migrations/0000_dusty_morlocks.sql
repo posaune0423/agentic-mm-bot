@@ -1,4 +1,4 @@
-CREATE TABLE "md_bbo" (
+CREATE TABLE IF NOT EXISTS "md_bbo" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE "md_bbo" (
 	"raw_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "md_trade" (
+CREATE TABLE IF NOT EXISTS "md_trade" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE "md_trade" (
 	"raw_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "md_price" (
+CREATE TABLE IF NOT EXISTS "md_price" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE "md_price" (
 	"raw_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "latest_top" (
+CREATE TABLE IF NOT EXISTS "latest_top" (
 	"exchange" text NOT NULL,
 	"symbol" text NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE "latest_top" (
 	CONSTRAINT "latest_top_exchange_symbol_pk" PRIMARY KEY("exchange","symbol")
 );
 --> statement-breakpoint
-CREATE TABLE "latest_position" (
+CREATE TABLE IF NOT EXISTS "latest_position" (
 	"exchange" text NOT NULL,
 	"symbol" text NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
@@ -65,7 +65,7 @@ CREATE TABLE "latest_position" (
 	CONSTRAINT "latest_position_exchange_symbol_pk" PRIMARY KEY("exchange","symbol")
 );
 --> statement-breakpoint
-CREATE TABLE "ex_order_event" (
+CREATE TABLE IF NOT EXISTS "ex_order_event" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE "ex_order_event" (
 	"raw_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "ex_fill" (
+CREATE TABLE IF NOT EXISTS "ex_fill" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE "ex_fill" (
 	"raw_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "fills_enriched" (
+CREATE TABLE IF NOT EXISTS "fills_enriched" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"fill_id" uuid NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
@@ -126,7 +126,7 @@ CREATE TABLE "fills_enriched" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "strategy_params" (
+CREATE TABLE IF NOT EXISTS "strategy_params" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"exchange" text NOT NULL,
 	"symbol" text NOT NULL,
@@ -146,7 +146,7 @@ CREATE TABLE "strategy_params" (
 	"comment" text
 );
 --> statement-breakpoint
-CREATE TABLE "strategy_state" (
+CREATE TABLE IF NOT EXISTS "strategy_state" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -158,7 +158,7 @@ CREATE TABLE "strategy_state" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "llm_proposal" (
+CREATE TABLE IF NOT EXISTS "llm_proposal" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"exchange" text NOT NULL,
 	"symbol" text NOT NULL,
@@ -176,7 +176,7 @@ CREATE TABLE "llm_proposal" (
 	"reject_reason" text
 );
 --> statement-breakpoint
-CREATE TABLE "param_rollout" (
+CREATE TABLE IF NOT EXISTS "param_rollout" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ts" timestamp with time zone NOT NULL,
 	"exchange" text NOT NULL,
@@ -189,13 +189,19 @@ CREATE TABLE "param_rollout" (
 	"metrics_snapshot_json" jsonb
 );
 --> statement-breakpoint
-ALTER TABLE "fills_enriched" ADD CONSTRAINT "fills_enriched_fill_id_ex_fill_id_fk" FOREIGN KEY ("fill_id") REFERENCES "public"."ex_fill"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "md_bbo_exchange_symbol_ts_idx" ON "md_bbo" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "md_trade_exchange_symbol_ts_idx" ON "md_trade" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "md_price_exchange_symbol_ts_idx" ON "md_price" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "ex_order_event_exchange_symbol_ts_idx" ON "ex_order_event" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "ex_order_event_client_order_id_idx" ON "ex_order_event" USING btree ("client_order_id");--> statement-breakpoint
-CREATE INDEX "ex_fill_exchange_symbol_ts_idx" ON "ex_fill" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "fills_enriched_exchange_symbol_ts_idx" ON "fills_enriched" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "fills_enriched_fill_id_idx" ON "fills_enriched" USING btree ("fill_id");--> statement-breakpoint
-CREATE INDEX "strategy_state_exchange_symbol_ts_idx" ON "strategy_state" USING btree ("exchange","symbol","ts" DESC NULLS LAST);
+DO $$ BEGIN
+	ALTER TABLE "fills_enriched"
+		ADD CONSTRAINT "fills_enriched_fill_id_ex_fill_id_fk"
+		FOREIGN KEY ("fill_id") REFERENCES "public"."ex_fill"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "md_bbo_exchange_symbol_ts_idx" ON "md_bbo" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "md_trade_exchange_symbol_ts_idx" ON "md_trade" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "md_price_exchange_symbol_ts_idx" ON "md_price" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ex_order_event_exchange_symbol_ts_idx" ON "ex_order_event" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ex_order_event_client_order_id_idx" ON "ex_order_event" USING btree ("client_order_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ex_fill_exchange_symbol_ts_idx" ON "ex_fill" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "fills_enriched_exchange_symbol_ts_idx" ON "fills_enriched" USING btree ("exchange","symbol","ts" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "fills_enriched_fill_id_idx" ON "fills_enriched" USING btree ("fill_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "strategy_state_exchange_symbol_ts_idx" ON "strategy_state" USING btree ("exchange","symbol","ts" DESC NULLS LAST);

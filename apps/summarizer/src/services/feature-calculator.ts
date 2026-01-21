@@ -171,13 +171,14 @@ export async function calculateRealizedVol10s(
 
   // Calculate log returns
   const logReturns: number[] = [];
-  for (let i = 1; i < bbos.length; i++) {
-    const prevMid = Number.parseFloat(bbos[i - 1].midPx);
-    const curMid = Number.parseFloat(bbos[i].midPx);
-
+  const first = bbos[0];
+  let prevMid = Number.parseFloat(first.midPx);
+  for (const bbo of bbos.slice(1)) {
+    const curMid = Number.parseFloat(bbo.midPx);
     if (prevMid > 0 && curMid > 0) {
       logReturns.push(Math.log(curMid / prevMid));
     }
+    prevMid = curMid;
   }
 
   if (logReturns.length < 2) return null;

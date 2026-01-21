@@ -2,7 +2,7 @@
  * Executor Integration Tests - PAUSE behavior
  *
  * Requirements: 4.5, 5.2, 6.6, 7.5, 14.3.2
- * - Verify PAUSE triggers cancel_all
+ * - Verify PAUSE triggers SET_ORDERS with empty orders (cancel_all behavior)
  * - Verify data stale triggers PAUSE
  * - Verify executor does not quote when data is missing
  */
@@ -17,6 +17,7 @@ import {
   type Position,
   type StrategyState,
   type DecideInput,
+  type SetOrdersIntent,
 } from "@agentic-mm-bot/core";
 
 describe("Executor PAUSE Behavior", () => {
@@ -48,7 +49,7 @@ describe("Executor PAUSE Behavior", () => {
   };
 
   describe("PAUSE state transitions", () => {
-    it("should return CANCEL_ALL intent when in PAUSE mode", () => {
+    it("should return SET_ORDERS with empty orders when in PAUSE mode (no position)", () => {
       const nowMs = Date.now();
       const state: StrategyState = {
         mode: "PAUSE",
@@ -69,7 +70,9 @@ describe("Executor PAUSE Behavior", () => {
 
       expect(output.nextState.mode).toBe("PAUSE");
       expect(output.intents).toHaveLength(1);
-      expect(output.intents[0].type).toBe("CANCEL_ALL");
+      expect(output.intents[0].type).toBe("SET_ORDERS");
+      // With no position, orders should be empty (equivalent to CANCEL_ALL)
+      expect((output.intents[0] as SetOrdersIntent).orders).toHaveLength(0);
     });
 
     it("should transition to PAUSE when data is stale", () => {
@@ -93,7 +96,7 @@ describe("Executor PAUSE Behavior", () => {
         position: defaultPosition,
       });
       expect(output.nextState.mode).toBe("PAUSE");
-      expect(output.intents[0]?.type).toBe("CANCEL_ALL");
+      expect(output.intents[0]?.type).toBe("SET_ORDERS");
     });
 
     it("should transition to PAUSE when mark-index divergence exceeds threshold", () => {
@@ -158,12 +161,14 @@ describe("Executor PAUSE Behavior", () => {
       });
 
       expect(output.nextState.mode).toBe("DEFENSIVE");
-      expect(output.intents[0]?.type).toBe("QUOTE");
+      expect(output.intents[0]?.type).toBe("SET_ORDERS");
+      // Should have quote orders (bid + ask)
+      expect((output.intents[0] as SetOrdersIntent).orders.length).toBeGreaterThan(0);
     });
   });
 
   describe("Decision cycle with missing data", () => {
-    it("should not generate QUOTE intent when features are missing", () => {
+    it("should not generate quote orders when features are missing (data stale)", () => {
       const nowMs = Date.now();
       const state = createInitialState(nowMs, "NORMAL");
 
@@ -184,7 +189,9 @@ describe("Executor PAUSE Behavior", () => {
       const output = decide(input);
 
       expect(output.nextState.mode).toBe("PAUSE");
-      expect(output.intents[0]?.type).toBe("CANCEL_ALL");
+      expect(output.intents[0]?.type).toBe("SET_ORDERS");
+      // With no position and data stale, should have empty orders (cancel all behavior)
+      expect((output.intents[0] as SetOrdersIntent).orders).toHaveLength(0);
     });
   });
 });

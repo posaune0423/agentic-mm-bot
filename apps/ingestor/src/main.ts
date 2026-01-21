@@ -9,7 +9,7 @@
  */
 
 import { ExtendedMarketDataAdapter } from "@agentic-mm-bot/adapters";
-import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, OpenInterestEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 import { getDb } from "@agentic-mm-bot/db";
 import { LogLevel, logger } from "@agentic-mm-bot/utils";
 
@@ -29,6 +29,7 @@ async function main(): Promise<void> {
     tradeReceived: 0,
     priceReceived: 0,
     fundingReceived: 0,
+    oiReceived: 0,
     bboBufferSize: 0,
     tradeBufferSize: 0,
     priceBufferSize: 0,
@@ -82,6 +83,8 @@ async function main(): Promise<void> {
     starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
     starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
     vaultId: env.EXTENDED_VAULT_ID,
+    oiPollIntervalMs: env.OI_POLL_INTERVAL_MS,
+    oiPollTimeoutMs: env.OI_POLL_TIMEOUT_MS,
   });
 
   // Local debug-only counters (no secrets).
@@ -200,13 +203,36 @@ async function main(): Promise<void> {
     });
   };
 
+  const handleOpenInterest = (event: OpenInterestEvent): void => {
+    metrics.oiReceived++;
+    dashboard.enterPhase("RECEIVING");
+    dashboard.onOpenInterest(event);
+
+    // Append OI timeseries (Phase 3 plan: md_open_interest).
+    // Note: adapter emits only when value changes (best-effort), so this remains low-volume.
+    eventWriter.addOpenInterest({
+      ts: event.ts,
+      exchange: event.exchange,
+      symbol: event.symbol,
+      openInterest: event.openInterest,
+      openInterestUsd: event.openInterestUsd,
+      rawJson: event.raw,
+    });
+  };
+
   // ============================================================================
   // Set up event handlers
   // ============================================================================
 
   marketDataAdapter.onEvent(event => {
     // Track last time we saw any data event (used by stale watchdog).
-    if (event.type === "bbo" || event.type === "trade" || event.type === "price" || event.type === "funding") {
+    if (
+      event.type === "bbo" ||
+      event.type === "trade" ||
+      event.type === "price" ||
+      event.type === "funding" ||
+      event.type === "oi"
+    ) {
       lastDataEventAtMs = Date.now();
     }
 
@@ -231,6 +257,9 @@ async function main(): Promise<void> {
         break;
       case "funding":
         handleFunding(event);
+        break;
+      case "oi":
+        handleOpenInterest(event);
         break;
       case "connected":
         dashboard.setConnectionStatus("connected");
@@ -344,14 +373,18 @@ async function main(): Promise<void> {
   marketDataAdapter.subscribe({
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices", "funding"],
+    channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
   dashboard.enterPhase("SUBSCRIBED");
+  // Show subscription + expected cadence in dashboard logs (does not depend on LOG_LEVEL).
+  const MARKET_DATA_SUB_LOG =
+    "subscribed market data: bbo,trades,prices,funding,oi (funding updates infrequently; oi polls every ~5s until first sample)";
+  dashboard.pushEvent(LogLevel.INFO, MARKET_DATA_SUB_LOG, { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   logger.info("Subscribed to market data", {
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices", "funding"],
+    channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
 
   // ============================================================================

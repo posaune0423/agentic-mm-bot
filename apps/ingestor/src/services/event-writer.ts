@@ -7,7 +7,7 @@
  */
 
 import type { Db } from "@agentic-mm-bot/db";
-import { mdBbo, mdPrice, mdTrade } from "@agentic-mm-bot/db";
+import { mdBbo, mdOpenInterest, mdPrice, mdTrade } from "@agentic-mm-bot/db";
 import { logger } from "@agentic-mm-bot/utils";
 
 /**
@@ -18,6 +18,7 @@ export class EventWriter {
   private readonly bboBuffer: (typeof mdBbo.$inferInsert)[] = [];
   private readonly tradeBuffer: (typeof mdTrade.$inferInsert)[] = [];
   private readonly priceBuffer: (typeof mdPrice.$inferInsert)[] = [];
+  private readonly openInterestBuffer: (typeof mdOpenInterest.$inferInsert)[] = [];
   private readonly deadLetterBuffer: DeadLetterEntry[] = [];
   private flushIntervalId: ReturnType<typeof setInterval> | null = null;
   private flushInFlight: Promise<void> | null = null;
@@ -47,6 +48,13 @@ export class EventWriter {
    */
   addPrice(event: typeof mdPrice.$inferInsert): void {
     this.priceBuffer.push(event);
+  }
+
+  /**
+   * Add OpenInterest event to buffer
+   */
+  addOpenInterest(event: typeof mdOpenInterest.$inferInsert): void {
+    this.openInterestBuffer.push(event);
   }
 
   /**
@@ -80,6 +88,8 @@ export class EventWriter {
           await this.db.insert(mdBbo).values(events as (typeof mdBbo.$inferInsert)[]);
         } else if (table === mdTrade) {
           await this.db.insert(mdTrade).values(events as (typeof mdTrade.$inferInsert)[]);
+        } else if (table === mdOpenInterest) {
+          await this.db.insert(mdOpenInterest).values(events as (typeof mdOpenInterest.$inferInsert)[]);
         } else {
           await this.db.insert(mdPrice).values(events as (typeof mdPrice.$inferInsert)[]);
         }
@@ -198,6 +208,30 @@ export class EventWriter {
       );
     }
 
+    if (this.openInterestBuffer.length > 0) {
+      const toInsert = this.openInterestBuffer.slice(0, this.openInterestBuffer.length);
+      promises.push(
+        this.flushWithRetry(mdOpenInterest, toInsert)
+          .then(() => {
+            this.openInterestBuffer.splice(0, toInsert.length);
+            logger.debug("Flushed open interest buffer", { count: toInsert.length });
+          })
+          .catch((error: unknown) => {
+            const failed = this.openInterestBuffer.splice(0, toInsert.length);
+            this.deadLetterBuffer.push({
+              table: "mdOpenInterest",
+              events: failed,
+              error,
+              failedAt: new Date(),
+            });
+            logger.error("Failed to flush open interest buffer; moved to dead letter", {
+              count: failed.length,
+              error,
+            });
+          }),
+      );
+    }
+
     await Promise.allSettled(promises);
   }
 
@@ -233,9 +267,13 @@ export class EventWriter {
   }
 }
 
-type MdTable = typeof mdBbo | typeof mdTrade | typeof mdPrice;
+type MdTable = typeof mdBbo | typeof mdTrade | typeof mdPrice | typeof mdOpenInterest;
 
-type MdInsert = typeof mdBbo.$inferInsert | typeof mdTrade.$inferInsert | typeof mdPrice.$inferInsert;
+type MdInsert =
+  | typeof mdBbo.$inferInsert
+  | typeof mdTrade.$inferInsert
+  | typeof mdPrice.$inferInsert
+  | typeof mdOpenInterest.$inferInsert;
 
 type DeadLetterEntry =
   | {
@@ -255,11 +293,18 @@ type DeadLetterEntry =
       events: (typeof mdPrice.$inferInsert)[];
       error: unknown;
       failedAt: Date;
+    }
+  | {
+      table: "mdOpenInterest";
+      events: (typeof mdOpenInterest.$inferInsert)[];
+      error: unknown;
+      failedAt: Date;
     };
 
 function getTableName(table: MdTable): DeadLetterEntry["table"] {
   if (table === mdBbo) return "mdBbo";
   if (table === mdTrade) return "mdTrade";
+  if (table === mdOpenInterest) return "mdOpenInterest";
   return "mdPrice";
 }
 

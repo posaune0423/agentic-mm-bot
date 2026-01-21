@@ -10,7 +10,7 @@
 export { initWasm } from "extended-typescript-sdk";
 export { ExtendedMarketDataAdapter } from "./market-data-adapter";
 export { ExtendedExecutionAdapter } from "./execution-adapter";
-export { ExtendedConfigSchema, type ExtendedConfig } from "./types";
+export { ExtendedConfigSchema, type ExtendedConfig, type ExtendedResolvedConfig } from "./types";
 export type {
   ExtendedWsMessage,
   ExtendedWsBboMessage,

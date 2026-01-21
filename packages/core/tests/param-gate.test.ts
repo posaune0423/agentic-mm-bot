@@ -236,9 +236,17 @@ describe("ALLOWED_PARAM_KEYS", () => {
     expect(ALLOWED_PARAM_KEYS).toContain("inventorySkewGain");
     expect(ALLOWED_PARAM_KEYS).toContain("pauseMarkIndexBps");
     expect(ALLOWED_PARAM_KEYS).toContain("pauseLiqCount10s");
+    expect(ALLOWED_PARAM_KEYS).toContain("defensiveSpreadMultiplier");
+    expect(ALLOWED_PARAM_KEYS).toContain("defensiveSizeMultiplier");
+    expect(ALLOWED_PARAM_KEYS).toContain("oneSidedThreshold");
+    expect(ALLOWED_PARAM_KEYS).toContain("unwindTriggerMs");
+    expect(ALLOWED_PARAM_KEYS).toContain("unwindSizeRatio");
   });
 
-  test("should have exactly 10 keys", () => {
-    expect(ALLOWED_PARAM_KEYS.length).toBe(10);
+  test("should have exactly 17 keys", () => {
+    expect(ALLOWED_PARAM_KEYS.length).toBe(17);
+    // Verify new attack-defense keys are present
+    expect(ALLOWED_PARAM_KEYS).toContain("unwindCrossBps");
+    expect(ALLOWED_PARAM_KEYS).toContain("oneSidedOnNonZeroInventory");
   });
 });

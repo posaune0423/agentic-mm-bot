@@ -63,12 +63,19 @@ export const ALLOWED_PARAM_KEYS: readonly (keyof StrategyParams)[] = [
   "inventorySkewGain",
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
+  "defensiveSpreadMultiplier",
+  "defensiveSizeMultiplier",
+  "oneSidedThreshold",
+  "unwindTriggerMs",
+  "unwindSizeRatio",
+  "unwindCrossBps",
+  "oneSidedOnNonZeroInventory",
 ] as const;
 
 /** Maximum number of parameter changes allowed */
 const MAX_CHANGES = 2;
 
-interface ChangeRule {
+export interface ChangeRule {
   /** Minimum allowed ratio (proposed/current) when current != 0 */
   minRatio: number;
   /** Maximum allowed ratio (proposed/current) when current != 0 */
@@ -146,6 +153,50 @@ const CHANGE_RULES: Record<keyof StrategyParams, ChangeRule> = {
     allowNegative: false,
     absMax: 1e9,
   },
+  defensiveSpreadMultiplier: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  defensiveSizeMultiplier: {
+    minRatio: 0.2,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  oneSidedThreshold: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 1,
+  },
+  unwindTriggerMs: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  unwindSizeRatio: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1,
+  },
+  unwindCrossBps: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 100, // Max 100 bps crossing
+  },
+  oneSidedOnNonZeroInventory: {
+    // Boolean parameter - ratio check doesn't apply meaningfully
+    // Allow 0 or 1 (false/true)
+    minRatio: 0,
+    maxRatio: Number.MAX_VALUE,
+    allowNegative: false,
+    absMax: 1,
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,11 +208,30 @@ const CHANGE_RULES: Record<keyof StrategyParams, ChangeRule> = {
  */
 export function isWithinReasonableRange(
   param: keyof StrategyParams,
-  original: number | string,
-  proposed: number | string,
+  original: number | string | boolean | undefined,
+  proposed: number | string | boolean | undefined,
 ): boolean {
-  const origNum = typeof original === "string" ? Number.parseFloat(original) : original;
-  const propNum = typeof proposed === "string" ? Number.parseFloat(proposed) : proposed;
+  // Handle boolean parameters specially (oneSidedOnNonZeroInventory)
+  if (param === "oneSidedOnNonZeroInventory") {
+    // Boolean values are always allowed (true/false or 0/1)
+    if (typeof proposed === "boolean") return true;
+    // Also accept 0/1 as boolean equivalents
+    const propNum = typeof proposed === "string" ? Number.parseFloat(proposed) : (proposed as number);
+    return propNum === 0 || propNum === 1;
+  }
+
+  const origNum =
+    typeof original === "string" ? Number.parseFloat(original)
+    : typeof original === "boolean" ?
+      original ? 1
+      : 0
+    : (original ?? 0);
+  const propNum =
+    typeof proposed === "string" ? Number.parseFloat(proposed)
+    : typeof proposed === "boolean" ?
+      proposed ? 1
+      : 0
+    : (proposed ?? 0);
 
   if (!Number.isFinite(origNum) || !Number.isFinite(propNum)) return false;
 
@@ -226,10 +296,16 @@ export function validateProposal(proposal: ParamProposal, currentParams: Strateg
     }
 
     // Get current value
-    const currentValue = currentParams[key as keyof StrategyParams];
+    const currentValue = currentParams[key as keyof StrategyParams] ?? 0;
 
     // Check excessive change guardrails
-    if (!isWithinReasonableRange(key as keyof StrategyParams, currentValue, proposedValue)) {
+    if (
+      !isWithinReasonableRange(
+        key as keyof StrategyParams,
+        currentValue as number | string | boolean | undefined,
+        proposedValue as number | string | boolean | undefined,
+      )
+    ) {
       errors.push(`EXCESSIVE_CHANGE:${key}`);
     }
   }

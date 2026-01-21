@@ -30,6 +30,13 @@ export interface TrackedOrder {
 export class OrderTracker {
   private orders: Map<string, TrackedOrder> = new Map();
 
+  private findKeyByExchangeOrderId(exchangeOrderId: string): string | undefined {
+    for (const [key, order] of this.orders.entries()) {
+      if (order.exchangeOrderId === exchangeOrderId) return key;
+    }
+    return undefined;
+  }
+
   /**
    * Add a new order
    */
@@ -51,7 +58,14 @@ export class OrderTracker {
    * Update from fill event
    */
   updateFromFill(event: FillEvent): void {
-    const order = this.orders.get(event.clientOrderId);
+    const direct = this.orders.get(event.clientOrderId);
+    const key =
+      direct ? event.clientOrderId
+      : event.exchangeOrderId ? this.findKeyByExchangeOrderId(event.exchangeOrderId)
+      : undefined;
+    if (!key) return;
+
+    const order = this.orders.get(key);
     if (!order) return;
 
     const currentFilled = Number.parseFloat(order.filledSize);
@@ -61,7 +75,7 @@ export class OrderTracker {
     // Remove if fully filled
     const totalSize = Number.parseFloat(order.size);
     if (currentFilled + newFill >= totalSize) {
-      this.orders.delete(event.clientOrderId);
+      this.orders.delete(key);
     }
   }
 
@@ -70,7 +84,11 @@ export class OrderTracker {
    */
   updateFromOrderEvent(event: OrderUpdateEvent): void {
     if (event.status === "cancelled" || event.status === "rejected" || event.status === "filled") {
-      this.orders.delete(event.clientOrderId);
+      const removedByClient = this.orders.delete(event.clientOrderId);
+      if (!removedByClient && event.exchangeOrderId) {
+        const key = this.findKeyByExchangeOrderId(event.exchangeOrderId);
+        if (key) this.orders.delete(key);
+      }
     }
   }
 

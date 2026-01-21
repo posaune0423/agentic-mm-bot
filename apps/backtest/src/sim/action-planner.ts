@@ -8,7 +8,7 @@
  * Simplified version of executor's execution-planner for backtest use.
  */
 
-import type { Ms, OrderIntent, PriceStr, StrategyParams } from "@agentic-mm-bot/core";
+import type { Ms, PriceStr, SetOrdersIntent, StrategyParams } from "@agentic-mm-bot/core";
 import { priceExceedsThreshold } from "@agentic-mm-bot/core";
 import type { SimExecution, SimOrder } from "./sim-execution";
 
@@ -17,6 +17,8 @@ import type { SimExecution, SimOrder } from "./sim-execution";
  */
 export type SimAction =
   | { type: "cancel_all" }
+  | { type: "cancel_bid" }
+  | { type: "cancel_ask" }
   | { type: "place_bid"; price: PriceStr; size: string }
   | { type: "place_ask"; price: PriceStr; size: string };
 
@@ -44,7 +46,7 @@ function isOrderStale(order: SimOrder, nowMs: Ms, staleCancelMs: Ms): boolean {
  * @returns List of simulated actions
  */
 export function planSimActions(
-  intent: OrderIntent,
+  intent: SetOrdersIntent,
   simExec: SimExecution,
   lastQuoteMs: Ms | undefined,
   nowMs: Ms,
@@ -53,43 +55,57 @@ export function planSimActions(
 ): SimAction[] {
   const actions: SimAction[] = [];
 
-  // Handle CANCEL_ALL intent
-  if (intent.type === "CANCEL_ALL") {
-    return [{ type: "cancel_all" }];
-  }
+  const desiredQuotes = intent.orders.filter(o => o.kind === "quote");
+  const desiredBid = desiredQuotes.find(o => o.side === "buy");
+  const desiredAsk = desiredQuotes.find(o => o.side === "sell");
 
-  // Handle QUOTE intent
-  const { bidPx, askPx, size } = intent;
   const currentBid = simExec.getBidOrder();
   const currentAsk = simExec.getAskOrder();
+
+  // Empty desired → cancel all if we currently have any orders
+  if (!desiredBid && !desiredAsk) {
+    if (currentBid || currentAsk) return [{ type: "cancel_all" }];
+    return [];
+  }
 
   // Check refresh interval
   const canRefresh = lastQuoteMs === undefined || nowMs - lastQuoteMs >= params.refreshIntervalMs;
 
   // Process bid side
-  if (currentBid) {
-    const stale = isOrderStale(currentBid, nowMs, params.staleCancelMs);
-    const needsUpdate = priceExceedsThreshold(currentBid.price, bidPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
+  if (desiredBid) {
+    if (currentBid) {
+      const stale = isOrderStale(currentBid, nowMs, params.staleCancelMs);
+      const needsUpdate =
+        priceExceedsThreshold(currentBid.price, desiredBid.price, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
-    if (stale || needsUpdate) {
-      // Cancel existing and place new
-      actions.push({ type: "place_bid", price: bidPx, size });
+      if (stale || needsUpdate) {
+        // Cancels existing and places new (SimExecution overwrites)
+        actions.push({ type: "place_bid", price: desiredBid.price, size: desiredBid.size });
+      }
+    } else if (canRefresh) {
+      actions.push({ type: "place_bid", price: desiredBid.price, size: desiredBid.size });
     }
-  } else if (canRefresh) {
-    actions.push({ type: "place_bid", price: bidPx, size });
+  } else if (currentBid) {
+    // No desired bid → cancel only bid side
+    actions.push({ type: "cancel_bid" });
   }
 
   // Process ask side
-  if (currentAsk) {
-    const stale = isOrderStale(currentAsk, nowMs, params.staleCancelMs);
-    const needsUpdate = priceExceedsThreshold(currentAsk.price, askPx, midPx, MIN_REQUOTE_BPS) && canRefresh;
+  if (desiredAsk) {
+    if (currentAsk) {
+      const stale = isOrderStale(currentAsk, nowMs, params.staleCancelMs);
+      const needsUpdate =
+        priceExceedsThreshold(currentAsk.price, desiredAsk.price, midPx, MIN_REQUOTE_BPS) && canRefresh;
 
-    if (stale || needsUpdate) {
-      // Cancel existing and place new
-      actions.push({ type: "place_ask", price: askPx, size });
+      if (stale || needsUpdate) {
+        actions.push({ type: "place_ask", price: desiredAsk.price, size: desiredAsk.size });
+      }
+    } else if (canRefresh) {
+      actions.push({ type: "place_ask", price: desiredAsk.price, size: desiredAsk.size });
     }
-  } else if (canRefresh) {
-    actions.push({ type: "place_ask", price: askPx, size });
+  } else if (currentAsk) {
+    // No desired ask → cancel only ask side
+    actions.push({ type: "cancel_ask" });
   }
 
   return actions;
@@ -103,6 +119,12 @@ export function executeSimActions(actions: SimAction[], simExec: SimExecution, n
     switch (action.type) {
       case "cancel_all":
         simExec.cancelAll();
+        break;
+      case "cancel_bid":
+        simExec.cancelBid();
+        break;
+      case "cancel_ask":
+        simExec.cancelAsk();
         break;
       case "place_bid":
         simExec.placeBid(action.price, action.size, nowMs);

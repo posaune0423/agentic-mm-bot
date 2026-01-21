@@ -83,6 +83,8 @@ async function main(): Promise<void> {
     starkPrivateKey: env.EXTENDED_STARK_PRIVATE_KEY,
     starkPublicKey: env.EXTENDED_STARK_PUBLIC_KEY,
     vaultId: env.EXTENDED_VAULT_ID,
+    oiPollIntervalMs: env.OI_POLL_INTERVAL_MS,
+    oiPollTimeoutMs: env.OI_POLL_TIMEOUT_MS,
   });
 
   const executionAdapter = new ExtendedExecutionAdapter({
@@ -157,6 +159,7 @@ async function main(): Promise<void> {
         entryPrice: positionTracker.getEntryPrice(),
         unrealizedPnl: positionTracker.getUnrealizedPnl(),
         lastUpdateMs: positionTracker.getLastUpdateMs(),
+        positionSinceMs: positionTracker.getPositionSinceMs(),
       });
 
       if (pos) {
@@ -196,6 +199,14 @@ async function main(): Promise<void> {
     inventorySkewGain: p.inventorySkewGain,
     pauseMarkIndexBps: p.pauseMarkIndexBps,
     pauseLiqCount10s: p.pauseLiqCount10s,
+    // Attack-defense parameters (optional, use DB value or undefined for core defaults)
+    defensiveSpreadMultiplier: p.defensiveSpreadMultiplier ?? undefined,
+    defensiveSizeMultiplier: p.defensiveSizeMultiplier ?? undefined,
+    oneSidedThreshold: p.oneSidedThreshold ?? undefined,
+    oneSidedOnNonZeroInventory: p.oneSidedOnNonZeroInventory ?? undefined,
+    unwindTriggerMs: p.unwindTriggerMs ?? undefined,
+    unwindSizeRatio: p.unwindSizeRatio ?? undefined,
+    unwindCrossBps: p.unwindCrossBps ?? undefined,
   });
 
   // Strategy params (live, refreshable)
@@ -209,10 +220,18 @@ async function main(): Promise<void> {
     quoteSizeUsd: "20", // $20 per order (fallback)
     refreshIntervalMs: 1000,
     staleCancelMs: 5000,
-    maxInventory: "1",
+    maxInventory: "0.5", // Tuned: actual max pos ~0.328 BTC (p50 ~0.097)
     inventorySkewGain: "5",
     pauseMarkIndexBps: "50",
     pauseLiqCount10s: 3,
+    // Attack-defense parameters (tuned based on data analysis)
+    defensiveSpreadMultiplier: "1.5",
+    defensiveSizeMultiplier: "0.5",
+    oneSidedThreshold: "0.2", // Tuned: lower threshold for earlier one-sided
+    oneSidedOnNonZeroInventory: true, // Enable: stop bad side immediately when pos!=0
+    unwindTriggerMs: 30000, // 30s (markout10s positive, markout60s negative)
+    unwindSizeRatio: "0.25",
+    unwindCrossBps: "2", // Cross 2 bps to improve unwind fill rate
   };
   let currentParamsSetId: string = DEFAULT_PARAMS_SET_ID;
 
@@ -275,6 +294,9 @@ async function main(): Promise<void> {
       case "funding":
         marketDataCache.updateFunding(event);
         break;
+      case "oi":
+        marketDataCache.updateOpenInterest(event);
+        break;
       case "connected":
         dashboard.setConnectionStatus("connected");
         logger.info("Market data connected");
@@ -307,6 +329,7 @@ async function main(): Promise<void> {
           entryPrice: positionTracker.getEntryPrice(),
           unrealizedPnl: positionTracker.getUnrealizedPnl(),
           lastUpdateMs: positionTracker.getLastUpdateMs(),
+          positionSinceMs: positionTracker.getPositionSinceMs(),
         });
 
         // Notify overlay manager (resets spread tightening on fill)
@@ -383,8 +406,12 @@ async function main(): Promise<void> {
   marketDataAdapter.subscribe({
     exchange: env.EXCHANGE,
     symbol: env.SYMBOL,
-    channels: ["bbo", "trades", "prices", "funding"],
+    channels: ["bbo", "trades", "prices", "funding", "oi"],
   });
+  // Show subscription + expected cadence in dashboard logs (does not depend on LOG_LEVEL).
+  const MARKET_DATA_SUB_LOG =
+    "subscribed market data: bbo,trades,prices,funding,oi (funding updates infrequently; oi polls every ~5s until first sample)";
+  dashboard.pushEvent(LogLevel.INFO, MARKET_DATA_SUB_LOG, { exchange: env.EXCHANGE, symbol: env.SYMBOL });
 
   // Connect to private stream
   logger.info("Connecting to private stream...");
@@ -468,8 +495,10 @@ async function main(): Promise<void> {
                 entryPrice: positionTracker.getEntryPrice(),
                 unrealizedPnl: positionTracker.getUnrealizedPnl(),
                 lastUpdateMs: positionTracker.getLastUpdateMs(),
+                positionSinceMs: positionTracker.getPositionSinceMs(),
               },
               funding: marketDataCache.getFunding(),
+              openInterest: marketDataCache.getOpenInterest(),
             });
           },
           onAction: ({ phase, action, error }) => {
@@ -617,6 +646,7 @@ async function main(): Promise<void> {
         // Detect which keys changed (use canonical key list to avoid metadata fields)
         const changedKeys: string[] = [];
         for (const key of ALLOWED_PARAM_KEYS) {
+          // eslint-disable-next-line security/detect-object-injection -- keys are from a static allowlist
           if (String(newParams[key]) !== String(params[key])) {
             changedKeys.push(key);
           }

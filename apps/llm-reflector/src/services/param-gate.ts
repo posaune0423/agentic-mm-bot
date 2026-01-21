@@ -12,6 +12,7 @@
 import { err, ok } from "neverthrow";
 import type { Result } from "neverthrow";
 
+import type { ChangeRule } from "@agentic-mm-bot/core";
 import type { CurrentParamsSummary } from "@agentic-mm-bot/repositories";
 
 import { ProposalOutputSchema } from "../types/schemas";
@@ -43,21 +44,15 @@ const ALLOWED_PARAMS: readonly ParamName[] = [
   "inventorySkewGain",
   "pauseMarkIndexBps",
   "pauseLiqCount10s",
+  // Attack-defense parameters
+  "defensiveSpreadMultiplier",
+  "defensiveSizeMultiplier",
+  "oneSidedThreshold",
+  "oneSidedOnNonZeroInventory",
+  "unwindTriggerMs",
+  "unwindSizeRatio",
+  "unwindCrossBps",
 ];
-
-interface ChangeRule {
-  /** Minimum allowed ratio (proposed/current) when current != 0 */
-  minRatio: number;
-  /** Maximum allowed ratio (proposed/current) when current != 0 */
-  maxRatio: number;
-  /** Whether negative values are allowed */
-  allowNegative: boolean;
-  /**
-   * Absolute hard cap to catch LLM "hallucinated" magnitudes (e.g. 1e12).
-   * This is intentionally very loose; relative ratio is the main guard.
-   */
-  absMax: number;
-}
 
 /**
  * "Excessive" change guardrails.
@@ -126,6 +121,103 @@ const CHANGE_RULES: Record<ParamName, ChangeRule> = {
     allowNegative: false,
     absMax: 1e9,
   },
+  // Attack-defense parameters
+  defensiveSpreadMultiplier: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  defensiveSizeMultiplier: {
+    minRatio: 0.2,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+  oneSidedThreshold: {
+    minRatio: 0.5,
+    maxRatio: 2.0,
+    allowNegative: false,
+    absMax: 1,
+  },
+  oneSidedOnNonZeroInventory: {
+    // Boolean parameter - ratio check doesn't apply meaningfully
+    minRatio: 0,
+    maxRatio: Number.MAX_VALUE,
+    allowNegative: false,
+    absMax: 1,
+  },
+  unwindTriggerMs: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1e9,
+  },
+  unwindSizeRatio: {
+    minRatio: 0.2,
+    maxRatio: 5.0,
+    allowNegative: false,
+    absMax: 1,
+  },
+  unwindCrossBps: {
+    minRatio: 0.1,
+    maxRatio: 10.0,
+    allowNegative: false,
+    absMax: 100,
+  },
+};
+
+function getChangeRule(param: ParamName): ChangeRule {
+  switch (param) {
+    case "baseHalfSpreadBps":
+      return CHANGE_RULES.baseHalfSpreadBps;
+    case "volSpreadGain":
+      return CHANGE_RULES.volSpreadGain;
+    case "toxSpreadGain":
+      return CHANGE_RULES.toxSpreadGain;
+    case "quoteSizeUsd":
+      return CHANGE_RULES.quoteSizeUsd;
+    case "refreshIntervalMs":
+      return CHANGE_RULES.refreshIntervalMs;
+    case "staleCancelMs":
+      return CHANGE_RULES.staleCancelMs;
+    case "maxInventory":
+      return CHANGE_RULES.maxInventory;
+    case "inventorySkewGain":
+      return CHANGE_RULES.inventorySkewGain;
+    case "pauseMarkIndexBps":
+      return CHANGE_RULES.pauseMarkIndexBps;
+    case "pauseLiqCount10s":
+      return CHANGE_RULES.pauseLiqCount10s;
+    // Attack-defense parameters
+    case "defensiveSpreadMultiplier":
+      return CHANGE_RULES.defensiveSpreadMultiplier;
+    case "defensiveSizeMultiplier":
+      return CHANGE_RULES.defensiveSizeMultiplier;
+    case "oneSidedThreshold":
+      return CHANGE_RULES.oneSidedThreshold;
+    case "oneSidedOnNonZeroInventory":
+      return CHANGE_RULES.oneSidedOnNonZeroInventory;
+    case "unwindTriggerMs":
+      return CHANGE_RULES.unwindTriggerMs;
+    case "unwindSizeRatio":
+      return CHANGE_RULES.unwindSizeRatio;
+    case "unwindCrossBps":
+      return CHANGE_RULES.unwindCrossBps;
+  }
+}
+
+/**
+ * Default values for attack-defense parameters (used when DB has null)
+ */
+const ATTACK_DEFENSE_DEFAULTS = {
+  defensiveSpreadMultiplier: 1.5,
+  defensiveSizeMultiplier: 0.5,
+  oneSidedThreshold: 0.3,
+  oneSidedOnNonZeroInventory: 0, // false -> 0 for ratio checks
+  unwindTriggerMs: 30000,
+  unwindSizeRatio: 0.25,
+  unwindCrossBps: 0,
 };
 
 /**
@@ -153,6 +245,38 @@ function getCurrentValue(params: CurrentParamsSummary, param: ParamName): number
       return Number.parseFloat(params.inventorySkewGain);
     case "pauseMarkIndexBps":
       return Number.parseFloat(params.pauseMarkIndexBps);
+    // Attack-defense parameters (return default if null)
+    case "defensiveSpreadMultiplier":
+      return params.defensiveSpreadMultiplier !== null ?
+          Number.parseFloat(params.defensiveSpreadMultiplier)
+        : ATTACK_DEFENSE_DEFAULTS.defensiveSpreadMultiplier;
+    case "defensiveSizeMultiplier":
+      return params.defensiveSizeMultiplier !== null ?
+          Number.parseFloat(params.defensiveSizeMultiplier)
+        : ATTACK_DEFENSE_DEFAULTS.defensiveSizeMultiplier;
+    case "oneSidedThreshold":
+      return params.oneSidedThreshold !== null ?
+          Number.parseFloat(params.oneSidedThreshold)
+        : ATTACK_DEFENSE_DEFAULTS.oneSidedThreshold;
+    case "oneSidedOnNonZeroInventory":
+      // Boolean -> 0 or 1 for ratio checks
+      return (
+        params.oneSidedOnNonZeroInventory !== null ?
+          params.oneSidedOnNonZeroInventory ?
+            1
+          : 0
+        : ATTACK_DEFENSE_DEFAULTS.oneSidedOnNonZeroInventory
+      );
+    case "unwindTriggerMs":
+      return params.unwindTriggerMs !== null ? params.unwindTriggerMs : ATTACK_DEFENSE_DEFAULTS.unwindTriggerMs;
+    case "unwindSizeRatio":
+      return params.unwindSizeRatio !== null ?
+          Number.parseFloat(params.unwindSizeRatio)
+        : ATTACK_DEFENSE_DEFAULTS.unwindSizeRatio;
+    case "unwindCrossBps":
+      return params.unwindCrossBps !== null ?
+          Number.parseFloat(params.unwindCrossBps)
+        : ATTACK_DEFENSE_DEFAULTS.unwindCrossBps;
   }
 }
 
@@ -239,7 +363,7 @@ export function validateProposal(proposal: unknown, currentParams: CurrentParams
 
     const proposedNum = parsedProposed.value;
 
-    const rule = CHANGE_RULES[param];
+    const rule = getChangeRule(param);
     // Basic sign sanity
     if (!rule.allowNegative && proposedNum < 0) {
       return err({

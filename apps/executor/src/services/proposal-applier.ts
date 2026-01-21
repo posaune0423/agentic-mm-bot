@@ -462,6 +462,7 @@ export async function processPendingProposals(
   const changedKeys: string[] = [];
   const keysToCompare = Object.keys(currentParams) as (keyof StrategyParams)[];
   for (const key of keysToCompare) {
+    // eslint-disable-next-line security/detect-object-injection -- keys are derived from StrategyParams object shape
     if (String(result.value[key]) !== String(currentParams[key])) {
       changedKeys.push(key);
     }

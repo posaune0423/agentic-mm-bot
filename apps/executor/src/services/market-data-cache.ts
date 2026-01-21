@@ -8,10 +8,17 @@
  */
 
 import type { Ms, PriceStr, Snapshot, SizeStr, MidSnapshot, TradeData } from "@agentic-mm-bot/core";
-import type { BboEvent, FundingRateEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
+import type { BboEvent, FundingRateEvent, OpenInterestEvent, PriceEvent, TradeEvent } from "@agentic-mm-bot/adapters";
 
 const TRADES_WINDOW_MS = 10_000; // 10 seconds
 const MID_SNAPSHOTS_WINDOW_MS = 10_000; // 10 seconds
+const OPEN_INTEREST_WINDOW_MS = 60 * 60 * 1000; // keep up to 1 hour for regime features
+
+interface OpenInterestSnapshot {
+  ts: Ms;
+  openInterest?: string;
+  openInterestUsd?: string;
+}
 
 /**
  * Market Data Cache
@@ -30,10 +37,14 @@ export class MarketDataCache {
   private indexPx?: PriceStr;
   private fundingRate?: string;
   private fundingTsMs?: Ms;
+  private openInterest?: string;
+  private openInterestUsd?: string;
+  private openInterestTsMs?: Ms;
   private lastUpdateMs: Ms = 0;
 
   private trades: TradeData[] = [];
   private midSnapshots: MidSnapshot[] = [];
+  private openInterestSnapshots: OpenInterestSnapshot[] = [];
 
   constructor(exchange: string, symbol: string) {
     this.exchange = exchange;
@@ -88,6 +99,23 @@ export class MarketDataCache {
   }
 
   /**
+   * Update from open interest event
+   */
+  updateOpenInterest(event: OpenInterestEvent): void {
+    if (event.openInterest !== undefined) this.openInterest = event.openInterest;
+    if (event.openInterestUsd !== undefined) this.openInterestUsd = event.openInterestUsd;
+    this.openInterestTsMs = event.ts.getTime();
+
+    // Keep a small time-series for shock/regime calculation.
+    this.openInterestSnapshots.push({
+      ts: event.ts.getTime(),
+      openInterest: event.openInterest,
+      openInterestUsd: event.openInterestUsd,
+    });
+    this.pruneOldData(event.ts.getTime());
+  }
+
+  /**
    * Get current funding rate info for dashboard display
    */
   getFunding(): { rate?: string; tsMs?: Ms } {
@@ -95,6 +123,56 @@ export class MarketDataCache {
       rate: this.fundingRate,
       tsMs: this.fundingTsMs,
     };
+  }
+
+  /**
+   * Get current open interest info for dashboard display
+   */
+  getOpenInterest(): { openInterest?: string; openInterestUsd?: string; tsMs?: Ms } {
+    return {
+      openInterest: this.openInterest,
+      openInterestUsd: this.openInterestUsd,
+      tsMs: this.openInterestTsMs,
+    };
+  }
+
+  /**
+   * Compute open interest shock over a given window (bps).
+   *
+   * shock_bps = abs(oi_now - oi_prev) / max(|oi_prev|, eps) * 10_000
+   *
+   * Preference: openInterestUsd if available; otherwise openInterest (base).
+   */
+  getOpenInterestShockBps(nowMs: Ms, windowMs: Ms = 5 * 60 * 1000): string | undefined {
+    const pickOi = (s: OpenInterestSnapshot): number | undefined => {
+      const v = s.openInterestUsd ?? s.openInterest;
+      if (v === undefined) return undefined;
+      const n = Number.parseFloat(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const nowVal = pickOi({
+      ts: this.openInterestTsMs ?? nowMs,
+      openInterest: this.openInterest,
+      openInterestUsd: this.openInterestUsd,
+    });
+    if (nowVal === undefined) return undefined;
+
+    const targetTs = nowMs - windowMs;
+    // Find the latest snapshot at or before targetTs.
+    // Use a for-of scan to avoid "object injection" lint warnings on index access.
+    let prevSnapshot: OpenInterestSnapshot | undefined;
+    for (const s of this.openInterestSnapshots) {
+      if (s.ts <= targetTs) prevSnapshot = s;
+    }
+    const prevVal = prevSnapshot ? pickOi(prevSnapshot) : undefined;
+    if (prevVal === undefined) return undefined;
+
+    const EPS = 1e-10;
+    const denom = Math.max(Math.abs(prevVal), EPS);
+    const shockBps = (Math.abs(nowVal - prevVal) / denom) * 10_000;
+    if (!Number.isFinite(shockBps)) return undefined;
+    return shockBps.toFixed(4);
   }
 
   /**
@@ -159,8 +237,10 @@ export class MarketDataCache {
   private pruneOldData(nowMs: Ms): void {
     const tradeCutoff = nowMs - TRADES_WINDOW_MS;
     const midCutoff = nowMs - MID_SNAPSHOTS_WINDOW_MS;
+    const oiCutoff = nowMs - OPEN_INTEREST_WINDOW_MS;
 
     this.trades = this.trades.filter(t => t.ts >= tradeCutoff);
     this.midSnapshots = this.midSnapshots.filter(s => s.ts >= midCutoff);
+    this.openInterestSnapshots = this.openInterestSnapshots.filter(s => s.ts >= oiCutoff);
   }
 }

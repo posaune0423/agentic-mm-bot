@@ -9,12 +9,12 @@
   - `src/env.ts`: 環境変数の定義とバリデーション
   - `src/services/*`: 状態やキャッシュ等のアプリ内コンポーネント（例: tracker/cache）
   - `src/usecases/*`: 1回の処理単位のオーケストレーション（Read → Decide → Execute）
-  - `src/repositories/interfaces/*`: app 内で必要な永続化の契約
-  - `src/repositories/postgres/*`: Postgres/Drizzle 実装
+  - `src/repositories/*`: （必要な場合のみ）app 固有の永続化を置く。共有できる repository は `packages/repositories` を優先
 - **`packages/*`**: 共有ライブラリ
   - `packages/core`: 戦略の純ロジック（意思決定・特徴量・リスク・パラメータゲート）
   - `packages/adapters`: 取引所/データソースの adapter と port インターフェース
   - `packages/db`: Drizzle schema（DB の Single Source of Truth）
+  - `packages/repositories`: **Repository レイヤ（interface + 実装）**の共有（例: `interfaces/*` と `postgres/*`）
   - `packages/utils`: logger 等の横断ユーティリティ
   - `packages/*-config`: eslint/prettier/tsconfig の共有設定
 
@@ -24,6 +24,7 @@
 - **`packages/core` は他の packages（db/adapters/utils）に依存しない**
 - `packages/db` は schema 定義に集中し、アプリのユースケースは持たない
 - `packages/adapters` は **port（インターフェース）** と **実装（例: extended）** を分離する
+- `packages/repositories` は `packages/core` / `packages/db` / `packages/utils` に依存してよい（ただし逆方向は不可）
 
 ## 実行時データフロー（概念図）
 

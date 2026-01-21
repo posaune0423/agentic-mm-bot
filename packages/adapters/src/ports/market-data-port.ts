@@ -72,6 +72,25 @@ export interface FundingRateEvent {
 }
 
 /**
+ * Open interest event (polled via REST for venues without WS stream)
+ */
+export interface OpenInterestEvent {
+  type: "oi";
+  ts: Date;
+  exchange: string;
+  symbol: string;
+  /**
+   * Open interest in base units (if provided by venue)
+   */
+  openInterest?: string;
+  /**
+   * Open interest in USD/quote value (if provided by venue)
+   */
+  openInterestUsd?: string;
+  raw?: unknown;
+}
+
+/**
  * Connection event
  */
 export interface ConnectionEvent {
@@ -81,7 +100,13 @@ export interface ConnectionEvent {
   reason?: string;
 }
 
-export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEvent | ConnectionEvent;
+export type MarketDataEvent =
+  | BboEvent
+  | TradeEvent
+  | PriceEvent
+  | FundingRateEvent
+  | OpenInterestEvent
+  | ConnectionEvent;
 
 /**
  * Market data subscription options
@@ -89,7 +114,7 @@ export type MarketDataEvent = BboEvent | TradeEvent | PriceEvent | FundingRateEv
 export interface MarketDataSubscription {
   exchange: string;
   symbol: string;
-  channels: ("bbo" | "trades" | "prices" | "funding")[];
+  channels: ("bbo" | "trades" | "prices" | "funding" | "oi")[];
 }
 
 /**

@@ -120,6 +120,7 @@
   - **quote prices**: `mid` を基準に計算した bid/ask のターゲット価格（`bidPx` と `askPx`）。
   - **quote update（差し替え）**: 既存注文とターゲット価格がズレたときに cancel→place で更新すること。頻度は `refreshIntervalMs`、古さ判定は `staleCancelMs` を使う。参照: `apps/executor/src/services/execution-planner.ts`
 - **quoting**: quote を継続的に出し続ける運用（マーケットメイクの基本動作）。
+- **unwind（アンワインド）**: いま持っている在庫/ポジション（建玉）を **減らす/解消する**ために、反対売買を入れて巻き戻すこと。例: 「unwind LONG」= 売ってロングを減らす、「unwind SHORT」= 買い戻してショートを減らす。
 - **post-only**: maker 目的の注文。taker になる注文は拒否され得る。
 - **`ex_order_event`**: 注文の place/cancel/ack/reject/fill などのイベントを保存する監査テーブル。参照: `packages/db/src/schema/ex-order-event.ts`
 - **`ex_fill`**: 約定（fill）を保存するテーブル。参照: `packages/db/src/schema/ex-fill.ts`

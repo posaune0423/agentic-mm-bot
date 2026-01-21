@@ -14,7 +14,7 @@ import type { MarketDataEvent, MarketDataSubscription } from "../src/ports";
 
 interface Opts {
   market: string;
-  channels: Array<"bbo" | "trades" | "prices" | "funding">;
+  channels: Array<"bbo" | "trades" | "prices" | "funding" | "oi">;
   maxPerType: number;
   timeoutMs: number;
 }
@@ -96,6 +96,16 @@ function summarize(event: MarketDataEvent): unknown {
       seq: event.seq,
     };
   }
+  if (event.type === "oi") {
+    return {
+      type: event.type,
+      exchange: event.exchange,
+      symbol: event.symbol,
+      ts: event.ts.toISOString(),
+      openInterest: event.openInterest,
+      openInterestUsd: event.openInterestUsd,
+    };
+  }
   return {
     type: event.type,
     exchange: event.exchange,
@@ -135,6 +145,7 @@ async function main(): Promise<void> {
     trade: 0,
     price: 0,
     funding: 0,
+    oi: 0,
     connected: 0,
     disconnected: 0,
     reconnecting: 0,
@@ -174,14 +185,17 @@ async function main(): Promise<void> {
 
     const wantsPrices = opts.channels.includes("prices");
     const wantsFunding = opts.channels.includes("funding");
+    const wantsOi = opts.channels.includes("oi");
     const gotPrice = seen.price > 0;
     const gotFunding = seen.funding > 0;
+    const gotOi = seen.oi > 0;
 
     const ok =
       gotBbo &&
       gotTrade &&
       (!wantsPrices || gotPrice || Date.now() + 2_000 > deadline) &&
-      (!wantsFunding || gotFunding || Date.now() + 2_000 > deadline);
+      (!wantsFunding || gotFunding || Date.now() + 2_000 > deadline) &&
+      (!wantsOi || gotOi || Date.now() + 2_000 > deadline);
 
     if (ok) break;
     await new Promise(r => setTimeout(r, 50));
@@ -191,6 +205,7 @@ async function main(): Promise<void> {
   const gotTrade = seen.trade > 0;
   const gotPrice = seen.price > 0;
   const gotFunding = seen.funding > 0;
+  const gotOi = seen.oi > 0;
 
   console.log(
     JSON.stringify(
@@ -203,6 +218,7 @@ async function main(): Promise<void> {
           gotTrade,
           gotPrice,
           gotFunding,
+          gotOi,
         },
       },
       null,

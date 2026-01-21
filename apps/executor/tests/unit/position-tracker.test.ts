@@ -196,15 +196,19 @@ describe("PositionTracker.updateFromFill", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PositionTracker.getPosition", () => {
-  test("should return Position object with size only", () => {
+  test("should return Position object with size + positionSinceMs", () => {
     const tracker = new PositionTracker();
     tracker.syncFromPosition(createPositionInfo({ size: "2.5" }));
 
     const position = tracker.getPosition();
 
-    expect(position).toEqual({ size: "2.5" });
+    // positionSinceMs is set when transitioning from flat (0) -> non-zero
+    expect(position).toEqual({
+      size: "2.5",
+      positionSinceMs: new Date("2024-01-01T12:00:00Z").getTime(),
+    });
     // Ensure entryPrice/uPnL are not in Position (they're separate getters)
-    expect(Object.keys(position)).toEqual(["size"]);
+    expect(Object.keys(position).sort()).toEqual(["positionSinceMs", "size"]);
   });
 
   test("should return zero size for fresh tracker", () => {

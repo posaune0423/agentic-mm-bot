@@ -8,6 +8,27 @@
       "when": 1768371152652,
       "tag": "0000_dusty_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1737475200000,
+      "tag": "0001_spread_edge_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768982400000,
+      "tag": "0002_md_open_interest",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1737590400000,
+      "tag": "0003_attack_defense_params",
+      "breakpoints": true
     }
   ]
 }

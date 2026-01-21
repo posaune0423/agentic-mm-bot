@@ -170,13 +170,21 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
               baseHalfSpreadBps: "10",
               volSpreadGain: "1",
               toxSpreadGain: "1",
-              quoteSizeUsd: "10",
+              quoteSizeUsd: "20",
               refreshIntervalMs: 1000,
               staleCancelMs: 5000,
-              maxInventory: "1",
+              maxInventory: "0.5", // Tuned: actual max pos ~0.328 BTC
               inventorySkewGain: "5",
               pauseMarkIndexBps: "50",
               pauseLiqCount10s: 3,
+              // Attack-defense parameters (tuned based on data analysis)
+              defensiveSpreadMultiplier: "1.5",
+              defensiveSizeMultiplier: "0.5",
+              oneSidedThreshold: "0.2", // Lower threshold for earlier one-sided
+              oneSidedOnNonZeroInventory: true, // Stop bad side immediately
+              unwindTriggerMs: 30000,
+              unwindSizeRatio: "0.25",
+              unwindCrossBps: "2", // Cross 2 bps for better unwind fill
             }),
           );
         }
@@ -195,6 +203,14 @@ export function createPostgresMetricsRepository(db: Db): MetricsRepository {
             inventorySkewGain: row.inventorySkewGain,
             pauseMarkIndexBps: row.pauseMarkIndexBps,
             pauseLiqCount10s: row.pauseLiqCount10s,
+            // Attack-defense parameters (optional, may be null)
+            defensiveSpreadMultiplier: row.defensiveSpreadMultiplier ?? null,
+            defensiveSizeMultiplier: row.defensiveSizeMultiplier ?? null,
+            oneSidedThreshold: row.oneSidedThreshold ?? null,
+            oneSidedOnNonZeroInventory: row.oneSidedOnNonZeroInventory ?? null,
+            unwindTriggerMs: row.unwindTriggerMs ?? null,
+            unwindSizeRatio: row.unwindSizeRatio ?? null,
+            unwindCrossBps: row.unwindCrossBps ?? null,
           }),
         );
       });

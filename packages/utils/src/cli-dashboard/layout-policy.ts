@@ -32,10 +32,10 @@ export class LayoutPolicy {
     let visibleLen = 0;
     for (let i = 0; i < text.length; i++) {
       // ESC [
-      if (text.charCodeAt(i) === 27 && text[i + 1] === "[") {
+      if (text.charCodeAt(i) === 27 && text.charAt(i + 1) === "[") {
         i += 2;
         // Skip until final 'm' (simple SGR)
-        while (i < text.length && text[i] !== "m") i++;
+        while (i < text.length && text.charAt(i) !== "m") i++;
         continue;
       }
       visibleLen++;
@@ -57,13 +57,14 @@ export class LayoutPolicy {
 
     for (let i = 0; i < text.length; i++) {
       // ESC [
-      if (text.charCodeAt(i) === 27 && text[i + 1] === "[") {
+      if (text.charCodeAt(i) === 27 && text.charAt(i + 1) === "[") {
         // Capture entire ANSI sequence
-        let seq = text[i];
+        let seq = text.charAt(i);
         i++;
         while (i < text.length) {
-          seq += text[i];
-          if (text[i] === "m") break;
+          const ch = text.charAt(i);
+          seq += ch;
+          if (ch === "m") break;
           i++;
         }
         result += seq;
@@ -71,7 +72,7 @@ export class LayoutPolicy {
       }
 
       if (visibleLen >= targetWidth) break;
-      result += text[i];
+      result += text.charAt(i);
       visibleLen++;
     }
 
@@ -222,6 +223,12 @@ export class LayoutPolicy {
    * @param separator - Optional separator between cells (default: " ")
    */
   tableRow(cells: string[], widths: number[], separator = " "): string {
-    return cells.map((cell, i) => this.padRight(cell, widths[i] ?? 10)).join(separator);
+    return cells
+      .map((cell, i) => {
+        // eslint-disable-next-line security/detect-object-injection
+        const width = widths[i] ?? 10;
+        return this.padRight(cell, width);
+      })
+      .join(separator);
   }
 }

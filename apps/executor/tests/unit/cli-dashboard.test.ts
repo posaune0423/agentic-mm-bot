@@ -8,11 +8,18 @@ import type { TickDebug } from "../../src/services/cli-dashboard";
 // Helper to create a minimal tick for testing
 function createMockTick(overrides: Partial<TickDebug> = {}): TickDebug {
   const nowMs = Date.now();
+  const stateAfter = {
+    mode: "NORMAL" as const,
+    modeSinceMs: nowMs - 60_000,
+    lastQuoteMs: nowMs - 1000,
+    pauseUntilMs: undefined,
+  };
   return {
     nowMs,
     snapshot: {
       exchange: "extended",
       symbol: "BTC-USD",
+      nowMs,
       bestBidPx: "100000.00",
       bestBidSz: "1.0",
       bestAskPx: "100001.00",
@@ -22,13 +29,16 @@ function createMockTick(overrides: Partial<TickDebug> = {}): TickDebug {
       lastUpdateMs: nowMs - 1000,
     },
     features: {
+      midPx: "100000.50",
+      spreadBps: "0.1",
       realizedVol10s: "0.05",
       tradeImbalance1s: "0.1",
       markIndexDivBps: "0.5",
       liqCount10s: 0,
+      dataStale: false,
     },
     output: {
-      mode: "NORMAL",
+      nextState: stateAfter,
       reasonCodes: [],
       intents: [],
     },
@@ -37,11 +47,7 @@ function createMockTick(overrides: Partial<TickDebug> = {}): TickDebug {
       modeSinceMs: nowMs - 60_000,
       lastQuoteMs: nowMs - 1000,
     },
-    stateAfter: {
-      mode: "NORMAL",
-      modeSinceMs: nowMs - 60_000,
-      lastQuoteMs: nowMs - 1000,
-    },
+    stateAfter,
     paramsSetId: "test-params-id",
     dbParams: {
       baseHalfSpreadBps: "10",
@@ -81,8 +87,10 @@ function createMockTick(overrides: Partial<TickDebug> = {}): TickDebug {
       entryPrice: "99500.00",
       unrealizedPnl: "250.00",
       lastUpdateMs: nowMs - 5000, // 5 seconds ago (fresh)
+      positionSinceMs: nowMs - 30_000,
     },
     funding: undefined,
+    openInterest: undefined,
     ...overrides,
   };
 }

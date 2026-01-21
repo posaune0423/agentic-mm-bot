@@ -18,6 +18,12 @@ export class PositionTracker {
   private entryPrice?: PriceStr;
   private unrealizedPnl?: PriceStr;
   private lastUpdateMs: number = 0;
+  /**
+   * Timestamp when position last changed from zero (used by core for unwind timing).
+   * - Set when transitioning 0 -> non-zero
+   * - Cleared when transitioning non-zero -> 0
+   */
+  private positionSinceMs?: number;
 
   /**
    * Update from fill event
@@ -27,12 +33,23 @@ export class PositionTracker {
    * to avoid displaying outdated/incorrect values.
    */
   updateFromFill(event: FillEvent): void {
-    const currentSize = Number.parseFloat(this.size);
+    const prevSize = Number.parseFloat(this.size);
     const fillSize = Number.parseFloat(event.size);
     const signedFill = event.side === "buy" ? fillSize : -fillSize;
 
-    this.size = (currentSize + signedFill).toString();
+    const nextSizeNum = prevSize + signedFill;
+    this.size = nextSizeNum.toString();
     this.lastUpdateMs = event.ts.getTime();
+
+    // Track positionSinceMs for unwind timing (core expects this).
+    // Start timer when entering a position from flat.
+    if (prevSize === 0 && nextSizeNum !== 0) {
+      this.positionSinceMs = event.ts.getTime();
+    }
+    // Clear timer when flat again.
+    if (nextSizeNum === 0) {
+      this.positionSinceMs = undefined;
+    }
 
     // Clear stale values - only size is accurate after fill
     this.entryPrice = undefined;
@@ -43,15 +60,26 @@ export class PositionTracker {
    * Sync from REST API response
    */
   syncFromPosition(info: PositionInfo | null): void {
+    const prevSize = Number.parseFloat(this.size);
     if (info) {
       this.size = info.size;
       this.entryPrice = info.entryPrice;
       this.unrealizedPnl = info.unrealizedPnl;
       this.lastUpdateMs = info.updatedAt.getTime();
+
+      const nextSize = Number.parseFloat(info.size);
+      // Best-effort: when we observe 0->non-zero from REST, use the observed updatedAt as positionSinceMs.
+      if (prevSize === 0 && nextSize !== 0) {
+        this.positionSinceMs = info.updatedAt.getTime();
+      }
+      if (nextSize === 0) {
+        this.positionSinceMs = undefined;
+      }
     } else {
       this.size = "0";
       this.entryPrice = undefined;
       this.unrealizedPnl = undefined;
+      this.positionSinceMs = undefined;
     }
   }
 
@@ -61,6 +89,7 @@ export class PositionTracker {
   getPosition(): Position {
     return {
       size: this.size,
+      positionSinceMs: this.positionSinceMs,
     };
   }
 
@@ -76,6 +105,13 @@ export class PositionTracker {
    */
   getLastUpdateMs(): number {
     return this.lastUpdateMs;
+  }
+
+  /**
+   * Timestamp when position last changed from zero (for unwind timing / UI)
+   */
+  getPositionSinceMs(): number | undefined {
+    return this.positionSinceMs;
   }
 
   /**

@@ -37,10 +37,12 @@ function findBboBeforeTime(bboData: MdBbo[], targetMs: number): MdBbo | null {
 
   while (left <= right) {
     const mid = Math.floor((left + right) / 2);
-    const bboTs = bboData[mid].ts.getTime();
+    // eslint-disable-next-line security/detect-object-injection -- bounded array index, derived from binary search
+    const bbo = bboData[mid];
+    const bboTs = bbo.ts.getTime();
 
     if (bboTs <= targetMs) {
-      result = bboData[mid];
+      result = bbo;
       left = mid + 1;
     } else {
       right = mid - 1;
