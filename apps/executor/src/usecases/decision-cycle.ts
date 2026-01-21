@@ -54,6 +54,14 @@ const OPEN_ORDERS_SYNC_INTERVAL_MS = 5_000;
 const PERIODIC_RECONCILE_INTERVAL_MS = 30_000;
 let rateLimitUntilMs = 0;
 
+// Post-only rejection backoff (per side) to avoid reject spam.
+// When the exchange rejects post-only, retrying immediately at 200ms tick just spams the venue and logs.
+// We back off for a short (exponential-ish) window and let the next refresh / market move settle.
+const POST_ONLY_REJECT_BACKOFF_MIN_MS = 1_000;
+const POST_ONLY_REJECT_BACKOFF_MAX_MS = 10_000;
+const postOnlyRejectUntilBySide: Record<"buy" | "sell", number> = { buy: 0, sell: 0 };
+const postOnlyRejectStreakBySide: Record<"buy" | "sell", number> = { buy: 0, sell: 0 };
+
 /**
  * Decision cycle dependencies
  */
@@ -479,6 +487,14 @@ async function executeAction(
     }
 
     case "place": {
+      // Skip aggressive retry loops on post-only rejection.
+      if (action.postOnly) {
+        const until = postOnlyRejectUntilBySide[action.side];
+        if (nowMs < until) {
+          return;
+        }
+      }
+
       onAction?.({ phase: "start", action });
       const clientOrderId = generateClientOrderId();
 
@@ -528,8 +544,23 @@ async function executeAction(
             timeInForce,
             reason: result.value.reason,
           });
+
+          if (postOnly && result.value.reason?.includes("POST_ONLY")) {
+            // Treat immediate post-only rejection the same as an error path for backoff.
+            const streak = postOnlyRejectStreakBySide[action.side] + 1;
+            postOnlyRejectStreakBySide[action.side] = streak;
+            const delay = Math.min(
+              POST_ONLY_REJECT_BACKOFF_MAX_MS,
+              POST_ONLY_REJECT_BACKOFF_MIN_MS * Math.pow(2, Math.min(4, streak - 1)),
+            );
+            postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
+          }
           break;
         }
+
+        // Reset reject streak on success (per side).
+        postOnlyRejectStreakBySide[action.side] = 0;
+
         // Only track GTC orders (IOC orders fill immediately or cancel)
         if (timeInForce === "GTC") {
           orderTracker.addOrder({
@@ -557,7 +588,14 @@ async function executeAction(
         onAction?.({ phase: "err", action, error: result.error });
         // Check for post-only rejection
         if (result.error.type === "post_only_rejected") {
-          logger.warn("Post-only rejected, will retry next tick");
+          const streak = postOnlyRejectStreakBySide[action.side] + 1;
+          postOnlyRejectStreakBySide[action.side] = streak;
+          const delay = Math.min(
+            POST_ONLY_REJECT_BACKOFF_MAX_MS,
+            POST_ONLY_REJECT_BACKOFF_MIN_MS * Math.pow(2, Math.min(4, streak - 1)),
+          );
+          postOnlyRejectUntilBySide[action.side] = Date.now() + delay;
+          logger.warn("Post-only rejected; backing off", { side: action.side, streak, delayMs: delay });
         } else {
           logger.error("Failed to place order", result.error);
         }

@@ -166,7 +166,8 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
 
   private getObjectProp(obj: unknown, key: string): unknown {
     if (obj === null || obj === undefined || typeof obj !== "object") return undefined;
-    if (!(key in obj)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) return undefined;
+    // eslint-disable-next-line security/detect-object-injection -- key is always a local constant (not user input)
     return (obj as Record<string, unknown>)[key];
   }
 
@@ -392,7 +393,7 @@ export class ExtendedExecutionAdapter implements ExecutionPort {
         this.mapError,
       ).map(response => ({
         clientOrderId: request.clientOrderId,
-        exchangeOrderId: response.data?.id.toString(),
+        exchangeOrderId: response.data?.id,
         status: this.mapOrderStatus(response.data?.status),
         ts: new Date(response.data?.createdTime ?? Date.now()),
       })),
